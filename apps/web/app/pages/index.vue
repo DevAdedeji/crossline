@@ -8,9 +8,9 @@ const modes = [
     number: '01',
     title: 'Solo vs Bots',
     subtitle: 'YOUR OWN BATTLEGROUND',
-    description: 'Five combat bots. Three minutes. Fight for the top spot.',
+    description: 'Twelve combat bots across nine districts. 156 × 156 metres. Fight for the top spot.',
     available: true,
-    players: '1 PLAYER + BOTS',
+    players: '1 PLAYER + 12 BOTS · LARGE MAP',
   },
   {
     id: 'online',

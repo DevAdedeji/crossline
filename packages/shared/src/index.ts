@@ -1,5 +1,6 @@
-import { COLLIDERS, RAMP, rampHeight, type Solid } from './urban-map.ts'
+import { TRAINING_WORLD, nearbySolids, RAMP, rampHeight, type Solid, type WorldGeometry } from './urban-map.ts'
 export * from './urban-map.ts'
+export * from './combat-map.ts'
 
 export const ROOM_NAME = 'training'
 export const TICK_MS = 1000 / 30
@@ -29,9 +30,9 @@ function overlapsFootprint(x: number, z: number, solid: Solid): boolean {
 function onRamp(x: number, z: number): boolean {
   return x >= RAMP.minX && x <= RAMP.maxX && z >= RAMP.minZ && z <= RAMP.maxZ
 }
-function supportHeight(position: Position): number {
+function supportHeight(position: Position, world: WorldGeometry): number {
   let height = 0
-  for (const solid of COLLIDERS) {
+  for (const solid of nearbySolids(world, position.x, position.z)) {
     const top = solid.y + solid.height / 2
     if (top <= position.y + STEP_HEIGHT && top > height && overlapsFootprint(position.x, position.z, solid)) height = top
   }
@@ -41,8 +42,8 @@ function supportHeight(position: Position): number {
   }
   return height
 }
-export function isBlocked(position: Position): boolean {
-  for (const solid of COLLIDERS) {
+export function isBlocked(position: Position, world: WorldGeometry = TRAINING_WORLD): boolean {
+  for (const solid of nearbySolids(world, position.x, position.z)) {
     if (position.y >= solid.y + solid.height / 2 - 0.0001 || position.y + PLAYER_HEIGHT <= solid.y - solid.height / 2 + 0.0001) continue
     if (overlapsFootprint(position.x, position.z, solid)) return true
   }
@@ -53,19 +54,19 @@ export function isBlocked(position: Position): boolean {
   if (touchesRamp && position.y < rampHeight(rampZ) - 0.001) return true
   return false
 }
-export function move(position: Position, input: MoveInput, dt: number): Position {
+export function move(position: Position, input: MoveInput, dt: number, world: WorldGeometry = TRAINING_WORLD): Position {
   const seconds = Math.max(0, Math.min(dt, TICK_MS)) / 1000
-  const clamp = (n: number) => Math.max(-ARENA_LIMIT, Math.min(ARENA_LIMIT, n))
+  const clamp = (n: number) => Math.max(-world.limit, Math.min(world.limit, n))
   let next = { x: position.x, y: position.y, z: position.z }
   // Axis-separated resolution allows wall sliding; max movement is 0.2 m/tick.
   for (const axis of ['x', 'z'] as const) {
     const candidate = { ...next, [axis]: clamp(next[axis] + input[axis] * MOVE_SPEED * seconds) }
-    const support = supportHeight(candidate)
+    const support = supportHeight(candidate, world)
     candidate.y = Math.max(candidate.y, support)
-    if (!isBlocked(candidate)) next = candidate
+    if (!isBlocked(candidate, world)) next = candidate
   }
   // Gravity continues after input times out; stepped-off roofs cannot leave players hovering.
-  next.y = Math.max(supportHeight(next), next.y - 9 * seconds)
+  next.y = Math.max(supportHeight(next, world), next.y - 9 * seconds)
   return next
 }
 

@@ -330,12 +330,14 @@ export function combatPresentation(
         bot.gun.rotationQuaternion = Quaternion.FromLookDirectionRH(forward, up)
       }
     }
-    for (const bot of bots.values())
+    for (const bot of bots.values()) {
+      bot.root.setEnabled(Vector3.DistanceSquared(bot.root.position, camera.position) < 95 * 95)
       for (const group of bot.animations)
         if (group.isStarted) {
-          if (running && group.isPlaying === false) group.play(group.loopAnimation)
-          else if (!running && group.isPlaying) group.pause()
+          if (running && bot.root.isEnabled() && group.isPlaying === false) group.play(group.loopAnimation)
+          else if ((!running || !bot.root.isEnabled()) && group.isPlaying) group.pause()
         }
+    }
     if (running) clock += dt
     const effectDt = running ? dt : 0
     for (let i = impacts.length - 1; i >= 0; i--) {

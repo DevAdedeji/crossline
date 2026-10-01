@@ -21,16 +21,17 @@ import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent'
-import { BUILDINGS, MAP_SOLIDS, PARKED_CARS, RAMP, ROOF_HEIGHT } from '@crossline/shared'
+import { TRAINING_WORLD, COMBAT_DISTRICTS, type WorldGeometry, RAMP, ROOF_HEIGHT } from '@crossline/shared'
 
 /** Shared collider geometry with locally licensed facade and surface artwork. */
-export function createUrbanScene(canvas: HTMLCanvasElement) {
+export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry = TRAINING_WORLD) {
+  const BUILDINGS = world.buildings, MAP_SOLIDS = world.solids, PARKED_CARS = world.cars
   const engine = new Engine(canvas, true, { stencil: true })
   engine.setHardwareScalingLevel(Math.max(1, window.devicePixelRatio / 1.5))
   const scene = new Scene(engine)
   scene.clearColor = new Color4(0.57, 0.66, 0.67, 1)
   scene.fogMode = Scene.FOGMODE_EXP2
-  scene.fogDensity = 0.007
+  scene.fogDensity = world.limit > 26 ? 0.005 : 0.007
   scene.fogColor = new Color3(0.68, 0.73, 0.73)
   const skyTexture = new DynamicTexture('daylight sky', { width: 16, height: 256 }, scene, false)
   const skyInk = skyTexture.getContext() as CanvasRenderingContext2D
@@ -40,12 +41,12 @@ export function createUrbanScene(canvas: HTMLCanvasElement) {
   const skySurface = new StandardMaterial('daylight sky', scene)
   skySurface.emissiveTexture = skyTexture; skySurface.disableLighting = true
   skySurface.backFaceCulling = false; skySurface.fogEnabled = false
-  const skyDome = MeshBuilder.CreateSphere('sky dome', { diameter: 240, segments: 24 }, scene)
+  const skyDome = MeshBuilder.CreateSphere('sky dome', { diameter: world.limit > 26 ? 480 : 240, segments: 24 }, scene)
   skyDome.material = skySurface; skyDome.infiniteDistance = true; skyDome.isPickable = false
 
   const camera = new UniversalCamera('player-camera', new Vector3(-3, 1.7, -22), scene)
   camera.minZ = 0.12
-  camera.maxZ = 160
+  camera.maxZ = world.limit > 26 ? 260 : 160
   camera.fov = 1.2
   camera.keysUp = []
   camera.keysDown = []
@@ -152,20 +153,22 @@ export function createUrbanScene(canvas: HTMLCanvasElement) {
     staticMeshes.push(mesh)
     return mesh
   }
-  box('neighbourhood-ground', 0, -0.13, 0, 54, 0.25, 54, material('paving', '#91988e'))
-  const asphalt = material('asphalt', '#414e50')
-  box('mercer-south', 0, 0.003, -15.25, 9, 0.014, 22.5, asphalt)
-  box('mercer-north', 0, 0.003, 15.25, 9, 0.014, 22.5, asphalt)
-  box('cross-street', 0, 0.004, 0, 53, 0.014, 8, asphalt)
-  const paint = material('road-paint', '#d7ceaa')
-  const curb = material('curb', '#d1ccba')
-  // Flat paving/paint are decorative; no hidden sidewalk collision steps.
-  for (let i = -24; i <= 24; i += 4) {
-    if (Math.abs(i) > 5) box('street-dash', 0, 0.02, i, 0.1, 0.02, 1.8, paint)
-    for (const x of [-4.6, 4.6]) box('curb-inlay', x, 0.02, i, 0.24, 0.03, 3.8, curb)
+  const span = world.limit * 2 + 2
+  box('neighbourhood-ground', 0, -0.13, 0, span, 0.25, span, material('paving', '#91988e'))
+  const asphalt = material('asphalt', '#414e50'), paint = material('road-paint', '#d7ceaa'), curb = material('curb', '#d1ccba')
+  for (const center of world.roadCenters) {
+    box('north-south-street', center, .003, 0, 9, .014, span, asphalt)
+    box('east-west-street', 0, .004, center, span, .014, 8, asphalt)
+    for (let n=-world.limit+2;n<world.limit;n+=4) {
+      if(world.roadCenters.some(c=>Math.abs(n-c)<5))continue
+      box('lane-dash',center,.02,n,.1,.02,1.8,paint)
+      box('lane-dash',n,.02,center,1.8,.02,.1,paint)
+      for(const edge of [-4.6,4.6])box('curb-inlay',center+edge,.02,n,.24,.03,3.8,curb)
+    }
   }
-  for (let x = -3.6; x <= 3.7; x += 1.2)
-    for (const z of [-5.1, 5.1]) box('crosswalk', x, 0.025, z, 0.65, 0.015, 1.5, paint)
+  for (const x of world.roadCenters) for(const z of world.roadCenters)
+    for(let stripe=-3.6;stripe<=3.7;stripe+=1.2)for(const side of [-5.1,5.1])
+      box('crosswalk',x+stripe,.025,z+side,.65,.015,1.5,paint)
   for (const solid of MAP_SOLIDS)
     box(
       solid.id,
@@ -245,8 +248,8 @@ export function createUrbanScene(canvas: HTMLCanvasElement) {
 
   // Cars are game-ready meshes, fitted to the existing conservative authoritative colliders.
   function addVehicles(assets: TrainingAssets) {
-    addFacades(scene, assets, shadows)
-    interiorDetails(scene, shadows)
+    addFacades(scene, assets, shadows, world)
+    interiorDetails(scene, shadows, world.buildings)
     const reflection = new ReflectionProbe('street reflection', 128, scene)
     reflection.position.set(0, 2, 0)
     scene.environmentTexture = reflection.cubeTexture
@@ -304,7 +307,8 @@ export function createUrbanScene(canvas: HTMLCanvasElement) {
   // Unreachable skyline gives the small block context without adding traversable world size.
   const skyline = material('skyline', '#687d7b')
   sign('ROOF ACCESS  /  ↑', -20, 1.2, 5, 0, 2.4, 0.55)
-  sign('MERCER BLOCK', 0, 3, 26.35, 0, 6, 0.9)
+  sign(world.name, 0, 3, world.limit + .35, 0, 6, .9)
+  if(world.limit > 26) for(const d of COMBAT_DISTRICTS) sign(d.name,d.x+7,2.9,d.z+6,0,4.5,.65)
   sign('LOADING / 03', 21, 1.8, -15, -Math.PI / 2, 3, 0.8)
 
   function sign(
@@ -358,6 +362,9 @@ export function createUrbanScene(canvas: HTMLCanvasElement) {
     }
   }
   for (const surface of materials.values()) surface.freeze()
+  if(world.limit > 26) scene.onBeforeRenderObservable.add(() => {
+    sun.position.set(camera.position.x+25,45,camera.position.z-25)
+  })
   const avatarMaterial = material('players', '#d9f99b')
   return { engine, scene, camera, shadows, avatarMaterial, addVehicles, roofHeight: ROOF_HEIGHT }
 }

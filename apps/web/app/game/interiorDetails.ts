@@ -4,10 +4,10 @@ import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import type { Scene } from '@babylonjs/core/scene'
 import type { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
-import { BUILDINGS } from '@crossline/shared'
+import { BUILDINGS, type Building } from '@crossline/shared'
 
 /** Small decorative fittings stay within existing counters/shelves or against solid walls. */
-export function interiorDetails(scene: Scene, shadows: ShadowGenerator) {
+export function interiorDetails(scene: Scene, shadows: ShadowGenerator, buildings: readonly Building[] = BUILDINGS) {
   const groups = new Map<PBRMaterial, Mesh[]>()
   function surface(name: string, color: string, metallic = 0, roughness = .65) {
     const material = new PBRMaterial(name, scene)
@@ -26,7 +26,7 @@ export function interiorDetails(scene: Scene, shadows: ShadowGenerator) {
     const mesh = MeshBuilder.CreateBox(name, { width:w, height:h, depth:d }, scene)
     mesh.position.set(x,y,z); mesh.material = material; groups.get(material)!.push(mesh)
   }
-  for (const b of BUILDINGS) {
+  for (const b of buildings) {
     for (const z of [b.z-2.5,b.z+2.5]) {
       box('ceiling fixture',b.x,3.72,z,2.3,.1,.5,steel)
       box('ceiling diffuser',b.x,3.65,z,2.1,.04,.38,light)

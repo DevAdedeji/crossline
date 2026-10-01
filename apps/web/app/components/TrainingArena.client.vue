@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Engine } from '@babylonjs/core/Engines/engine'
 import { Client, type Room } from '@colyseus/sdk'
-import { ROOM_NAME, TICK_MS, readStick, BLOCK_NAME, BUILDINGS } from '@crossline/shared'
+import { ROOM_NAME, TICK_MS, readStick, TRAINING_WORLD, COMBAT_WORLD, COMBAT_DISTRICTS, COMBAT_BOT_COUNT } from '@crossline/shared'
 import {
   RIFLE,
   EYE_HEIGHT,
@@ -18,6 +18,8 @@ import { rotateLook, MOUSE_SENSITIVITY } from '~/game/look'
 import { selectController, controllerActivity, controllerButtons, controllerFire, loadFireBinding, DEFAULT_FIRE_BINDING, type FireBinding } from '~/game/controller'
 const props = withDefaults(defineProps<{ mode?: 'training' | 'solo' }>(), { mode: 'training' })
 const isSolo = computed(() => props.mode === 'solo')
+const world = computed(() => isSolo.value ? COMBAT_WORLD : TRAINING_WORLD)
+const radarBox = computed(() => { const r=world.value.limit+2; return `${-r} ${-r} ${r*2} ${r*2}` })
 const modeTitle = computed(() => isSolo.value ? 'Solo vs Bots' : 'Training')
 const sessionWord = computed(() => isSolo.value ? 'match' : 'training')
 const showControls = ref(false)
@@ -49,6 +51,7 @@ interface ArenaState {
 const canvas = ref<HTMLCanvasElement>(),
   status = ref('Connecting'),
   phase = ref<Phase>('ready'),
+  confirmedPhase = ref<Phase>('ready'),
   elapsed = ref(0),
   duration = ref(180000),
   round = ref(1)
@@ -322,7 +325,7 @@ onMounted(async () => {
   await nextTick()
   if (!canvas.value) return
   try {
-    const arena = createUrbanScene(canvas.value)
+    const arena = createUrbanScene(canvas.value, world.value)
     engine = arena.engine
     const { scene, camera } = arena
     const cameraTarget = camera.position.clone()
@@ -355,6 +358,8 @@ onMounted(async () => {
               actors.value,
               viewer.id,
               elapsed.value,
+              RIFLE.range,
+              world.value,
             )
           : undefined
       visuals.frame(
@@ -394,6 +399,7 @@ onMounted(async () => {
         visuals.reset()
         audio.stop()
       }
+      confirmedPhase.value = state.phase
       if (phase.value !== state.phase) menuIndex.value = 0
       phase.value = state.phase
       elapsed.value = state.elapsed
@@ -416,10 +422,11 @@ onMounted(async () => {
           camera.position.copyFrom(cameraTarget)
         position.value = `${player.x.toFixed(1)} / ${player.z.toFixed(1)}`
         altitude.value = player.y.toFixed(1)
-        const building = BUILDINGS.find(
+        const building = world.value.buildings.find(
           (b) => Math.abs(player.x - b.x) < b.width / 2 && Math.abs(player.z - b.z) < b.depth / 2,
         )
-        area.value = player.y > 3.8 ? 'ROOFTOPS' : building ? building.name : 'MERCER STREET'
+        const district = isSolo.value ? [...COMBAT_DISTRICTS].sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0]?.name : 'MERCER STREET'
+        area.value = player.y > 3.8 ? 'ROOFTOPS' : building ? building.name : district ?? 'MERCER STREET'
       }
       visuals.sync(values)
       if (state.phase === 'finished' || state.phase === 'paused') release()
@@ -508,23 +515,23 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="arena" :data-phase="phase" :data-mode="mode">
+  <main class="arena" :data-phase="phase" :data-server-phase="confirmedPhase" :data-mode="mode">
     <canvas ref="canvas" aria-label="Crossline 3D training arena" @contextmenu.prevent />
     <header>
       <NuxtLink to="/" class="brand">CROSSLINE<span>+</span></NuxtLink>
       <div class="location">
-        {{ BLOCK_NAME }}<small>{{ area }}</small>
+        {{ world.name }}<small>{{ area }}</small>
       </div>
       <div class="timer" data-testid="timer">
         {{ time }}<small>{{ modeTitle.toUpperCase() }} / ROUND {{ round }}</small>
       </div>
     </header>
     <aside class="radar-panel">
-      <svg viewBox="-28 -28 56 56" aria-label="Training radar" class="radar">
-        <rect x="-27" y="-27" width="54" height="54" fill="#1d2929" />
-        <path d="M-27 0H27M0-27V27" stroke="#58615b" stroke-width="6" />
+      <svg :viewBox="radarBox" :aria-label="`${modeTitle} radar`" class="radar">
+        <rect :x="-world.limit-1" :y="-world.limit-1" :width="world.limit*2+2" :height="world.limit*2+2" fill="#1d2929" />
+        <path v-for="c in world.roadCenters" :key="c" :d="`M${-world.limit} ${-c}H${world.limit}M${c} ${-world.limit}V${world.limit}`" stroke="#58615b" stroke-width="6" />
         <rect
-          v-for="b in BUILDINGS"
+          v-for="b in world.buildings"
           :key="b.id"
           :x="b.x - b.width / 2"
           :y="-b.z - b.depth / 2"
@@ -537,7 +544,7 @@ onBeforeUnmount(() => {
           :key="a.id"
           :cx="a.x"
           :cy="-a.z"
-          :r="a.bot ? 0.9 : 1.3"
+          :r="(a.bot ? .9 : 1.3) * (isSolo ? 2 : 1)"
           :fill="a.bot ? '#ff9460' : '#d9ff9c'"
           :opacity="a.health > 0 ? 1 : 0.2"
           :data-actor="a.id"
@@ -548,7 +555,7 @@ onBeforeUnmount(() => {
         >
           <title>{{ a.name }}</title>
         </circle></svg
-      ><small>{{ status }} · {{ isSolo ? '5 COMBAT BOTS' : '3 TARGETS · 2 PATROLS' }}</small>
+      ><small>{{ status }} · {{ isSolo ? `${COMBAT_BOT_COUNT} COMBAT BOTS` : '3 TARGETS · 2 PATROLS' }}</small>
     </aside>
     <div class="kill-feed">
       <p v-for="item in feed.filter((f) => f.until > now)" :key="item.until + item.text">
@@ -576,7 +583,7 @@ onBeforeUnmount(() => {
             ? 'SESSION COMPLETE'
             : phase === 'paused'
               ? 'TAKE A BREATHER'
-              : 'MERCER BLOCK / LIVE PRACTICE'
+              : `${world.name} / ${isSolo ? 'SOLO MATCH' : 'LIVE PRACTICE'}`
         }}</span>
         <h1>
           {{
@@ -588,7 +595,7 @@ onBeforeUnmount(() => {
           }}
         </h1>
         <p v-if="phase === 'ready'">
-          {{ isSolo ? 'Three minutes. Five opponents. Everyone is a target. Keep moving, use cover, and finish on top.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
+          {{ isSolo ? 'Three minutes. Twelve opponents. Everyone is a target. Keep moving, use cover, and finish on top.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
         </p>
         <p v-if="phase === 'paused'">
           The whole session is paused. Your timer and opponents will wait.

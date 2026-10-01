@@ -74,3 +74,36 @@ for (const [x, z] of [[21, 20], [21, -20], [-23, -22]]) box(`planter-${x}-${z}`,
 export const MAP_SOLIDS: readonly Solid[] = solids
 export const CAR_COLLIDERS: readonly Solid[] = PARKED_CARS.map((car) => ({ id: car.id, x: car.x, y: 0.78, z: car.z, width: car.sideways ? 4.5 : 2, height: 1.56, depth: car.sideways ? 2 : 4.5, material: 'metal' }))
 export const COLLIDERS: readonly Solid[] = [...MAP_SOLIDS, ...CAR_COLLIDERS]
+
+export interface WorldGeometry {
+  id: string
+  name: string
+  limit: number
+  buildings: readonly Building[]
+  solids: readonly Solid[]
+  cars: readonly ParkedCar[]
+  colliders: readonly Solid[]
+  roadCenters: readonly number[]
+}
+export const TRAINING_WORLD: WorldGeometry = {
+  id: 'mercer-training', name: BLOCK_NAME, limit: 26,
+  buildings: BUILDINGS, solids: MAP_SOLIDS, cars: PARKED_CARS, colliders: COLLIDERS,
+  roadCenters: [0],
+}
+const spatial = new WeakMap<WorldGeometry, Map<string, Solid[]>>()
+/** Broad phase shared by authoritative movement and navigation. */
+export function nearbySolids(world: WorldGeometry, x: number, z: number): readonly Solid[] {
+  let cells = spatial.get(world)
+  if (!cells) {
+    cells = new Map()
+    for (const solid of world.colliders) {
+      for (let cx = Math.floor((solid.x-solid.width/2-.4)/8); cx <= Math.floor((solid.x+solid.width/2+.4)/8); cx++)
+        for (let cz = Math.floor((solid.z-solid.depth/2-.4)/8); cz <= Math.floor((solid.z+solid.depth/2+.4)/8); cz++) {
+          const key = `${cx}/${cz}`, list = cells.get(key) ?? []
+          list.push(solid); cells.set(key, list)
+        }
+    }
+    spatial.set(world, cells)
+  }
+  return cells.get(`${Math.floor(x/8)}/${Math.floor(z/8)}`) ?? []
+}

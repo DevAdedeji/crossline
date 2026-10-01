@@ -1,4 +1,4 @@
-import { TICK_MS, move, isBlocked, type Position } from '@crossline/shared'
+import { TICK_MS, move, isBlocked, COMBAT_WORLD, TRAINING_WORLD, COMBAT_SPAWNS, COMBAT_BOT_COUNT, type Position, type MoveInput } from '@crossline/shared'
 import {
   TRAINING,
   RIFLE,
@@ -14,7 +14,7 @@ import {
   type Phase,
   type GameEvent,
 } from '@crossline/shared/combat'
-import { findPath, NAV_POINTS } from './navigation.js'
+import { getNavigation } from './navigation.js'
 
 interface BotMemory {
   path: Position[]
@@ -36,6 +36,12 @@ export class TrainingGame {
   round = 1
   input: CombatInput = { ...IDLE_INPUT }
   events: GameEvent[] = []
+  get world() { return this.mode === 'solo' ? COMBAT_WORLD : TRAINING_WORLD }
+  get spawns() { return this.mode === 'solo' ? COMBAT_SPAWNS : TRAINING_SPAWNS }
+  get navigation() { return getNavigation(this.world) }
+  private move(position: Position, input: MoveInput, dt: number) { return move(position, input, dt, this.world) }
+  private worldHit(origin: Position, ray: Position) { return worldHit(origin, ray, RIFLE.range, this.world) }
+  private lastNoise?: { id: string; position: Position; at: number }
   private spawnHistory = new Map<string, string[]>()
   private memories = new Map<string, BotMemory>()
   constructor(
@@ -52,7 +58,7 @@ export class TrainingGame {
       name,
       bot,
       ...position,
-      yaw: bot ? [Math.PI / 2, 0, -Math.PI / 3, 0, Math.PI * 0.75][Number(id.slice(-1))]! : 0,
+      yaw: bot ? [Math.PI / 2, 0, -Math.PI / 3, 0, Math.PI * 0.75][Number(id.split('-')[1]) % 5]! : 0,
       pitch: 0,
       health: 100,
       ammo: RIFLE.magazine,
@@ -70,6 +76,7 @@ export class TrainingGame {
     }
   }
   reset() {
+    this.lastNoise = undefined
     this.spawnHistory.clear()
     this.actors.clear()
     this.memories.clear()
@@ -77,12 +84,12 @@ export class TrainingGame {
     this.phase = 'ready'
     this.input = { ...IDLE_INPUT }
     this.events = []
-    this.actors.set(this.humanId, this.actor(this.humanId, 'YOU', false, TRAINING_SPAWNS[0]!))
-    for (let i = 0; i < TRAINING.botCount; i++) {
+    this.actors.set(this.humanId, this.actor(this.humanId, 'YOU', false, this.spawns[0]!))
+    for (let i = 0; i < (this.mode === 'solo' ? COMBAT_BOT_COUNT : TRAINING.botCount); i++) {
       const id = `bot-${i}`
       this.actors.set(
         id,
-        this.actor(id, ['ROOK', 'MAKO', 'ECHO', 'SABLE', 'VEX'][i]!, true, TRAINING_SPAWNS[i + 1]!),
+        this.actor(id, ['ROOK', 'MAKO', 'ECHO', 'SABLE', 'VEX', 'ASH', 'NOVA', 'FLINT', 'GHOST', 'ONYX', 'REED', 'VALE'][i]!, true, this.spawns[i + 1]!),
       )
       this.memories.set(id, {
         path: [],
@@ -137,16 +144,16 @@ export class TrainingGame {
             Math.hypot(other.x - point.x, other.z - point.z) + Math.abs(other.y - point.y) * 3,
         ),
       )
-    const candidates = TRAINING_SPAWNS.filter(
+    const candidates = this.spawns.filter(
       (point) =>
-        !isBlocked(point) &&
+        !isBlocked(point, this.world) &&
         Math.hypot(point.x - actor.x, point.z - actor.z) > 4 &&
         separation(point) > 2,
     )
     const fresh = candidates.filter((point) => !history.includes(key(point)))
     const pool = fresh.length ? fresh : candidates
     const safety = (point: Position) => separation(point) + (this.mode === 'solo'
-      ? others.filter(other => other.health > 0 && worldHit(
+      ? others.filter(other => other.health > 0 && this.worldHit(
         { x: other.x, y: other.y + EYE_HEIGHT, z: other.z },
         direction(Math.atan2(point.x - other.x, point.z - other.z),
           -Math.atan2(point.y + 1.1 - other.y - EYE_HEIGHT, Math.hypot(point.x - other.x, point.z - other.z))),
@@ -154,8 +161,8 @@ export class TrainingGame {
       : 0)
     const ranked = [...pool].sort((a, b) => safety(b) - safety(a))
     const spawn = actor.bot
-      ? (ranked[Math.floor(this.random() * Math.min(4, ranked.length))] ?? TRAINING_SPAWNS[0]!)
-      : (ranked[0] ?? TRAINING_SPAWNS[0]!)
+      ? (ranked[Math.floor(this.random() * Math.min(4, ranked.length))] ?? this.spawns[0]!)
+      : (ranked[0] ?? this.spawns[0]!)
     this.spawnHistory.set(actor.id, [key(spawn), ...history].slice(0, 3))
     Object.assign(actor, spawn, {
       health: 100,
@@ -188,6 +195,7 @@ export class TrainingGame {
       this.elapsed - actor.lastShot < cadence
     )
       return false
+    this.lastNoise = { id: actor.id, position: { x: actor.x, y: actor.y, z: actor.z }, at: this.elapsed }
     actor.lastShot = this.elapsed
     actor.ammo--
     actor.shots++
@@ -197,7 +205,7 @@ export class TrainingGame {
       pitch + (this.random() - 0.5) * spread,
     )
     const origin = { x: actor.x, y: actor.y + EYE_HEIGHT, z: actor.z }
-    let distance = worldHit(origin, ray)
+    let distance = this.worldHit(origin, ray)
     let victim: Combatant | undefined
     for (const candidate of this.actors.values()) {
       if (candidate.id === actor.id || candidate.health <= 0) continue
@@ -265,7 +273,7 @@ export class TrainingGame {
     const index = Number(bot.id.slice(-1))
     // Three stationary practice targets and two slow patrols. No pursuit behavior in Training.
     if (index % 2 === 0) {
-      Object.assign(bot, move(bot, { x: 0, z: 0 }, dt))
+      Object.assign(bot, this.move(bot, { x: 0, z: 0 }, dt))
       return
     }
     // A confirmed hit stops locomotion for the complete flinch; no combat AI in target practice.
@@ -288,7 +296,7 @@ export class TrainingGame {
     const stage = (Math.floor(this.elapsed / 14000) + 1) % routes.length
     if (this.elapsed >= memory.nextPlan || !memory.path.length) {
       const point = routes[stage]!
-      memory.path = findPath(bot, { x: point[0]!, y: 0, z: point[1]! })
+      memory.path = this.navigation.findPath(bot, { x: point[0]!, y: 0, z: point[1]! })
       memory.nextPlan = this.elapsed + 2000
     }
     const waypoint = memory.path[0]
@@ -299,7 +307,7 @@ export class TrainingGame {
       if (length < 0.25) memory.path.shift()
       else {
         bot.yaw = Math.atan2(dx, dz)
-        Object.assign(bot, move(bot, { x: (dx / length) * 0.16, z: (dz / length) * 0.16 }, dt))
+        Object.assign(bot, this.move(bot, { x: (dx / length) * 0.16, z: (dz / length) * 0.16 }, dt))
       }
     }
   }
@@ -312,7 +320,7 @@ export class TrainingGame {
     const angle = Math.atan2(Math.sin(yaw - bot.yaw), Math.cos(yaw - bot.yaw))
     if (Math.abs(angle) > 1.25 && this.elapsed - bot.lastDamage > 1200) return false
     const ray = direction(yaw, -Math.atan2(target.y + 1.1 - bot.y - EYE_HEIGHT, distance))
-    return worldHit({ x: bot.x, y: bot.y + EYE_HEIGHT, z: bot.z }, ray) >
+    return this.worldHit({ x: bot.x, y: bot.y + EYE_HEIGHT, z: bot.z }, ray) >
       Math.hypot(dx, dz, target.y + 1.1 - bot.y - EYE_HEIGHT) - 0.4
   }
   private combatBotStep(bot: Combatant, dt: number) {
@@ -361,9 +369,9 @@ export class TrainingGame {
       }
       if (bot.reloadUntil || bot.health < 45) {
         // Seek nearby geometry that breaks the opponent's line of sight while recovering.
-        const cover = NAV_POINTS.filter((point) => Math.hypot(point.x - bot.x, point.z - bot.z) < 12 &&
+        const cover = this.navigation.points.filter((point) => Math.hypot(point.x - bot.x, point.z - bot.z) < 12 &&
           Math.abs(point.y - bot.y) < 0.5 &&
-          worldHit({ x: target.x, y: target.y + EYE_HEIGHT, z: target.z },
+          this.worldHit({ x: target.x, y: target.y + EYE_HEIGHT, z: target.z },
             direction(Math.atan2(point.x - target.x, point.z - target.z),
               -Math.atan2(point.y + 1.1 - target.y - EYE_HEIGHT, Math.hypot(point.x - target.x, point.z - target.z)))) <
             Math.hypot(point.x - target.x, point.z - target.z) - 0.5)
@@ -372,15 +380,18 @@ export class TrainingGame {
       } else if (distance > 17) destination = memory.lastSeen
       else if (!memory.burstLeft) {
         const side = Number(bot.id.slice(-1)) % 2 ? 1 : -1
-        Object.assign(bot, move(bot, { x: Math.cos(bot.yaw) * side * 0.2, z: -Math.sin(bot.yaw) * side * 0.2 }, dt))
+        Object.assign(bot, this.move(bot, { x: Math.cos(bot.yaw) * side * 0.2, z: -Math.sin(bot.yaw) * side * 0.2 }, dt))
       }
     } else if (memory.lastSeen && this.elapsed - (memory.seenAt ?? 0) < 2500) {
       destination = memory.lastSeen
-    } else if (!memory.path.length || this.elapsed >= memory.nextPlan) {
-      destination = NAV_POINTS[Math.floor(this.random() * NAV_POINTS.length)]
+    } else if (!memory.path.length) {
+      const noise = this.lastNoise
+      destination = noise && noise.id !== bot.id && this.elapsed-noise.at < 5000 && Math.hypot(noise.position.x-bot.x,noise.position.z-bot.z)<55
+        ? noise.position
+        : this.navigation.points[Math.floor(this.random() * this.navigation.points.length)]
     }
     if (destination && (this.elapsed >= memory.nextPlan || !memory.path.length)) {
-      memory.path = findPath(bot, destination)
+      memory.path = this.navigation.findPath(bot, destination)
       memory.nextPlan = this.elapsed + (visible ? 1000 : 4000)
     }
     const waypoint = memory.path[0]
@@ -393,7 +404,7 @@ export class TrainingGame {
           bot.yaw += Math.max(-dt * 0.0025, Math.min(dt * 0.0025, delta))
           bot.pitch *= 0.9
         }
-        Object.assign(bot, move(bot, { x: dx / distance * 0.34, z: dz / distance * 0.34 }, dt))
+        Object.assign(bot, this.move(bot, { x: dx / distance * 0.34, z: dz / distance * 0.34 }, dt))
       }
     }
   }
@@ -424,7 +435,7 @@ export class TrainingGame {
         actor.pitch = this.input.pitch
         Object.assign(
           actor,
-          move(
+          this.move(
             actor,
             {
               x: this.input.x * (this.input.aim ? 0.65 : 1),

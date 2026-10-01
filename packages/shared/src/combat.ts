@@ -1,4 +1,4 @@
-import { COLLIDERS, RAMP, rampHeight } from './urban-map.ts'
+import { TRAINING_WORLD, RAMP, rampHeight, type WorldGeometry } from './urban-map.ts'
 import { parseInput, type MoveInput, type Position } from './index.ts'
 
 export const TRAINING = {
@@ -116,9 +116,9 @@ export function rayBox(
   }
   return near <= range && far >= 0 ? near : null
 }
-export function worldHit(origin: Position, ray: Position, range: number = RIFLE.range): number {
+export function worldHit(origin: Position, ray: Position, range: number = RIFLE.range, world: WorldGeometry = TRAINING_WORLD): number {
   let distance = range
-  for (const box of COLLIDERS) {
+  for (const box of world.colliders) {
     const hit = rayBox(
       origin,
       ray,
@@ -208,8 +208,9 @@ export function aimedTarget(
   viewerId: string,
   elapsed: number,
   range: number = RIFLE.range,
+  world: WorldGeometry = TRAINING_WORLD,
 ): string | undefined {
-  let distance = worldHit(origin, ray, range)
+  let distance = worldHit(origin, ray, range, world)
   let nearest: Combatant | undefined
   for (const actor of actors) {
     if (actor.id === viewerId || actor.health <= 0) continue

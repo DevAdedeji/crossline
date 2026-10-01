@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
-async function connected(page: Page) {
+async function connected(page: Page, count = 6) {
   await expect(page.locator('.radar-panel')).toContainText('Connected', { timeout: 20000 })
-  await expect(page.locator('[data-actor]')).toHaveCount(6)
+  await expect(page.locator('[data-actor]')).toHaveCount(count)
 }
 async function start(page: Page) {
   await page.getByRole('button', { name: 'Start training', exact: true }).click()
@@ -119,6 +119,7 @@ test('real mouse target practice, reload, pause, results, replay and exit', asyn
   await page.screenshot({ path: info.outputPath('live-combat.png') })
   await page.keyboard.press('Escape')
   await expect(page.getByRole('heading', { name: 'Training paused.' })).toBeVisible()
+  await expect(page.locator('main.arena')).toHaveAttribute('data-server-phase', 'paused')
   const frozen = (await page.getByTestId('timer').textContent())!
   await page.waitForTimeout(1100)
   await expect(page.getByTestId('timer')).toHaveText(frozen)
@@ -461,7 +462,7 @@ test('Solo is a separate combat match with damage, pause, standings and replay',
   await page.goto('/')
   await page.getByRole('button', { name: 'Solo vs Bots', exact: true }).click()
   await page.getByRole('link', { name: 'Enter solo vs bots' }).click()
-  await connected(page)
+  await connected(page, 13)
   await expect(page.locator('main.arena')).toHaveAttribute('data-mode', 'solo')
   await pulse(page, 0)
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase', 'playing')
@@ -471,12 +472,13 @@ test('Solo is a separate combat match with damage, pause, standings and replay',
   await button(page, 0, false)
   await pulse(page, 9)
   await expect(page.getByRole('heading', { name: 'Solo vs Bots paused.' })).toBeVisible()
+  await expect(page.locator('main.arena')).toHaveAttribute('data-server-phase', 'paused')
   const frozen = (await page.getByTestId('timer').textContent())!
   await page.waitForTimeout(500)
   await expect(page.getByTestId('timer')).toHaveText(frozen)
   await page.getByRole('button', { name: 'Finish session', exact: true }).click()
   await expect(page.getByTestId('results')).toBeVisible()
-  await expect(page.getByRole('list', { name: 'Match standings' }).getByRole('listitem')).toHaveCount(6)
+  await expect(page.getByRole('list', { name: 'Match standings' }).getByRole('listitem')).toHaveCount(13)
   await page.screenshot({ path: info.outputPath('solo-results.png') })
   await pulse(page, 0)
   await expect(page.getByRole('heading', { name: 'Every angle is live.' })).toBeVisible()

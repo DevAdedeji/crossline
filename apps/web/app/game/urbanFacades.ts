@@ -3,10 +3,10 @@ import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import type { Scene } from '@babylonjs/core/scene'
 import type { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import type { TrainingAssets } from './trainingAssets'
-import { BUILDINGS } from '@crossline/shared'
+import { TRAINING_WORLD, type WorldGeometry } from '@crossline/shared'
 
 /** Selected CC0 Poly Haven modules; visual skins never close authoritative door openings. */
-export function addFacades(scene: Scene, assets: TrainingAssets, shadows: ShadowGenerator) {
+export function addFacades(scene: Scene, assets: TrainingAssets, shadows: ShadowGenerator, world: WorldGeometry = TRAINING_WORLD) {
   let serial = 0
   function module(
     kit: 'apartment' | 'factory',
@@ -39,8 +39,8 @@ export function addFacades(scene: Scene, assets: TrainingAssets, shadows: Shadow
       mesh.freezeWorldMatrix()
     }
   }
-  for (const building of BUILDINGS) {
-    const kit = building.id === 'garage' ? 'factory' : 'apartment'
+  for (const building of world.buildings) {
+    const kit = building.material === 'brick' || building.material === 'metal' ? 'factory' : 'apartment'
     // Window bays flank the central openings. Source front faces -Z after glTF conversion.
     for (const side of [-1, 1]) {
       for (const offset of [-4.5, -1.5, 1.5, 4.5]) {
@@ -89,7 +89,7 @@ export function addFacades(scene: Scene, assets: TrainingAssets, shadows: Shadow
           'panel',
           bay,
           floor * 3,
-          side * 34.8,
+          side * (world.limit + 8.8),
           side > 0 ? Math.PI : 0,
         )
       module(
@@ -97,7 +97,7 @@ export function addFacades(scene: Scene, assets: TrainingAssets, shadows: Shadow
         'trim',
         bay,
         12,
-        side * 34.8,
+        side * (world.limit + 8.8),
         side > 0 ? Math.PI : 0,
       )
     }
