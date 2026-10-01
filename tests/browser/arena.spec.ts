@@ -69,10 +69,9 @@ test('real mouse target practice, reload, pause, results, replay and exit', asyn
   await page.goto('/')
   await page.keyboard.press('ArrowLeft')
   await expect(
-    page.getByRole('button', { name: 'Online Free-for-All — in development' }),
+    page.getByRole('button', { name: 'Online Free-for-All' }),
   ).toBeFocused()
-  await page.keyboard.press('Enter')
-  await expect(page.getByRole('status')).toContainText('in development')
+  await page.keyboard.press('ArrowRight')
   await page.getByRole('button', { name: 'Training', exact: true }).click()
   await page.getByRole('link', { name: 'Enter training' }).click()
   await connected(page)

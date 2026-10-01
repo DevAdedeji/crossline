@@ -12,9 +12,10 @@
     "test": "tsx --test tests/*.test.ts",
     "test:smoke": "tsx scripts/smoke.ts",
     "test:browser": "playwright test",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:smoke",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:smoke && pnpm test:online",
     "db:generate": "pnpm --filter @crossline/db generate",
-    "db:migrate": "pnpm --filter @crossline/db migrate"
+    "db:migrate": "pnpm --filter @crossline/db migrate",
+    "test:online": "tsx scripts/online-smoke.ts"
   },
   "devDependencies": {
     "@colyseus/sdk": "0.18.4",

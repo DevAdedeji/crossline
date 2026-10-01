@@ -18,8 +18,9 @@ test('combat map is nine times Training area, with distinct districts and safe d
   assert.ok(move({x:0,y:0,z:26},{x:0,z:1},TICK_MS).z<=26)
   assert.ok(worldHit({x:-60,y:1.6,z:50},{x:0,y:0,z:1},80,COMBAT_WORLD)<10)
 })
-test('navigation connects all districts through collision-checked routes', () => {
+test('navigation connects all districts through collision-checked routes', async () => {
   const nav=getNavigation(COMBAT_WORLD),start={x:0,y:0,z:-21}
+  await nav.precompute()
   for(const district of COMBAT_DISTRICTS) {
     const destination={x:district.x,y:0,z:district.z-21}
     const path=nav.findPath(start,destination)

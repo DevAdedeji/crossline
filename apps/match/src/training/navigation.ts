@@ -118,7 +118,14 @@ function findPath(from: Position, destination: Position): Position[] {
   return [{ ...points[start]! }]
 }
 
-  return { points, canWalk, findPath }
+  async function precompute() {
+    let batchStart=performance.now()
+    for(let i=0;i<points.length;i++) {
+      neighbors(i)
+      if(performance.now()-batchStart>4) { await new Promise<void>(resolve=>setImmediate(resolve)); batchStart=performance.now() }
+    }
+  }
+  return { points, canWalk, findPath, precompute }
 }
 export function getNavigation(world: WorldGeometry = TRAINING_WORLD) {
   let navigation = cache.get(world)

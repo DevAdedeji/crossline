@@ -11,14 +11,14 @@ import type { Scene } from '@babylonjs/core/scene'
 import type { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera'
 import type { AnimationGroup } from '@babylonjs/core/Animations/animationGroup'
 import type { TrainingAssets } from './trainingAssets'
-import { RIFLE, type Combatant, type ShotEvent } from '@crossline/shared/combat'
+import { RIFLE, type Combatant, type ShotEvent, type GameMode } from '@crossline/shared/combat'
 
 export function combatPresentation(
   scene: Scene,
   camera: UniversalCamera,
   assets: TrainingAssets,
   shadows: ShadowGenerator,
-  mode: 'training' | 'solo' = 'training',
+  mode: GameMode = 'training',
 ) {
   const material = (name: string, color: string) => {
     const m = new StandardMaterial(name, scene)
@@ -62,6 +62,7 @@ export function combatPresentation(
       yaw: number
       shootUntil: number
       stationary: boolean
+      dispose: () => void
       spawnStamp: number
       rest: {
         node: TransformNode
@@ -116,7 +117,10 @@ export function combatPresentation(
   }[] = []
   const tracers: { mesh: ReturnType<typeof MeshBuilder.CreateLines>; remaining: number }[] = []
   function sync(actors: Combatant[]) {
-    for (const actor of actors.filter((a) => a.bot)) {
+    const visibleActors = actors.filter(a=>(a.bot || mode === 'online') && a.participating !== false)
+    const ids = new Set(visibleActors.map(a=>a.id))
+    for(const [id, actor] of bots) if(!ids.has(id)) { actor.dispose(); bots.delete(id) }
+    for (const actor of visibleActors) {
       let bot = bots.get(actor.id)
       if (!bot) {
         const root = new TransformNode(actor.id, scene)
@@ -144,6 +148,12 @@ export function combatPresentation(
         const gun = assets.gun(`${actor.id}-carbine`, root, 0.7)
         gun.position.set(0.18, 1.13, 0.3)
         bot = {
+          dispose: () => {
+            for(const mesh of root.getChildMeshes())shadows.removeShadowCaster(mesh)
+            for(const group of instance.animationGroups)group.dispose()
+            for(const skeleton of instance.skeletons)skeleton.dispose()
+            root.dispose(false,false)
+          },
           spawnStamp: actor.protectedUntil,
           rest: root
             .getDescendants()
@@ -202,12 +212,12 @@ export function combatPresentation(
       if (Vector3.Distance(bot.root.position, bot.previous) > 3)
         bot.root.position.copyFrom(bot.previous)
       bot.yaw = actor.yaw
-      bot.gun.setEnabled(mode === 'solo' && bot.alive)
+      bot.gun.setEnabled(mode !== 'training' && bot.alive)
       const action = !bot.alive
         ? 'Death'
         : clock < bot.reactUntil
           ? 'HitRecieve'
-          : mode === 'solo' && actor.reloadUntil > 0
+          : mode !== 'training' && actor.reloadUntil > 0
             ? 'Interact'
           : bot.stationary
             ? 'Idle_Neutral'

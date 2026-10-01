@@ -1,0 +1,12 @@
+# Preparation only. Keep the match server's production refusal in place.
+# Public hosting needs a separately approved production-readiness change first.
+[build]
+builder = "RAILPACK"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @crossline/match build"
+
+[deploy]
+startCommand = "node apps/match/dist/index.js"
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

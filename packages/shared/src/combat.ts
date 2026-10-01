@@ -18,6 +18,7 @@ export const RIFLE = {
   headDamage: 50,
 } as const
 export const EYE_HEIGHT = 1.6
+export type GameMode = 'training' | 'solo' | 'online'
 export type Phase = 'ready' | 'playing' | 'paused' | 'finished'
 export interface CombatInput extends MoveInput {
   yaw: number
@@ -53,6 +54,8 @@ export function parseCombatInput(value: unknown): CombatInput | null {
   return { ...movement, yaw: yaw % (Math.PI * 2), pitch, fire, aim }
 }
 export interface Combatant extends Position {
+  connected?: boolean
+  participating?: boolean
   id: string
   name: string
   bot: boolean
@@ -213,7 +216,7 @@ export function aimedTarget(
   let distance = worldHit(origin, ray, range, world)
   let nearest: Combatant | undefined
   for (const actor of actors) {
-    if (actor.id === viewerId || actor.health <= 0) continue
+    if (actor.id === viewerId || actor.health <= 0 || actor.participating === false) continue
     const hit = actorHit(origin, ray, actor, distance)
     if (hit !== null && hit < distance) {
       distance = hit

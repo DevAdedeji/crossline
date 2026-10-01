@@ -4,8 +4,10 @@ import { TICK_MS } from '@crossline/shared'
 import { TRAINING, IDLE_INPUT } from '@crossline/shared/combat'
 import { TrainingGame } from './training/TrainingGame.js'
 
-const Actor = schema(
+export const Actor = schema(
   {
+    connected: t.boolean().default(true),
+    participating: t.boolean().default(true),
     id: t.string(),
     name: t.string(),
     bot: t.boolean(),
@@ -37,6 +39,7 @@ export const TrainingState = schema(
     elapsed: t.number(),
     duration: t.number().default(TRAINING.durationMs),
     round: t.number().default(1),
+    capacity: t.number().default(1),
   },
   'TrainingState',
 )

@@ -17,9 +17,9 @@ const modes = [
     number: '02',
     title: 'Online Free-for-All',
     subtitle: 'EVERY ANGLE IS YOURS',
-    description: 'A shared arena with unlimited respawns. Online matchmaking is in development.',
-    available: false,
-    players: 'FREE-FOR-ALL',
+    description: 'Human-only combat on Mercer Districts. Continuous scores and unlimited respawns. Runs on your local match server.',
+    available: true,
+    players: 'HUMAN PLAYERS · UP TO 8 PER ROOM',
   },
   {
     id: 'training',
@@ -37,10 +37,13 @@ const selected = computed(() => modes[active.value]!)
 const message = ref('')
 const controller = ref('MOUSE / KEYBOARD')
 const showControls = ref(false)
+const callsign = ref('')
+watch(callsign, value => { if(import.meta.client)try { localStorage.setItem('crossline.callsign',value) } catch {} })
 let wasBackPressed = false, wasDetailsPressed = false
 let frame = 0
 let lastStep = 0
 let wasConfirmPressed = false
+let confirmArmed = false
 let previousDirection = 0
 function setFocus(index: number) {
   active.value = index
@@ -49,7 +52,7 @@ function setFocus(index: number) {
 function selectMode(index: number) {
   active.value = index
   if (modes[index]?.available) {
-    void navigateTo(modes[index]?.id === 'solo' ? '/play?mode=solo' : '/play')
+    void navigateTo(modes[index]?.id === 'training' ? '/play' : `/play?mode=${modes[index]?.id}`)
     return
   }
   message.value = `${modes[index]!.title} is in development. Training is playable now.`
@@ -80,6 +83,7 @@ function pollGamepad(time: number) {
   if (pad && document.hasFocus() && !document.hidden) {
     const stick = readStick(pad.axes[0], pad.axes[1])
     const pressed = controllerButtons(pad)
+    if (!pressed[0]) confirmArmed = true
     const back = Boolean(pressed[1]), details = Boolean(pressed[3])
     const controlsWereOpen = showControls.value
     if ((back && !wasBackPressed) || (showControls.value && pressed[0] && !wasConfirmPressed)) showControls.value = false
@@ -106,15 +110,17 @@ function pollGamepad(time: number) {
     }
     previousDirection = direction
     const confirm = Boolean(pressed[0])
-    if (confirm && !wasConfirmPressed) selectMode(active.value)
+    if (confirmArmed && confirm && !wasConfirmPressed) selectMode(active.value)
     wasConfirmPressed = confirm
   } else {
     wasConfirmPressed = false
+    confirmArmed = false
     previousDirection = 0
   }
   frame = requestAnimationFrame(pollGamepad)
 }
 onMounted(() => {
+  try { callsign.value=localStorage.getItem('crossline.callsign') ?? '' } catch {}
   window.addEventListener('keydown', keydown)
   frame = requestAnimationFrame(pollGamepad)
 })
@@ -153,8 +159,11 @@ onBeforeUnmount(() => {
       </nav>
       <div class="mt-6 min-h-[105px] border-t border-white/15 pt-5">
         <p class="mb-4 max-w-md text-sm leading-relaxed text-white/65">{{ selected.description }}</p>
-        <NuxtLink v-if="selected.available" :to="selected.id === 'solo' ? '/play?mode=solo' : '/play'"
-          :aria-label="selected.id === 'solo' ? 'Enter solo vs bots' : 'Enter training'"
+        <label v-if="selected.id === 'online'" class="mb-4 block text-xs text-white/65">CALLSIGN
+          <input v-model="callsign" data-ui-action maxlength="16" placeholder="OPERATOR" class="ml-3 border border-white/25 bg-black/40 px-3 py-2 text-white" aria-label="Callsign" />
+        </label>
+        <NuxtLink v-if="selected.available" :to="selected.id === 'training' ? '/play' : `/play?mode=${selected.id}`"
+          :aria-label="selected.id === 'online' ? 'Enter online free-for-all' : selected.id === 'solo' ? 'Enter solo vs bots' : 'Enter training'"
           class="inline-flex min-w-48 items-center justify-between gap-10 bg-[#ffb15c] px-6 py-3 text-sm font-black tracking-[.15em] text-[#161a1b] transition hover:bg-[#ffc98f] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">DEPLOY <span>→</span></NuxtLink>
         <button v-else data-ui-action class="border border-white/20 px-6 py-3 text-xs font-bold tracking-widest text-white/40" @click="selectMode(active)">MATCHMAKING IN DEVELOPMENT</button>
         <p v-if="message" role="status" class="mt-3 text-xs text-[#ffb15c]">{{ message }}</p>

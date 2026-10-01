@@ -1,0 +1,12 @@
+# Preparation only. No Railway service is connected or deployed by this file.
+# Select this config from a future web service after deployment approval.
+[build]
+builder = "RAILPACK"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @crossline/web build"
+
+[deploy]
+startCommand = "node apps/web/.output/server/index.mjs"
+healthcheckPath = "/"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

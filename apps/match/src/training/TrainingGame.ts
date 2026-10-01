@@ -12,6 +12,7 @@ import {
   type Combatant,
   type CombatInput,
   type Phase,
+  type GameMode,
   type GameEvent,
 } from '@crossline/shared/combat'
 import { getNavigation } from './navigation.js'
@@ -36,19 +37,20 @@ export class TrainingGame {
   round = 1
   input: CombatInput = { ...IDLE_INPUT }
   events: GameEvent[] = []
-  get world() { return this.mode === 'solo' ? COMBAT_WORLD : TRAINING_WORLD }
-  get spawns() { return this.mode === 'solo' ? COMBAT_SPAWNS : TRAINING_SPAWNS }
+  get world() { return this.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD }
+  get spawns() { return this.mode !== 'training' ? COMBAT_SPAWNS : TRAINING_SPAWNS }
   get navigation() { return getNavigation(this.world) }
   private move(position: Position, input: MoveInput, dt: number) { return move(position, input, dt, this.world) }
   private worldHit(origin: Position, ray: Position) { return worldHit(origin, ray, RIFLE.range, this.world) }
   private lastNoise?: { id: string; position: Position; at: number }
+  private humanInputs = new Map<string, CombatInput>()
   private spawnHistory = new Map<string, string[]>()
   private memories = new Map<string, BotMemory>()
   constructor(
     readonly humanId: string,
     readonly durationMs: number = TRAINING.durationMs,
     private readonly random: () => number = Math.random,
-    readonly mode: 'training' | 'solo' = 'training',
+    readonly mode: GameMode = 'training',
   ) {
     this.reset()
   }
@@ -78,12 +80,14 @@ export class TrainingGame {
   reset() {
     this.lastNoise = undefined
     this.spawnHistory.clear()
+    this.humanInputs.clear()
     this.actors.clear()
     this.memories.clear()
     this.elapsed = 0
     this.phase = 'ready'
     this.input = { ...IDLE_INPUT }
     this.events = []
+    if (this.mode === 'online') { this.phase = 'playing'; return }
     this.actors.set(this.humanId, this.actor(this.humanId, 'YOU', false, this.spawns[0]!))
     for (let i = 0; i < (this.mode === 'solo' ? COMBAT_BOT_COUNT : TRAINING.botCount); i++) {
       const id = `bot-${i}`
@@ -114,10 +118,32 @@ export class TrainingGame {
     this.phase = 'finished'
     this.input = { ...IDLE_INPUT }
   }
-  acceptInput(value: unknown): boolean {
+  addHuman(id: string, name: string) {
+    if(this.mode !== 'online' || this.actors.has(id)) return
+    const actor=this.actor(id,name,false,this.spawns[0]!)
+    actor.connected=true; actor.participating=false
+    this.actors.set(id,actor); this.humanInputs.set(id,{...IDLE_INPUT})
+  }
+  enterHuman(id: string) {
+    const actor=this.actors.get(id)
+    if(!actor || actor.participating !== false) return
+    actor.participating=true; this.respawn(actor)
+  }
+  stopHuman(id: string) {
+    const actor=this.actors.get(id)
+    if(actor) this.humanInputs.set(id,{...IDLE_INPUT,yaw:actor.yaw,pitch:actor.pitch})
+  }
+  removeHuman(id: string) {
+    this.actors.delete(id); this.humanInputs.delete(id); this.spawnHistory.delete(id)
+  }
+  acceptInput(value: unknown, id = this.humanId): boolean {
     const input = parseCombatInput(value)
     if (!input) return false
-    this.input = input
+    if(this.mode === 'online') {
+      const actor=this.actors.get(id)
+      if(!actor || !actor.connected || !actor.participating) return false
+      this.humanInputs.set(id,input)
+    } else this.input = input
     return true
   }
   reload(id: string) {
@@ -125,6 +151,7 @@ export class TrainingGame {
     if (
       this.phase !== 'playing' ||
       !actor ||
+      actor.participating === false ||
       actor.health <= 0 ||
       actor.reloadUntil ||
       actor.ammo >= RIFLE.magazine
@@ -134,12 +161,12 @@ export class TrainingGame {
     return true
   }
   private respawn(actor: Combatant) {
-    const others = [...this.actors.values()].filter((other) => other.id !== actor.id)
+    const others = [...this.actors.values()].filter((other) => other.id !== actor.id && other.participating !== false && other.health > 0)
     const key = (point: Position) => `${point.x}/${point.y}/${point.z}`
     const history = this.spawnHistory.get(actor.id) ?? []
     const separation = (point: Position) =>
       Math.min(
-        ...others.map(
+        100, ...others.map(
           (other) =>
             Math.hypot(other.x - point.x, other.z - point.z) + Math.abs(other.y - point.y) * 3,
         ),
@@ -152,14 +179,15 @@ export class TrainingGame {
     )
     const fresh = candidates.filter((point) => !history.includes(key(point)))
     const pool = fresh.length ? fresh : candidates
-    const safety = (point: Position) => separation(point) + (this.mode === 'solo'
+    const safety = (point: Position) => separation(point) + (this.mode !== 'training'
       ? others.filter(other => other.health > 0 && this.worldHit(
         { x: other.x, y: other.y + EYE_HEIGHT, z: other.z },
         direction(Math.atan2(point.x - other.x, point.z - other.z),
           -Math.atan2(point.y + 1.1 - other.y - EYE_HEIGHT, Math.hypot(point.x - other.x, point.z - other.z))),
       ) < Math.hypot(point.x - other.x, point.z - other.z) - 0.5).length * 6
       : 0)
-    const ranked = [...pool].sort((a, b) => safety(b) - safety(a))
+    const nearby = this.mode === 'online' ? pool.filter(p=>separation(p)>=12 && separation(p)<=45) : []
+    const ranked = [...(nearby.length ? nearby : pool)].sort((a, b) => safety(b) - safety(a))
     const spawn = actor.bot
       ? (ranked[Math.floor(this.random() * Math.min(4, ranked.length))] ?? this.spawns[0]!)
       : (ranked[0] ?? this.spawns[0]!)
@@ -188,7 +216,8 @@ export class TrainingGame {
     if (
       this.phase !== 'playing' ||
       (actor.bot && this.mode === 'training') ||
-      (this.mode === 'solo' && actor.protectedUntil > this.elapsed) ||
+      actor.participating === false ||
+      (this.mode !== 'training' && actor.protectedUntil > this.elapsed) ||
       actor.health <= 0 ||
       actor.reloadUntil ||
       actor.ammo <= 0 ||
@@ -208,7 +237,7 @@ export class TrainingGame {
     let distance = this.worldHit(origin, ray)
     let victim: Combatant | undefined
     for (const candidate of this.actors.values()) {
-      if (candidate.id === actor.id || candidate.health <= 0) continue
+      if (candidate.id === actor.id || candidate.health <= 0 || candidate.participating === false) continue
       const hit = actorHit(origin, ray, candidate, distance)
       if (hit !== null && hit < distance) {
         distance = hit
@@ -413,12 +442,13 @@ export class TrainingGame {
     if (this.phase !== 'playing') return
     const dt = Math.max(0, Math.min(delta, TICK_MS))
     this.elapsed += dt
-    if (this.elapsed >= this.durationMs) {
+    if (this.mode !== 'online' && this.elapsed >= this.durationMs) {
       this.elapsed = this.durationMs
       this.finish()
       return
     }
     for (const actor of this.actors.values()) {
+      if (actor.participating === false) continue
       if (actor.health <= 0) {
         if (actor.respawnUntil <= this.elapsed) this.respawn(actor)
         continue
@@ -431,20 +461,21 @@ export class TrainingGame {
         actor.health = Math.min(100, actor.health + dt * 0.01)
       if (actor.bot) this.botStep(actor, dt)
       else {
-        actor.yaw = this.input.yaw
-        actor.pitch = this.input.pitch
+        const input = this.mode === 'online' ? this.humanInputs.get(actor.id) ?? IDLE_INPUT : this.input
+        actor.yaw = input.yaw
+        actor.pitch = input.pitch
         Object.assign(
           actor,
           this.move(
             actor,
             {
-              x: this.input.x * (this.input.aim ? 0.65 : 1),
-              z: this.input.z * (this.input.aim ? 0.65 : 1),
+              x: input.x * (input.aim ? 0.65 : 1),
+              z: input.z * (input.aim ? 0.65 : 1),
             },
             dt,
           ),
         )
-        if (this.input.fire) this.fire(actor, this.input.yaw, this.input.pitch, this.input.aim)
+        if (input.fire) this.fire(actor, input.yaw, input.pitch, input.aim)
       }
     }
   }

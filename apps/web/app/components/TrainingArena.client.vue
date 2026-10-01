@@ -10,18 +10,21 @@ import {
   type Combatant,
   type GameEvent,
   type Phase,
+  type GameMode,
 } from '@crossline/shared/combat'
 import { createUrbanScene } from '~/game/createUrbanScene'
 import { loadTrainingAssets } from '~/game/trainingAssets'
 import { combatPresentation, trainingAudio } from '~/game/combatPresentation'
 import { rotateLook, MOUSE_SENSITIVITY } from '~/game/look'
 import { selectController, controllerActivity, controllerButtons, controllerFire, loadFireBinding, DEFAULT_FIRE_BINDING, type FireBinding } from '~/game/controller'
-const props = withDefaults(defineProps<{ mode?: 'training' | 'solo' }>(), { mode: 'training' })
+const props = withDefaults(defineProps<{ mode?: GameMode }>(), { mode: 'training' })
+const isOnline = computed(() => props.mode === 'online')
+const onlineEntered = ref(false), onlinePaused = ref(false), onlineCapacity = ref(8), roomCode = ref('')
 const isSolo = computed(() => props.mode === 'solo')
-const world = computed(() => isSolo.value ? COMBAT_WORLD : TRAINING_WORLD)
+const world = computed(() => props.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD)
 const radarBox = computed(() => { const r=world.value.limit+2; return `${-r} ${-r} ${r*2} ${r*2}` })
-const modeTitle = computed(() => isSolo.value ? 'Solo vs Bots' : 'Training')
-const sessionWord = computed(() => isSolo.value ? 'match' : 'training')
+const modeTitle = computed(() => isOnline.value ? 'Online Free-for-All' : isSolo.value ? 'Solo vs Bots' : 'Training')
+const sessionWord = computed(() => props.mode !== 'training' ? 'match' : 'training')
 const showControls = ref(false)
 const fireBinding = ref<FireBinding>(DEFAULT_FIRE_BINDING)
 const bindingFire = ref(false)
@@ -47,6 +50,7 @@ interface ArenaState {
   elapsed: number
   duration: number
   round: number
+  capacity?: number
 }
 const canvas = ref<HTMLCanvasElement>(),
   status = ref('Connecting'),
@@ -100,13 +104,14 @@ const active = computed(
 )
 const seconds = computed(() => Math.ceil(Math.max(0, duration.value - elapsed.value) / 1000))
 const time = computed(
-  () => `${Math.floor(seconds.value / 60)}:${String(seconds.value % 60).padStart(2, '0')}`,
+  () => isOnline.value ? '∞' : `${Math.floor(seconds.value / 60)}:${String(seconds.value % 60).padStart(2, '0')}`,
 )
 const accuracy = computed(() =>
   self.value?.shots ? Math.round((self.value.hits / self.value.shots) * 100) : 0,
 )
 const reloadLeft = computed(() => Math.max(0, (self.value?.reloadUntil ?? 0) - elapsed.value))
 const menuItems = computed(() =>
+  isOnline.value ? [onlineEntered.value ? 'Resume match' : 'Enter arena', 'Return to menu'] :
   phase.value === 'finished'
     ? ['Run it again', 'Return to menu']
     : phase.value === 'paused'
@@ -114,7 +119,7 @@ const menuItems = computed(() =>
       : [`Start ${sessionWord.value}`, 'Return to menu'],
 )
 function action(value: string) {
-  room?.send('action', value)
+  if(status.value === 'Connected')room?.send('action', value)
 }
 function clearInput() {
   keys.clear()
@@ -124,7 +129,7 @@ function clearInput() {
   padFire = false
   padAim = false
   selectFireArmed = false
-  room?.send('input', { x: 0, z: 0, ...look, fire: false, aim: false })
+  if(status.value === 'Connected')room?.send('input', { x: 0, z: 0, ...look, fire: false, aim: false })
 }
 function release() {
   clearInput()
@@ -134,6 +139,7 @@ function release() {
 function pause() {
   audio.stop()
   if (phase.value === 'playing') {
+    if(isOnline.value)onlinePaused.value=true
     action('pause')
     phase.value = 'paused'
     menuIndex.value = 0
@@ -155,6 +161,7 @@ async function start(usePad = false) {
   if (usePad) {
     selectFireArmed = false
     padActive.value = true
+    if(isOnline.value) { onlineEntered.value=true; onlinePaused.value=false; phase.value='playing' }
     action('start')
     return
   }
@@ -162,6 +169,7 @@ async function start(usePad = false) {
     await canvas.value?.requestPointerLock()
     if (document.pointerLockElement === canvas.value) {
       padActive.value = false
+      if(isOnline.value) { onlineEntered.value=true; onlinePaused.value=false; phase.value='playing' }
       action('start')
     }
   } catch {
@@ -252,7 +260,8 @@ function pollPad(dt: number) {
     return
   }
   if (pad.index !== padIndex) {
-    previousButtons = []
+    // A held menu button must be released after changing routes/controllers.
+    previousButtons = controllerButtons(pad)
     menuAxis = false
     padIndex = pad.index
     fireBinding.value = loadFireBinding(pad.id)
@@ -387,7 +396,17 @@ onMounted(async () => {
     window.addEventListener('blur', pause)
     window.addEventListener('gamepaddisconnected', gamepadDisconnected)
     window.addEventListener('resize', resize)
-    const joined = await new Client(String(config.public.matchUrl)).create<ArenaState>(isSolo.value ? 'solo' : ROOM_NAME)
+    const client = new Client(String(config.public.matchUrl))
+    let joined: Room<ArenaState>
+    if(isOnline.value) {
+      let token: string | null = null, name = ''
+      try { token=sessionStorage.getItem('crossline.ffa.reconnect'); name=localStorage.getItem('crossline.callsign') ?? '' } catch {}
+      try { joined=token ? await client.reconnect<ArenaState>(token) : await client.joinOrCreate<ArenaState>('ffa',{name}) }
+      catch { joined=await client.joinOrCreate<ArenaState>('ffa',{name}) }
+      Object.assign(joined.reconnection,{enabled:true,minUptime:0,minDelay:300,maxDelay:2000,maxRetries:12})
+      try { sessionStorage.setItem('crossline.ffa.reconnect',joined.reconnectionToken) } catch {}
+      roomCode.value=joined.roomId
+    } else joined = await client.create<ArenaState>(isSolo.value ? 'solo' : ROOM_NAME)
     if (stopped) {
       await joined.leave()
       return
@@ -400,8 +419,10 @@ onMounted(async () => {
         audio.stop()
       }
       confirmedPhase.value = state.phase
-      if (phase.value !== state.phase) menuIndex.value = 0
-      phase.value = state.phase
+      const nextPhase = isOnline.value ? !onlineEntered.value ? 'ready' : onlinePaused.value ? 'paused' : state.phase : state.phase
+      if (phase.value !== nextPhase) menuIndex.value = 0
+      phase.value = nextPhase
+      onlineCapacity.value=state.capacity ?? 8
       elapsed.value = state.elapsed
       duration.value = state.duration
       round.value = state.round
@@ -425,10 +446,10 @@ onMounted(async () => {
         const building = world.value.buildings.find(
           (b) => Math.abs(player.x - b.x) < b.width / 2 && Math.abs(player.z - b.z) < b.depth / 2,
         )
-        const district = isSolo.value ? [...COMBAT_DISTRICTS].sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0]?.name : 'MERCER STREET'
+        const district = props.mode !== 'training' ? [...COMBAT_DISTRICTS].sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0]?.name : 'MERCER STREET'
         area.value = player.y > 3.8 ? 'ROOFTOPS' : building ? building.name : district ?? 'MERCER STREET'
       }
-      visuals.sync(values)
+      visuals.sync(isOnline.value ? values.filter(a=>a.id !== joined.sessionId) : values)
       if (state.phase === 'finished' || state.phase === 'paused') release()
     })
     room.onMessage('event', (event: GameEvent) => {
@@ -457,17 +478,31 @@ onMounted(async () => {
         ].slice(0, 4)
       }
     })
+    room.onDrop(() => {
+      if(!isOnline.value || stopped)return
+      status.value='Reconnecting'; onlinePaused.value=true; phase.value='paused'; release()
+    })
+    room.onReconnect(() => {
+      if(stopped)return
+      status.value='Connected'; onlinePaused.value=true; phase.value=onlineEntered.value ? 'paused' : 'ready'
+      // The SDK rotates its token immediately after invoking onReconnect.
+      queueMicrotask(() => { try { sessionStorage.setItem('crossline.ffa.reconnect',joined.reconnectionToken) } catch {} })
+      clearInput()
+    })
     room.onLeave(() => {
       if (stopped) return
+      if(isOnline.value)try { sessionStorage.removeItem('crossline.ffa.reconnect') } catch {}
       status.value = 'Disconnected'
       clearInterval(timer)
       release()
     })
     room.onError(() => {
+      if(isOnline.value && joined.reconnection.isReconnecting)return
       status.value = 'Connection error'
       release()
     })
     timer = setInterval(() => {
+      if(status.value !== 'Connected')return
       const enabled = active.value,
         forward = enabled
           ? padActive.value
@@ -498,6 +533,7 @@ onBeforeUnmount(() => {
   stopped = true
   clearInterval(timer)
   release()
+  if(isOnline.value)try { sessionStorage.removeItem('crossline.ffa.reconnect') } catch {}
   void room?.leave()
   engine?.dispose()
   audio.dispose()
@@ -515,15 +551,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="arena" :data-phase="phase" :data-server-phase="confirmedPhase" :data-mode="mode">
-    <canvas ref="canvas" aria-label="Crossline 3D training arena" @contextmenu.prevent />
+  <main class="arena" :data-phase="phase" :data-server-phase="confirmedPhase" :data-mode="mode" :data-room-id="roomCode" :data-player-id="self?.id">
+    <canvas ref="canvas" :aria-label="`Crossline ${modeTitle} arena`" @contextmenu.prevent />
     <header>
       <NuxtLink to="/" class="brand">CROSSLINE<span>+</span></NuxtLink>
       <div class="location">
         {{ world.name }}<small>{{ area }}</small>
       </div>
       <div class="timer" data-testid="timer">
-        {{ time }}<small>{{ modeTitle.toUpperCase() }} / ROUND {{ round }}</small>
+        {{ time }}<small>{{ modeTitle.toUpperCase() }} / {{ isOnline ? 'CONTINUOUS' : `ROUND ${round}` }}</small>
       </div>
     </header>
     <aside class="radar-panel">
@@ -544,8 +580,8 @@ onBeforeUnmount(() => {
           :key="a.id"
           :cx="a.x"
           :cy="-a.z"
-          :r="(a.bot ? .9 : 1.3) * (isSolo ? 2 : 1)"
-          :fill="a.bot ? '#ff9460' : '#d9ff9c'"
+          :r="(a.bot ? .9 : 1.3) * (mode !== 'training' ? 2 : 1)"
+          :fill="a.id === self?.id ? '#d9ff9c' : '#ff9460'"
           :opacity="a.health > 0 ? 1 : 0.2"
           :data-actor="a.id"
           :data-x="a.x"
@@ -555,7 +591,7 @@ onBeforeUnmount(() => {
         >
           <title>{{ a.name }}</title>
         </circle></svg
-      ><small>{{ status }} · {{ isSolo ? `${COMBAT_BOT_COUNT} COMBAT BOTS` : '3 TARGETS · 2 PATROLS' }}</small>
+      ><small>{{ status }} · {{ isOnline ? `${actors.length} / ${onlineCapacity} PLAYERS` : isSolo ? `${COMBAT_BOT_COUNT} COMBAT BOTS` : '3 TARGETS · 2 PATROLS' }}</small>
     </aside>
     <div class="kill-feed">
       <p v-for="item in feed.filter((f) => f.until > now)" :key="item.until + item.text">
@@ -570,6 +606,7 @@ onBeforeUnmount(() => {
     >
       {{ hitUntil > now ? '×' : '+' }}
     </div>
+    <div v-if="isOnline && targetId && active" class="target-name">{{ actors.find(a=>a.id===targetId)?.name }}</div>
     <div v-if="damageUntil > now" class="damage-flash" />
     <div v-if="phase === 'playing' && self && self.health <= 0" class="death">
       <span>ELIMINATED</span>
@@ -590,16 +627,18 @@ onBeforeUnmount(() => {
             phase === 'finished'
               ? `${modeTitle} complete.`
               : phase === 'paused'
-                ? `${modeTitle} paused.`
-                : isSolo ? 'Every angle is live.' : 'Learn the block.'
+                ? isOnline ? 'Match continues.' : `${modeTitle} paused.`
+                : isOnline ? 'Join the free-for-all.' : isSolo ? 'Every angle is live.' : 'Learn the block.'
           }}
         </h1>
         <p v-if="phase === 'ready'">
-          {{ isSolo ? 'Three minutes. Twelve opponents. Everyone is a target. Keep moving, use cover, and finish on top.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
+          {{ isOnline ? 'Human players only. Unlimited respawns. Continuous scoring until you leave. Open another client on this local server to play together.' : isSolo ? 'Three minutes. Twelve opponents. Everyone is a target. Keep moving, use cover, and finish on top.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
         </p>
         <p v-if="phase === 'paused'">
-          The whole session is paused. Your timer and opponents will wait.
+          {{ isOnline ? 'Your controls are paused. The shared match continues and your character stays vulnerable.' : 'The whole session is paused. Your timer and opponents will wait.' }}
         </p>
+        <p v-if="isOnline" class="controls" data-testid="online-session">{{ self?.name }} · ROOM {{ roomCode }} · {{ actors.length }} / {{ onlineCapacity }} PLAYERS</p>
+        <p v-if="isOnline && status === 'Reconnecting'" role="status">Connection lost. Reconnecting for up to 20 seconds…</p>
         <div v-if="phase === 'finished'" class="results" data-testid="results">
           <div>
             <strong>{{ self?.score ?? 0 }}</strong
@@ -617,9 +656,9 @@ onBeforeUnmount(() => {
             >HEAD HITS
           </div>
         </div>
-        <ol v-if="isSolo && phase === 'finished'" class="my-5 space-y-2 text-sm" aria-label="Match standings">
-          <li v-for="(actor, index) in [...actors].sort((a,b) => b.score-a.score)" :key="actor.id" class="flex justify-between border-b border-white/10 py-1" :class="{ 'text-[#d9ff9c]': !actor.bot }">
-            <span>{{ index + 1 }} · {{ actor.name }}</span><span>{{ actor.kills }} K / {{ actor.deaths }} D · {{ actor.score }}</span>
+        <ol v-if="(isSolo && phase === 'finished') || isOnline" class="my-5 space-y-2 text-sm" aria-label="Match standings">
+          <li v-for="(actor, index) in [...actors].sort((a,b) => b.score-a.score)" :key="actor.id" class="flex justify-between border-b border-white/10 py-1" :class="{ 'text-[#d9ff9c]': actor.id === self?.id }">
+            <span>{{ index + 1 }} · {{ actor.name }}{{ actor.connected === false ? ' · RECONNECTING' : actor.participating === false ? ' · LOBBY' : '' }}</span><span>{{ actor.kills }} K / {{ actor.deaths }} D · {{ actor.score }}</span>
           </li>
         </ol>
         <div class="menu-actions">
@@ -1017,4 +1056,8 @@ footer strong span {
 .menu-actions button.selected { background: #ffb15c; color: #10171b; border-color: #ffb15c; }
 .controls { font-family: Arial, sans-serif; font-size: 12px; line-height: 1.65; }
 .audio-toggle { text-transform: uppercase; font-size: 10px; letter-spacing: .1em; }
+</style>
+
+<style scoped>
+.target-name { position:absolute; top:55%; left:50%; transform:translateX(-50%); color:#ffb15c; font:12px monospace; pointer-events:none; }
 </style>

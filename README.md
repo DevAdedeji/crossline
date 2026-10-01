@@ -1,6 +1,6 @@
 # Crossline
 
-A browser shooter with local Training and Solo vs Bots modes: Nuxt 4 / Vue / Nuxt UI / Tailwind CSS 4, a client-only Babylon.js arena, a separate authoritative Colyseus Node.js match process, and a PostgreSQL / Drizzle schema.
+A browser shooter with locally runnable Training, Solo vs Bots and human-only Online Free-for-All modes: Nuxt 4 / Vue / Nuxt UI / Tailwind CSS 4, a client-only Babylon.js arena, a separate authoritative Colyseus Node.js match process, and a PostgreSQL / Drizzle schema.
 
 ## Run locally
 
@@ -17,11 +17,11 @@ Open **http://127.0.0.1:3000**, choose **Training**, then **Start training**. Ea
 
 The match process listens at `127.0.0.1:2567`; `/health` reports its status. The web origin is intentionally `127.0.0.1`, not `localhost`. Stop both with Ctrl-C. To run them separately: `pnpm dev:match` and `pnpm dev:web`.
 
-The root screen is a game mode selector: **Solo vs Bots** starts a separate personal combat match; **Training** enters calm target practice. **Online Free-for-All** is marked in development. Use arrow keys, the D-pad or left stick to move focus, then Enter or A / × to select. Future modes show their status and do not start a fake match.
+The root screen is a game mode selector: **Solo vs Bots** starts a separate personal combat match; **Training** enters calm target practice. **Online Free-for-All** joins a shared local human-only room. Use arrow keys, the D-pad or left stick to move focus, then Enter or A / × to select.
 
 ## Controller controls
 
-Connect a USB or Bluetooth controller, focus the browser and press a button for detection. Standard mappings support **left stick** move, **right stick** look, **A / × or RT / R2** fire, **LT / L2** aim, **X / □** reload, **A / ×** select and **Start / Options or B / ○** pause. Use the D-pad or left stick for menu selection. Both sticks have an 18% radial deadzone. Losing focus, controller disconnection or lost pointer lock pauses the whole simulation; keyboard/mouse remains available. Generic mappings are accepted. Use Controls → Assign fire trigger to bind an unusual button or analog axis; that choice is stored locally per controller. The same bottom face button selects menus and fires during play. Release it after Start/Resume before pressing to shoot; holding it then repeats at the weapon cadence. A stationary mouse cannot override controller menu selection.
+Connect a USB or Bluetooth controller, focus the browser and press a button for detection. Standard mappings support **left stick** move, **right stick** look, **A / × or RT / R2** fire, **LT / L2** aim, **X / □** reload, **A / ×** select and **Start / Options or B / ○** pause. Use the D-pad or left stick for menu selection. Both sticks have an 18% radial deadzone. Losing focus, controller disconnection or lost pointer lock pauses Training/Solo and opens a local menu in Online; keyboard/mouse remains available. Generic mappings are accepted. Use Controls → Assign fire trigger to bind an unusual button or analog axis; that choice is stored locally per controller. The same bottom face button selects menus and fires during play. Release it after Start/Resume before pressing to shoot; holding it then repeats at the weapon cadence. A stationary mouse cannot override controller menu selection.
 
 Controller browser behavior is verified with simulated standard and generic mappings, analog triggers without a pressed flag, mouse-to-controller takeover, reconnect, and select/fire release gating. Physical controller compatibility still depends on the browser/device and has not been tested on hardware.
 
@@ -48,21 +48,31 @@ Buildings use selected CC0 Poly Haven apartment/factory modules with local 1K ma
 
 Choose Solo vs Bots, then Start match. One human and twelve armed bots compete for three minutes, with unlimited respawns, health regeneration, ammunition/reload, score and final standings. Bots can fight the player and each other. The server owns every hit, death, score and respawn. Bots use line of sight, a field of view, reaction delay, imperfect burst aim, a short last-seen memory, nearby gunfire cues, navigation around shared collision and nearby cover when hurt or reloading. They cannot shoot through walls or fire during spawn protection. Respawns prefer separation and occlusion from opponents. Pause freezes the entire match; restart/replay clears the session. Training uses a separate room rule and still never permits bot fire.
 
-## Larger Solo combat map
+## Online Free-for-All (local)
 
-Solo uses **Mercer Districts: 156 × 156 metres (24,336 m²)**, nine times the playable area of the compact **52 × 52 metre Training** map. Nine named districts combine the original central block with outer shops, workshops, freight cover, a market, depot and motor court. There are 15 enterable buildings, 20 parked cars, connected crossing streets, loading cover, longer sightlines and distributed respawn locations. Buildings share a modular art kit; this is an initial bounded combat map, not an infinite world or a finished city.
+Choose Online Free-for-All, optionally enter a callsign, deploy, then select Enter arena. Open a second browser context or tab and choose the same mode to join the shared room. There are no bots. Names receive a short session suffix; they are display labels, not authenticated accounts. A room holds up to **8 clients**, including lobby players and reserved reconnect seats; `FFA_MAX_CLIENTS` accepts 2–8. The ninth client joins another room. This cap is integration-tested, not a claim of internet-scale capacity.
 
-The shared `COMBAT_WORLD` configuration is reusable by future Online Free-for-All. That online mode, public hosting, matchmaking and player capacity are **not implemented**. Training still uses its original five unarmed targets and compact layout.
+The match runs continuously with no round clock or global restart. Scores last for the connected session, with unlimited respawns. Rifle movement, cover tests, hit damage, ammunition/reload, health, deaths, score and respawn protection are server-authoritative. Spawns prefer separated, covered positions; when possible they stay within 12–45 metres of another player to support encounters on the larger map. Late joiners receive current state.
 
-Server movement uses a spatial broad phase. Navigation has collision-checked cached graph edges and A* routing across all districts. Rendering reuses facade instances and texture maps, batches static geometry, keeps the 2048px shadow budget, and pauses/hides character presentation beyond 95 metres. The larger map uses the same bounded 80-metre rifle range. A 74-metre server-confirmed damage test checks that Solo rays use its own cover rather than the Training boundary.
+Esc/Start opens your local menu and stops your input; the shared match continues and your character stays vulnerable. Returning to the main menu removes your actor. An unexpected connection drop reserves the same identity and score for 20 seconds, with a vulnerable stationary body. Automatic reconnect and a same-tab reload use an ephemeral sessionStorage reconnect token; it is not an account credential. Resume explicitly after reconnecting. After expiry or intentional departure, joining starts a new identity and score. Rooms disappear when empty; nothing is persisted.
 
-A deterministic full three-minute simulation completed with 12 bots, finite bounded positions, 745 shots and 122 eliminations in the recorded sample. A nine-district 1440×900 Chrome render tour on this Apple M4 Pro measured approximately 60 fps with 17.3–17.7ms p95 frame intervals and no frame intervals over 50ms in the short samples. This was a local rendering tour with 12 animated bot presentations, not a cross-device benchmark; server simulation is tested separately. Initial navigation cache work can cause a brief server tick spike (about 125–137ms in the recorded full-match tests). Further district art differentiation, interior furnishing, playtesting of encounter density and lower-powered-device profiling remain useful follow-up work.
+The client renders the other players, names, radar, shot/hit/death feedback and menu standings. Controller A / × selects menus and fires in play, with release gates after Start/Resume and across menu transitions. Online shares Mercer Districts with Solo while Training remains isolated.
+
+## Shared combat map
+
+Solo and Online use **Mercer Districts: 156 × 156 metres (24,336 m²)**, nine times the playable area of the compact **52 × 52 metre Training** map. Nine named districts combine the original central block with outer shops, workshops, freight cover, a market, depot and motor court. There are 15 enterable buildings, 20 parked cars, connected crossing streets, loading cover, longer sightlines and distributed respawn locations. Buildings share a modular art kit; this is an initial bounded combat map, not an infinite world or a finished city.
+
+The shared `COMBAT_WORLD` configuration supplies both Solo and Online rendering, collision, cover and respawn positions. Training still uses its original five unarmed targets and compact layout.
+
+Server movement uses a spatial broad phase. Navigation has collision-checked cached graph edges and A* routing across all districts. Graph edges are precomputed in yielding batches before the match server accepts rooms. Rendering reuses facade instances and texture maps, batches static geometry, keeps the 2048px shadow budget, and pauses/hides character presentation beyond 95 metres. The larger map uses the same bounded 80-metre rifle range. A 74-metre server-confirmed damage test checks that Solo rays use its own cover rather than the Training boundary.
+
+A deterministic full three-minute simulation completed with 12 bots, finite bounded positions, 711 shots and 114 eliminations in the recorded sample. A nine-district 1440×900 Chrome render tour on this Apple M4 Pro measured approximately 60 fps with 17.3–17.7ms p95 frame intervals and no frame intervals over 50ms in the short samples. This was a local rendering tour with 12 animated bot presentations, not a cross-device benchmark; server simulation is tested separately. Moving initial navigation cache work before room acceptance reduced the recorded full-match maximum step from about 125–137ms to about 42ms in one local test; occasional frame/tick spikes still need profiling. Further district art differentiation, interior furnishing, playtesting of encounter density and lower-powered-device profiling remain useful follow-up work.
 
 ## Boundaries and next work
 
-The Training gameplay loop is implemented; its art remains a prototype. **Solo vs Bots** is playable. **Online Free-for-All** and four-person squads remain roadmap modes. Online play is planned as a shared arena with unlimited respawns. Training already supports unlimited respawns during the session. One basic rifle is implemented; more weapons and selection are future work. Grenades and monetization remain ideas, with no payments or paid features implemented. Authentication, progression, persisted results, jumping, sprinting, weapon selection, matchmaking, player prediction/reconciliation, network lag compensation and production hosting are future work. Patrol targets use a compact waypoint graph; this is an original practice mode, not a production competitive shooter.
+All three modes are locally playable. Training and Solo are personal three-minute sessions; Online is a continuous shared human-only session. One basic rifle is implemented. Authentication, progression, persisted results, jumping, sprinting, additional weapons, player prediction/reconciliation, network lag compensation and public hosting remain future work. This is a prototype, not a production competitive shooter.
 
-Authentication is intentionally deferred; Creda/Calendza use Better Auth, which is the preferred pattern to evaluate for future accounts. No auth code, secrets, or business logic was copied. The local match process defaults to loopback and refuses `NODE_ENV=production` until access controls, join/message rate limits, room resource budgets, secure origins/TLS, reconnect policy and observability are designed. An origin check is not authentication. Do not expose this prototype to the internet.
+Authentication is intentionally deferred; Creda/Calendza use Better Auth, which is the preferred pattern to evaluate for future accounts. No auth code, secrets, or business logic was copied. The local match process defaults to loopback and refuses `NODE_ENV=production` until access controls, join/message rate limits, room resource budgets, secure origins/TLS and observability are designed. An origin check is not authentication. Do not expose this prototype to the internet.
 
 ## Structure
 
@@ -72,6 +82,8 @@ apps/match        Long-running authoritative Colyseus server
 packages/shared   Movement/combat protocol, urban geometry, collision and ray hits
 packages/db       Drizzle schema and SQL migration; not loaded by the demo
 scripts/smoke.ts  Isolated real-server personal-session integration check
+scripts/online-smoke.ts  Genuine-client FFA integration check
+deploy/           Unactivated Railway configuration examples
 ```
 
 The simulation stays out of Nuxt request handlers. Persistence stores durable identity/results, not per-frame positions. Bot agents and human input share the same authoritative movement and combat rules; future modes should own explicit rules and lifecycle. Weapon catalog and loadout selection should share server-owned weapon definitions when expanded.
@@ -79,7 +91,7 @@ The simulation stays out of Nuxt request handlers. Persistence stores durable id
 ## Verification
 
 ```sh
-pnpm verify           # lint, all package typechecks, unit tests, builds, network smoke
+pnpm verify           # lint, all package typechecks, unit tests, builds, both network smokes
 pnpm exec playwright install chromium  # one-time browser download, if unavailable
 pnpm test:browser     # production web build + built match server; test ports 3001/2569 must be free
 ```
@@ -87,6 +99,8 @@ pnpm test:browser     # production web build + built match server; test ports 30
 To reuse an installed Google Chrome instead of downloading Chromium: `PLAYWRIGHT_CHANNEL=chrome pnpm test:browser`. Tests use the normal browser renderer. Set `PLAYWRIGHT_SOFTWARE_RENDERING=1` only when a software fallback is needed; forced SwiftShader on this Mac runs near 6 fps and makes timing-sensitive acceptance unreliable.
 
 `pnpm test:smoke` launches the built match process on port 2568 and stops it afterward. It verifies private room isolation, six actors, movement/input validation, stale input stopping and auto-pause, shots/ammo/reload, pause/resume, natural timer completion, replay and early finish. Only test processes can set `TRAINING_TEST_DURATION_MS` to shorten timer tests; clients cannot change session duration.
+
+`pnpm test:online` uses a real match process on port 2570 and genuine SDK clients. It checks shared rooms, reciprocal damage, death/respawn, late joins, invalid input, local pause, identity-preserving reconnect, 20-second reservation expiry, eight-seat capacity/overflow, leave cleanup and Training isolation. Browser acceptance adds two actual browser contexts, rendering, controller fire/release, local menus, automatic transport reconnect and reload reconnect.
 
 Unit tests exercise ray occlusion (including ramp/doors), head damage, cadence, ammo/reload, protection, death/respawn, non-attacking target behavior and hit recovery, lifecycle, navigation and movement/map/camera regressions. Browser tests use the real production client and match server, actual pointer lock and synthesized standard Gamepad API inputs. Build before running either smoke command separately.
 
@@ -105,11 +119,11 @@ Review generated SQL before applying it. Applied migrations are immutable. The i
 
 `.env.example` documents optional variables. Nuxt reads `apps/web/.env`; database tooling reads `packages/db/.env`. Match variables are shell environment variables, e.g. `MATCH_PORT=2569 pnpm dev:match` with a matching `NUXT_PUBLIC_MATCH_URL` on the web client. Root `.env` is not automatically loaded. Keep real `.env` files out of Git.
 
-No deployment is configured. Railway can be evaluated later with separately deployed web, long-running match, and PostgreSQL services after explicit deployment approval.
+`deploy/railway-web.example.toml` and `deploy/railway-match.example.toml` are preparation-only examples for separate web and long-running match services. They are not connected to Railway and nothing is deployed. A future approved deployment must set the web client's public match URL, match host/origin, HTTPS/WSS routing and resource limits, and deliberately replace the production refusal after access controls and production readiness are addressed. `PORT` is accepted as a fallback to `MATCH_PORT`. PostgreSQL is optional until persistence is implemented. Do not disable the production guard merely to make these examples start.
 
-## Training verification (2026-10-01)
+## Verification record (2026-10-01)
 
-Verification uses Node 24.14.1, pnpm 11.10.0 and installed Google Chrome. Verification passed lint, all TypeScript checks, 33 unit tests, both application builds, the real WebSocket smoke test, and all eight production-browser acceptance tests. The live preview was separately exercised through movement, red target feedback, elimination, a changed respawn position, pause/resume, results, replay and exit with no browser errors. Six rendered hit/death/respawn cycles were also checked for intact skeleton poses. Screenshots from browser acceptance runs are saved in ignored `test-results/`. The Babylon client chunk has a bundle-size advisory and loads only for the play route. Live database migration testing is outside this local Training mode. No services are deployed.
+Verification uses Node 24.14.1, pnpm 11.10.0 and installed Google Chrome. Verification passed lint, all TypeScript checks, 36 unit tests, both application builds, both real WebSocket smoke tests, and all nine production-browser acceptance tests. The live preview was separately exercised through movement, red target feedback, elimination, a changed respawn position, pause/resume, results, replay and exit with no browser errors. Six rendered hit/death/respawn cycles were also checked for intact skeleton poses. Screenshots from browser acceptance runs are saved in ignored `test-results/`. The Babylon client chunk has a bundle-size advisory and loads only for the play route. Live database migration testing is outside this local Training mode. No services are deployed.
 
 API references: [Nuxt installation](https://nuxt.com/docs/4.x/getting-started/installation), [Colyseus server/router](https://docs.colyseus.io/server), [Colyseus state schema](https://docs.colyseus.io/state/schema).
 
@@ -119,7 +133,7 @@ Respawns select separated, collision-free locations while avoiding recent positi
 
 ## Current visual and audio limits
 
-First-person hands are intentionally omitted at the user's request. The gun is framed closer/lower so its grip and trigger stay outside view; aiming and reload motion preserve that framing. Reload sound and weapon/magazine motion use authoritative reload progress, including pause/resume. A distance-scaled red splash and nine particles appear only on confirmed damaging bot contacts. Presentation resolves the visible character surface so the effect does not begin inside the hitbox, and fades over 0.65 seconds; wall impacts use dust. Close-range and normal 16-metre hits were checked; presentation was additionally rendered at 44 metres in both hip and aimed views, with capped growth, with expiration, protected-target, miss, wall and reset cleanup checks. Shot/reload recordings and adaptations are documented in [audio provenance](apps/web/public/audio/ATTRIBUTION.md).
+First-person hands are intentionally omitted at the user's request. The gun is framed closer/lower so its grip and trigger stay outside view; aiming and reload motion preserve that framing. Reload sound and weapon/magazine motion use authoritative reload progress, including pause/resume. A distance-scaled red splash and nine particles appear only on confirmed damaging actor contacts. Presentation resolves the visible character surface so the effect does not begin inside the hitbox, and fades over 0.65 seconds; wall impacts use dust. Close-range and normal 16-metre hits were checked; additional distance-rendering checks cover capped growth, expiration, protected-target, miss, wall and reset cleanup. Dedicated long-range aimed-view verification remains pending. Shot/reload recordings and adaptations are documented in [audio provenance](apps/web/public/audio/ATTRIBUTION.md).
 
 The environment combines textured Poly Haven facades, original counter/shelf/ceiling fittings and simple shared collision geometry. Rocketbox clothing/skin uses local 1K color and normal maps; the Lamoot rifle preserves more mechanical detail and a separate animated magazine; the rohezal car uses its source UV texture and normal maps. Native idle/walk clips were retargeted across differing bind poses, with CC0 combat clips adapted for hit/death/armed/reload poses. Six rendered hit/death/respawn cycles passed pose checks. Assets and scripts are local and licensed; there is no external asset fetch during gameplay. Cars currently share one texture/paint scheme, interiors are still sparse, and this is not a finished photorealistic art set.
 
