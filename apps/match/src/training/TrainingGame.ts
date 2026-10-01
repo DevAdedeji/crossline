@@ -14,11 +14,20 @@ import {
   type Phase,
   type GameEvent,
 } from '@crossline/shared/combat'
-import { findPath } from './navigation.js'
+import { findPath, NAV_POINTS } from './navigation.js'
 
 interface BotMemory {
   path: Position[]
   nextPlan: number
+  targetId?: string
+  lastSeen?: Position
+  seenAt?: number
+  reactAt?: number
+  nextShot?: number
+  burstLeft?: number
+  aimYaw?: number
+  aimPitch?: number
+  nextScan?: number
 }
 export class TrainingGame {
   actors = new Map<string, Combatant>()
@@ -33,6 +42,7 @@ export class TrainingGame {
     readonly humanId: string,
     readonly durationMs: number = TRAINING.durationMs,
     private readonly random: () => number = Math.random,
+    readonly mode: 'training' | 'solo' = 'training',
   ) {
     this.reset()
   }
@@ -135,7 +145,14 @@ export class TrainingGame {
     )
     const fresh = candidates.filter((point) => !history.includes(key(point)))
     const pool = fresh.length ? fresh : candidates
-    const ranked = [...pool].sort((a, b) => separation(b) - separation(a))
+    const safety = (point: Position) => separation(point) + (this.mode === 'solo'
+      ? others.filter(other => other.health > 0 && worldHit(
+        { x: other.x, y: other.y + EYE_HEIGHT, z: other.z },
+        direction(Math.atan2(point.x - other.x, point.z - other.z),
+          -Math.atan2(point.y + 1.1 - other.y - EYE_HEIGHT, Math.hypot(point.x - other.x, point.z - other.z))),
+      ) < Math.hypot(point.x - other.x, point.z - other.z) - 0.5).length * 6
+      : 0)
+    const ranked = [...pool].sort((a, b) => safety(b) - safety(a))
     const spawn = actor.bot
       ? (ranked[Math.floor(this.random() * Math.min(4, ranked.length))] ?? TRAINING_SPAWNS[0]!)
       : (ranked[0] ?? TRAINING_SPAWNS[0]!)
@@ -155,15 +172,16 @@ export class TrainingGame {
     this.events.push({ type: 'spawn', actorId: actor.id, yaw: actor.yaw })
     const memory = this.memories.get(actor.id)
     if (memory) {
-      memory.path = []
-      memory.nextPlan = 0
+      Object.assign(memory, { path: [], nextPlan: 0, targetId: undefined, lastSeen: undefined,
+        seenAt: undefined, reactAt: undefined, nextShot: undefined, burstLeft: 0, nextScan: 0 })
     }
   }
   fire(actor: Combatant, yaw: number, pitch: number, aiming = false): boolean {
     const cadence = RIFLE.intervalMs
     if (
       this.phase !== 'playing' ||
-      actor.bot ||
+      (actor.bot && this.mode === 'training') ||
+      (this.mode === 'solo' && actor.protectedUntil > this.elapsed) ||
       actor.health <= 0 ||
       actor.reloadUntil ||
       actor.ammo <= 0 ||
@@ -240,6 +258,10 @@ export class TrainingGame {
     return true
   }
   private botStep(bot: Combatant, dt: number) {
+    if (this.mode === 'solo') {
+      this.combatBotStep(bot, dt)
+      return
+    }
     const index = Number(bot.id.slice(-1))
     // Three stationary practice targets and two slow patrols. No pursuit behavior in Training.
     if (index % 2 === 0) {
@@ -278,6 +300,100 @@ export class TrainingGame {
       else {
         bot.yaw = Math.atan2(dx, dz)
         Object.assign(bot, move(bot, { x: (dx / length) * 0.16, z: (dz / length) * 0.16 }, dt))
+      }
+    }
+  }
+
+  private canSee(bot: Combatant, target: Position): boolean {
+    const dx = target.x - bot.x, dz = target.z - bot.z
+    const distance = Math.hypot(dx, dz)
+    if (distance > 44) return false
+    const yaw = Math.atan2(dx, dz)
+    const angle = Math.atan2(Math.sin(yaw - bot.yaw), Math.cos(yaw - bot.yaw))
+    if (Math.abs(angle) > 1.25 && this.elapsed - bot.lastDamage > 1200) return false
+    const ray = direction(yaw, -Math.atan2(target.y + 1.1 - bot.y - EYE_HEIGHT, distance))
+    return worldHit({ x: bot.x, y: bot.y + EYE_HEIGHT, z: bot.z }, ray) >
+      Math.hypot(dx, dz, target.y + 1.1 - bot.y - EYE_HEIGHT) - 0.4
+  }
+  private combatBotStep(bot: Combatant, dt: number) {
+    const memory = this.memories.get(bot.id)!
+    if (this.elapsed - bot.lastDamage < 300) return
+    if (bot.ammo === 0) this.reload(bot.id)
+    if (this.elapsed >= (memory.nextScan ?? 0)) {
+      const candidates = [...this.actors.values()].filter((actor) =>
+        actor.id !== bot.id && actor.health > 0 && actor.protectedUntil <= this.elapsed && this.canSee(bot, actor))
+      candidates.sort((a, b) =>
+        Math.hypot(a.x - bot.x, a.z - bot.z) * (a.id === memory.targetId ? 0.75 : 1) -
+        Math.hypot(b.x - bot.x, b.z - bot.z) * (b.id === memory.targetId ? 0.75 : 1))
+      const target = candidates[0]
+      if (target) {
+        if (target.id !== memory.targetId) {
+          memory.reactAt = this.elapsed + 450 + this.random() * 250
+          memory.burstLeft = 0
+          memory.nextShot = memory.reactAt
+        }
+        memory.targetId = target.id
+        memory.lastSeen = { x: target.x, y: target.y, z: target.z }
+        memory.seenAt = this.elapsed
+      } else memory.targetId = undefined
+      memory.nextScan = this.elapsed + 180
+    }
+    const target = memory.targetId ? this.actors.get(memory.targetId) : undefined
+    const visible = target && target.health > 0 && target.protectedUntil <= this.elapsed && this.canSee(bot, target)
+    let destination: Position | undefined
+    if (visible) {
+      const dx = target.x - bot.x, dz = target.z - bot.z, distance = Math.hypot(dx, dz)
+      const wanted = Math.atan2(dx, dz)
+      const delta = Math.atan2(Math.sin(wanted - bot.yaw), Math.cos(wanted - bot.yaw))
+      bot.yaw += Math.max(-dt * 0.0025, Math.min(dt * 0.0025, delta))
+      bot.pitch = -Math.atan2(target.y + 1.1 - bot.y - EYE_HEIGHT, distance)
+      if (this.elapsed >= (memory.reactAt ?? Infinity) && !bot.reloadUntil &&
+          Math.abs(delta) < 0.12 && this.elapsed >= (memory.nextShot ?? 0)) {
+        if (!memory.burstLeft) {
+          memory.burstLeft = 3 + Math.floor(this.random() * 3)
+          memory.aimYaw = (this.random() - 0.5) * 0.045
+          memory.aimPitch = (this.random() - 0.5) * 0.025
+        }
+        if (this.fire(bot, bot.yaw + (memory.aimYaw ?? 0), bot.pitch + (memory.aimPitch ?? 0), true)) {
+          memory.burstLeft--
+          memory.nextShot = this.elapsed + (memory.burstLeft ? 270 : 650 + this.random() * 400)
+        }
+      }
+      if (bot.reloadUntil || bot.health < 45) {
+        // Seek nearby geometry that breaks the opponent's line of sight while recovering.
+        const cover = NAV_POINTS.filter((point) => Math.hypot(point.x - bot.x, point.z - bot.z) < 12 &&
+          Math.abs(point.y - bot.y) < 0.5 &&
+          worldHit({ x: target.x, y: target.y + EYE_HEIGHT, z: target.z },
+            direction(Math.atan2(point.x - target.x, point.z - target.z),
+              -Math.atan2(point.y + 1.1 - target.y - EYE_HEIGHT, Math.hypot(point.x - target.x, point.z - target.z)))) <
+            Math.hypot(point.x - target.x, point.z - target.z) - 0.5)
+        cover.sort((a, b) => Math.hypot(a.x - bot.x, a.z - bot.z) - Math.hypot(b.x - bot.x, b.z - bot.z))
+        destination = cover[0]
+      } else if (distance > 17) destination = memory.lastSeen
+      else if (!memory.burstLeft) {
+        const side = Number(bot.id.slice(-1)) % 2 ? 1 : -1
+        Object.assign(bot, move(bot, { x: Math.cos(bot.yaw) * side * 0.2, z: -Math.sin(bot.yaw) * side * 0.2 }, dt))
+      }
+    } else if (memory.lastSeen && this.elapsed - (memory.seenAt ?? 0) < 2500) {
+      destination = memory.lastSeen
+    } else if (!memory.path.length || this.elapsed >= memory.nextPlan) {
+      destination = NAV_POINTS[Math.floor(this.random() * NAV_POINTS.length)]
+    }
+    if (destination && (this.elapsed >= memory.nextPlan || !memory.path.length)) {
+      memory.path = findPath(bot, destination)
+      memory.nextPlan = this.elapsed + (visible ? 1000 : 4000)
+    }
+    const waypoint = memory.path[0]
+    if (waypoint && (!visible || destination)) {
+      const dx = waypoint.x - bot.x, dz = waypoint.z - bot.z, distance = Math.hypot(dx, dz)
+      if (distance < 0.3) memory.path.shift()
+      else {
+        if (!visible) {
+          const delta = Math.atan2(Math.sin(Math.atan2(dx, dz) - bot.yaw), Math.cos(Math.atan2(dx, dz) - bot.yaw))
+          bot.yaw += Math.max(-dt * 0.0025, Math.min(dt * 0.0025, delta))
+          bot.pitch *= 0.9
+        }
+        Object.assign(bot, move(bot, { x: dx / distance * 0.34, z: dz / distance * 0.34 }, dt))
       }
     }
   }

@@ -15,6 +15,30 @@ import { createUrbanScene } from '~/game/createUrbanScene'
 import { loadTrainingAssets } from '~/game/trainingAssets'
 import { combatPresentation, trainingAudio } from '~/game/combatPresentation'
 import { rotateLook, MOUSE_SENSITIVITY } from '~/game/look'
+import { selectController, controllerActivity, controllerButtons, controllerFire, loadFireBinding, DEFAULT_FIRE_BINDING, type FireBinding } from '~/game/controller'
+const props = withDefaults(defineProps<{ mode?: 'training' | 'solo' }>(), { mode: 'training' })
+const isSolo = computed(() => props.mode === 'solo')
+const modeTitle = computed(() => isSolo.value ? 'Solo vs Bots' : 'Training')
+const sessionWord = computed(() => isSolo.value ? 'match' : 'training')
+const showControls = ref(false)
+const fireBinding = ref<FireBinding>(DEFAULT_FIRE_BINDING)
+const bindingFire = ref(false)
+const triggerLevel = ref(0)
+const fireLabel = computed(() => fireBinding.value.kind === 'button'
+  ? fireBinding.value.index === 7 ? 'RT / R2' : `BUTTON ${fireBinding.value.index + 1}`
+  : `TRIGGER AXIS ${fireBinding.value.index + 1}`)
+let bindBaseline: { buttons: number[]; axes: number[] } | undefined
+function bindFire() {
+  const pad = selectController(Array.from(navigator.getGamepads?.() ?? []))
+  if (!pad) return
+  bindBaseline = { buttons: pad.buttons.map(b => Math.max(b.value, Number(b.pressed))), axes: [...pad.axes] }
+  bindingFire.value = true
+}
+function saveFireBinding(pad: Gamepad, binding: FireBinding) {
+  fireBinding.value = binding
+  bindingFire.value = false
+  try { localStorage.setItem(`crossline.fire.${pad.id}`, JSON.stringify(binding)) } catch { /* Session binding still works. */ }
+}
 interface ArenaState {
   actors: { forEach(callback: (actor: Combatant, id: string) => void): void }
   phase: Phase
@@ -62,7 +86,9 @@ let padMovement = { x: 0, y: 0 },
   padFire = false,
   padAim = false,
   previousButtons: boolean[] = [],
-  menuAxis = false
+  menuAxis = false,
+  padIndex: number | undefined,
+  selectFireArmed = false
 const active = computed(
   () =>
     status.value === 'Connected' &&
@@ -81,8 +107,8 @@ const menuItems = computed(() =>
   phase.value === 'finished'
     ? ['Run it again', 'Return to menu']
     : phase.value === 'paused'
-      ? ['Resume training', 'Restart training', 'Finish session', 'Return to menu']
-      : ['Start training', 'Return to menu'],
+      ? [`Resume ${sessionWord.value}`, `Restart ${sessionWord.value}`, 'Finish session', 'Return to menu']
+      : [`Start ${sessionWord.value}`, 'Return to menu'],
 )
 function action(value: string) {
   room?.send('action', value)
@@ -94,6 +120,7 @@ function clearInput() {
   padMovement = { x: 0, y: 0 }
   padFire = false
   padAim = false
+  selectFireArmed = false
   room?.send('input', { x: 0, z: 0, ...look, fire: false, aim: false })
 }
 function release() {
@@ -110,7 +137,9 @@ function pause() {
   }
   release()
 }
-function gamepadDisconnected() {
+function gamepadDisconnected(event?: Event) {
+  if (event && 'gamepad' in event && (event as GamepadEvent).gamepad.index !== padIndex) return
+  padIndex = undefined
   if (padActive.value) pause()
   padReady.value = false
   padStatus.value = 'Controller disconnected — keyboard/mouse available'
@@ -121,6 +150,7 @@ async function start(usePad = false) {
   audio.unlock()
   captureError.value = ''
   if (usePad) {
+    selectFireArmed = false
     padActive.value = true
     action('start')
     return
@@ -147,7 +177,7 @@ function choose(index: number, usePad = false) {
     release()
     return
   }
-  if (label === 'Restart training' || label === 'Run it again') {
+  if (label === `Restart ${sessionWord.value}` || label === 'Run it again') {
     action('restart')
     Object.assign(look, { yaw: 0, pitch: 0 })
     menuIndex.value = 0
@@ -167,6 +197,7 @@ function reload() {
 function keydown(event: KeyboardEvent) {
   if (event.code === 'Escape') {
     event.preventDefault()
+    if (showControls.value) { showControls.value = false; bindingFire.value = false; return }
     pause()
     return
   }
@@ -186,11 +217,13 @@ function keydown(event: KeyboardEvent) {
 }
 const keyup = (event: KeyboardEvent) => keys.delete(event.code)
 function mouseLook(event: MouseEvent) {
-  if (captured.value && active.value)
+  if (captured.value && active.value && (event.movementX || event.movementY)) {
+    padActive.value = false
     Object.assign(
       look,
       rotateLook(look, event.movementX * MOUSE_SENSITIVITY, event.movementY * MOUSE_SENSITIVITY),
     )
+  }
 }
 function mouseDown(event: MouseEvent) {
   if (!captured.value || !active.value) return
@@ -210,33 +243,70 @@ function hidden() {
 }
 const resize = () => engine?.resize()
 function pollPad(dt: number) {
-  const pads = Array.from(navigator.getGamepads?.() ?? []).filter((p): p is Gamepad =>
-      Boolean(p?.connected),
-    ),
-    pad = pads.find((p) => p.mapping === 'standard')
+  const pad = selectController(Array.from(navigator.getGamepads?.() ?? []), padIndex)
   if (!pad) {
-    if (padActive.value) gamepadDisconnected()
-    padReady.value = false
-    if (pads.length) padStatus.value = 'Unsupported mapping — use keyboard/mouse'
-    previousButtons = []
+    if (padReady.value || padActive.value) gamepadDisconnected()
     return
   }
+  if (pad.index !== padIndex) {
+    previousButtons = []
+    menuAxis = false
+    padIndex = pad.index
+    fireBinding.value = loadFireBinding(pad.id)
+  }
   padReady.value = true
-  padStatus.value = `${pad.id} — standard mapping`
-  const pressed = pad.buttons.map((b) => b.pressed),
+  padStatus.value = document.hasFocus()
+    ? `${pad.id} — ${pad.mapping === 'standard' ? 'standard mapping' : 'generic layout'}`
+    : 'Controller connected — click the game to focus'
+  const pressed = controllerButtons(pad),
     edge = (i: number) => pressed[i] && !previousButtons[i]
+  triggerLevel.value = fireBinding.value.kind === 'button'
+    ? Math.max(pad.buttons[fireBinding.value.index]?.value ?? 0, Number(pad.buttons[fireBinding.value.index]?.pressed ?? false))
+    : Math.abs((pad.axes[fireBinding.value.index] ?? 0) - fireBinding.value.rest) / 2
+  if (bindingFire.value && bindBaseline) {
+    const buttonIndex = pad.buttons.findIndex((button, index) =>
+      Math.max(button.value, Number(button.pressed)) - (bindBaseline!.buttons[index] ?? 0) > 0.35)
+    const axisIndex = pad.axes.findIndex((value, index) => Math.abs(value - (bindBaseline!.axes[index] ?? 0)) > 0.6)
+    if (buttonIndex >= 0) saveFireBinding(pad, { kind: 'button', index: buttonIndex })
+    else if (axisIndex >= 0) saveFireBinding(pad, { kind: 'axis', index: axisIndex,
+      rest: bindBaseline.axes[axisIndex] ?? 0,
+      direction: Math.sign(pad.axes[axisIndex]! - (bindBaseline.axes[axisIndex] ?? 0)) })
+    previousButtons = pressed
+    return
+  }
   if (document.hasFocus() && !document.hidden) {
     if (phase.value === 'playing') {
+      if (!pressed[0]) selectFireArmed = true
+      if (!padActive.value && (controllerActivity(pad) || controllerFire(pad, fireBinding.value))) {
+        const wasArmed = selectFireArmed
+        clearInput()
+        selectFireArmed = wasArmed
+        padActive.value = true
+        audio.unlock()
+      }
       if (edge(9) || edge(1)) pause()
       if (padActive.value) {
         padMovement = readStick(pad.axes[0], pad.axes[1])
         const right = readStick(pad.axes[2], pad.axes[3])
         Object.assign(look, rotateLook(look, right.x * 2.4 * dt, right.y * 1.8 * dt))
-        padFire = Boolean(pressed[7])
+        const boundToSelect = fireBinding.value.kind === 'button' && fireBinding.value.index === 0
+        padFire = controllerFire(pad) ||
+          (controllerFire(pad, fireBinding.value) && (!boundToSelect || selectFireArmed)) ||
+          (selectFireArmed && Boolean(pressed[0]))
         padAim = Boolean(pressed[6])
         if (edge(2)) reload()
       }
     } else {
+      selectFireArmed = false
+      if (edge(1)) {
+        if (showControls.value) { showControls.value = false; bindingFire.value = false }
+        else if (phase.value === 'paused') void start(true)
+        else void navigateTo('/')
+        previousButtons = pressed
+        return
+      }
+      if (edge(3)) showControls.value = !showControls.value
+      if (showControls.value) { previousButtons = pressed; return }
       const axis = pad.axes[1] ?? 0,
         direction = pressed[13] || axis > 0.55 ? 1 : pressed[12] || axis < -0.55 ? -1 : 0
       if (direction && !menuAxis)
@@ -263,7 +333,7 @@ onMounted(async () => {
       return
     }
     arena.addVehicles(assets)
-    const visuals = combatPresentation(scene, camera, assets, arena.shadows)
+    const visuals = combatPresentation(scene, camera, assets, arena.shadows, props.mode)
     await scene.whenReadyAsync()
     if (stopped) return
     engine.runRenderLoop(() => {
@@ -312,7 +382,7 @@ onMounted(async () => {
     window.addEventListener('blur', pause)
     window.addEventListener('gamepaddisconnected', gamepadDisconnected)
     window.addEventListener('resize', resize)
-    const joined = await new Client(String(config.public.matchUrl)).create<ArenaState>(ROOM_NAME)
+    const joined = await new Client(String(config.public.matchUrl)).create<ArenaState>(isSolo.value ? 'solo' : ROOM_NAME)
     if (stopped) {
       await joined.leave()
       return
@@ -438,7 +508,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="arena" :data-phase="phase">
+  <main class="arena" :data-phase="phase" :data-mode="mode">
     <canvas ref="canvas" aria-label="Crossline 3D training arena" @contextmenu.prevent />
     <header>
       <NuxtLink to="/" class="brand">CROSSLINE<span>+</span></NuxtLink>
@@ -446,7 +516,7 @@ onBeforeUnmount(() => {
         {{ BLOCK_NAME }}<small>{{ area }}</small>
       </div>
       <div class="timer" data-testid="timer">
-        {{ time }}<small>TRAINING / ROUND {{ round }}</small>
+        {{ time }}<small>{{ modeTitle.toUpperCase() }} / ROUND {{ round }}</small>
       </div>
     </header>
     <aside class="radar-panel">
@@ -478,7 +548,7 @@ onBeforeUnmount(() => {
         >
           <title>{{ a.name }}</title>
         </circle></svg
-      ><small>{{ status }} · 3 TARGETS · 2 PATROLS</small>
+      ><small>{{ status }} · {{ isSolo ? '5 COMBAT BOTS' : '3 TARGETS · 2 PATROLS' }}</small>
     </aside>
     <div class="kill-feed">
       <p v-for="item in feed.filter((f) => f.until > now)" :key="item.until + item.text">
@@ -511,15 +581,14 @@ onBeforeUnmount(() => {
         <h1>
           {{
             phase === 'finished'
-              ? 'Training complete.'
+              ? `${modeTitle} complete.`
               : phase === 'paused'
-                ? 'Training paused.'
-                : 'Learn the block.'
+                ? `${modeTitle} paused.`
+                : isSolo ? 'Every angle is live.' : 'Learn the block.'
           }}
         </h1>
         <p v-if="phase === 'ready'">
-          Three minutes. Three stationary targets and two slow patrols. Practice aim, reloads and
-          cover across streets, interiors and rooftops.
+          {{ isSolo ? 'Three minutes. Five opponents. Everyone is a target. Keep moving, use cover, and finish on top.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
         </p>
         <p v-if="phase === 'paused'">
           The whole session is paused. Your timer and opponents will wait.
@@ -541,13 +610,18 @@ onBeforeUnmount(() => {
             >HEAD HITS
           </div>
         </div>
+        <ol v-if="isSolo && phase === 'finished'" class="my-5 space-y-2 text-sm" aria-label="Match standings">
+          <li v-for="(actor, index) in [...actors].sort((a,b) => b.score-a.score)" :key="actor.id" class="flex justify-between border-b border-white/10 py-1" :class="{ 'text-[#d9ff9c]': !actor.bot }">
+            <span>{{ index + 1 }} · {{ actor.name }}</span><span>{{ actor.kills }} K / {{ actor.deaths }} D · {{ actor.score }}</span>
+          </li>
+        </ol>
         <div class="menu-actions">
           <button
             v-for="(label, i) in menuItems"
             :key="label"
             :class="{ selected: menuIndex === i }"
             :disabled="status !== 'Connected' && label !== 'Return to menu'"
-            @mouseenter="menuIndex = i"
+            @mousemove="menuIndex = i"
             @click="choose(i)"
           >
             {{ label }} <span aria-hidden="true">↗</span>
@@ -565,15 +639,21 @@ onBeforeUnmount(() => {
           Reload and reconnect
         </button>
         <p v-if="captureError" role="alert">{{ captureError }}</p>
-        <p class="controls">
+        <button class="audio-toggle" @click="showControls = !showControls">{{ showControls ? 'Hide controls' : 'Controls' }}</button>
+        <p v-if="showControls" class="controls">
           WASD move · Mouse look · Left click fire · Right click aim<br />R reload · Esc pause ·
           Health regenerates after cover
         </p>
-        <p class="controls">
-          Controller: sticks move/look · RT fire · LT aim · X / □ reload<br />A / × select · Start
-          or B / ○ pause · D-pad navigate
+        <p v-if="showControls" class="controls">
+          Controller: sticks move/look · A / × or RT / R2 fire · LT / L2 aim · X / □ reload<br />A / × select · Start
+          or B / ○ pause/back · D-pad navigate
         </p>
         <small data-testid="gamepad-status">{{ padStatus }}</small>
+        <div v-if="showControls && padReady" class="mt-3 space-y-2 text-xs">
+          <p data-testid="trigger-status">FIRE · {{ fireLabel }} · {{ Math.round(triggerLevel * 100) }}%</p>
+          <button class="audio-toggle" @click="bindFire">{{ bindingFire ? 'Press your fire trigger…' : 'Assign fire trigger' }}</button>
+          <button v-if="bindingFire" class="audio-toggle" @click="bindingFire = false">Cancel</button>
+        </div>
         <button class="audio-toggle" @click="toggleAudio">Sound {{ muted ? 'off' : 'on' }}</button>
       </div>
     </section>
@@ -595,10 +675,11 @@ onBeforeUnmount(() => {
         ><strong data-testid="ammo">{{ self?.ammo ?? 24 }}<span> / ∞</span></strong
         ><small v-if="reloadLeft > 0">RELOADING {{ (reloadLeft / 1000).toFixed(1) }}s</small
         ><small v-else-if="self?.ammo === 0">R / X TO RELOAD</small
-        ><small v-else>R / X RELOAD</small>
+        ><small v-else>{{ padActive ? 'A / × OR RT FIRE · X / □ RELOAD' : 'R RELOAD' }}</small>
       </div>
     </footer>
     <div class="telemetry">
+      <span v-if="padReady" data-testid="active-controller">{{ padActive ? 'CONTROLLER ACTIVE' : 'CONTROLLER READY · MOVE A STICK TO USE' }}</span>
       <span data-testid="heading" :data-pitch="pitch.toFixed(4)"
         >LOOK {{ (Math.round(heading) % 360).toString().padStart(3, '0') }}°</span
       ><span data-testid="position">{{ position }}</span
@@ -917,4 +998,16 @@ footer strong span {
     font-size: 20px;
   }
 }
+</style>
+
+<style scoped>
+.arena { font-family: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; }
+.overlay { background: linear-gradient(90deg, rgba(7,13,17,.95), rgba(7,13,17,.66)); backdrop-filter: blur(4px); }
+.menu-card { max-height: calc(100dvh - 100px); overflow-y: auto; border-top: 3px solid #ffb15c; background: rgba(15,23,28,.94); padding: 30px; box-shadow: 0 25px 100px #0007; }
+.menu-card h1 { font-family: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: -.035em; }
+.menu-card .eyebrow { color: #ffb15c; letter-spacing: .22em; }
+.menu-actions button { text-transform: uppercase; font-size: 13px; font-weight: 800; letter-spacing: .12em; }
+.menu-actions button.selected { background: #ffb15c; color: #10171b; border-color: #ffb15c; }
+.controls { font-family: Arial, sans-serif; font-size: 12px; line-height: 1.65; }
+.audio-toggle { text-transform: uppercase; font-size: 10px; letter-spacing: .1em; }
 </style>

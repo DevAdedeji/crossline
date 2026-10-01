@@ -18,6 +18,7 @@ export function combatPresentation(
   camera: UniversalCamera,
   assets: TrainingAssets,
   shadows: ShadowGenerator,
+  mode: 'training' | 'solo' = 'training',
 ) {
   const material = (name: string, color: string) => {
     const m = new StandardMaterial(name, scene)
@@ -171,7 +172,7 @@ export function combatPresentation(
             | undefined,
           yaw: actor.yaw,
           shootUntil: 0,
-          stationary: Number(actor.id.slice(-1)) % 2 === 0,
+          stationary: mode === 'training' && Number(actor.id.slice(-1)) % 2 === 0,
         }
         bots.set(actor.id, bot)
       }
@@ -201,11 +202,13 @@ export function combatPresentation(
       if (Vector3.Distance(bot.root.position, bot.previous) > 3)
         bot.root.position.copyFrom(bot.previous)
       bot.yaw = actor.yaw
-      bot.gun.setEnabled(false)
+      bot.gun.setEnabled(mode === 'solo' && bot.alive)
       const action = !bot.alive
         ? 'Death'
         : clock < bot.reactUntil
           ? 'HitRecieve'
+          : mode === 'solo' && actor.reloadUntil > 0
+            ? 'Interact'
           : bot.stationary
             ? 'Idle_Neutral'
             : clock < bot.shootUntil
@@ -239,6 +242,9 @@ export function combatPresentation(
     const start = new Vector3(event.start.x, event.start.y, event.start.z)
     let contact = new Vector3(event.end.x, event.end.y, event.end.z)
     const direction = contact.subtract(start).normalize()
+    // Maintain a readable angular size at range; cap growth so close hits stay restrained.
+    const distance = Vector3.Distance(camera.position, contact)
+    const bloodScale = Math.max(1, Math.min(3.6, distance / 12))
     if (damagingHit) {
       const victim = bots.get(event.hitId!)
       const meshes = new Set(victim?.root.getChildMeshes().filter((mesh) => mesh.isEnabled()))
@@ -248,20 +254,21 @@ export function combatPresentation(
       )
       contact = (surface?.pickedPoint ?? contact.subtract(direction.scale(0.25)))
         .subtract(direction.scale(0.08))
-      const splash = MeshBuilder.CreatePlane('blood splash', { size: 0.38 }, scene)
+      const splash = MeshBuilder.CreatePlane('blood splash', { size: 0.62 }, scene)
       splash.position.copyFrom(contact)
+      splash.scaling.setAll(bloodScale)
       splash.billboardMode = Mesh.BILLBOARDMODE_ALL
       splash.material = splashMaterial
       splash.isPickable = false
-      impacts.push({ mesh: splash, velocity: direction.scale(-0.15), remaining: 0.48, duration: 0.48 })
+      impacts.push({ mesh: splash, velocity: direction.scale(-0.15), remaining: 0.65, duration: 0.65 })
     }
     // Misses at maximum range and protected/dead actors produce no blood.
     if (damagingHit || (!event.hitId && Vector3.Distance(start, contact) < 79)) {
-      const duration = damagingHit ? 0.48 : 0.22
+      const duration = damagingHit ? 0.65 : 0.22
       for (let i = 0; i < (damagingHit ? 9 : 5); i++) {
         const particle = MeshBuilder.CreateSphere(
           damagingHit ? 'blood impact' : 'world impact',
-          { diameter: damagingHit ? 0.065 : 0.022, segments: 4 },
+          { diameter: damagingHit ? 0.08 * Math.sqrt(bloodScale) : 0.022, segments: 4 },
           scene,
         )
         particle.position.copyFrom(contact)

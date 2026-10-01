@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { readStick } from '@crossline/shared'
+import { selectController, controllerButtons } from '~/game/controller'
 
 const modes = [
   {
@@ -7,8 +8,8 @@ const modes = [
     number: '01',
     title: 'Solo vs Bots',
     subtitle: 'YOUR OWN BATTLEGROUND',
-    description: 'A future full solo mode. For live bot practice, enter Training.',
-    available: false,
+    description: 'Five combat bots. Three minutes. Fight for the top spot.',
+    available: true,
     players: '1 PLAYER + BOTS',
   },
   {
@@ -35,6 +36,8 @@ const active = ref(2)
 const selected = computed(() => modes[active.value]!)
 const message = ref('')
 const controller = ref('MOUSE / KEYBOARD')
+const showControls = ref(false)
+let wasBackPressed = false, wasDetailsPressed = false
 let frame = 0
 let lastStep = 0
 let wasConfirmPressed = false
@@ -46,7 +49,7 @@ function setFocus(index: number) {
 function selectMode(index: number) {
   active.value = index
   if (modes[index]?.available) {
-    void navigateTo('/play')
+    void navigateTo(modes[index]?.id === 'solo' ? '/play?mode=solo' : '/play')
     return
   }
   message.value = `${modes[index]!.title} is in development. Training is playable now.`
@@ -57,6 +60,11 @@ function focusMode(index: number) {
   document.getElementById(`mode-${modes[active.value]!.id}`)?.focus()
 }
 function keydown(event: KeyboardEvent) {
+  if (showControls.value) {
+    if (event.key === 'Escape') showControls.value = false
+    return
+  }
+  if ((event.target as HTMLElement)?.closest('[data-ui-action], a')) return
   const steps: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 1, ArrowUp: -1 }
   if (event.key in steps) {
     event.preventDefault()
@@ -67,25 +75,29 @@ function keydown(event: KeyboardEvent) {
   }
 }
 function pollGamepad(time: number) {
-  const pads = Array.from(navigator.getGamepads?.() ?? []).filter((pad): pad is Gamepad =>
-    Boolean(pad?.connected),
-  )
-  const pad = pads.find((candidate) => candidate.mapping === 'standard')
-  controller.value = pad
-    ? 'GAMEPAD CONNECTED'
-    : pads.length
-      ? 'UNSUPPORTED PAD MAPPING'
-      : 'MOUSE / KEYBOARD'
+  const pad = selectController(Array.from(navigator.getGamepads?.() ?? []))
+  controller.value = pad ? 'GAMEPAD CONNECTED' : 'MOUSE / KEYBOARD'
   if (pad && document.hasFocus() && !document.hidden) {
     const stick = readStick(pad.axes[0], pad.axes[1])
+    const pressed = controllerButtons(pad)
+    const back = Boolean(pressed[1]), details = Boolean(pressed[3])
+    const controlsWereOpen = showControls.value
+    if ((back && !wasBackPressed) || (showControls.value && pressed[0] && !wasConfirmPressed)) showControls.value = false
+    else if (details && !wasDetailsPressed) showControls.value = !showControls.value
+    wasBackPressed = back; wasDetailsPressed = details
+    if (showControls.value || controlsWereOpen) {
+      wasConfirmPressed = Boolean(pressed[0])
+      frame = requestAnimationFrame(pollGamepad)
+      return
+    }
     const direction =
-      pad.buttons[15]?.pressed || stick.x > 0.5
+      pressed[15] || stick.x > 0.5
         ? 1
-        : pad.buttons[14]?.pressed || stick.x < -0.5
+        : pressed[14] || stick.x < -0.5
           ? -1
-          : pad.buttons[13]?.pressed || stick.y > 0.5
+          : pressed[13] || stick.y > 0.5
             ? 1
-            : pad.buttons[12]?.pressed || stick.y < -0.5
+            : pressed[12] || stick.y < -0.5
               ? -1
               : 0
     if (direction && (direction !== previousDirection || time - lastStep > 250)) {
@@ -93,7 +105,7 @@ function pollGamepad(time: number) {
       lastStep = time
     }
     previousDirection = direction
-    const confirm = Boolean(pad.buttons[0]?.pressed)
+    const confirm = Boolean(pressed[0])
     if (confirm && !wasConfirmPressed) selectMode(active.value)
     wasConfirmPressed = confirm
   } else {
@@ -113,119 +125,61 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main
-    class="relative isolate flex min-h-dvh flex-col overflow-hidden bg-[#101611] px-6 text-[#eef1e7] sm:px-12 lg:px-20"
-  >
-    <div class="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
-      <div
-        class="absolute inset-0 bg-[radial-gradient(ellipse_at_75%_20%,#354638_0%,transparent_65%)]"
-      />
-      <svg
-        class="absolute -right-[20%] -bottom-[35%] h-[135%] w-[110%] opacity-25 [transform:rotateX(45deg)_rotateZ(-25deg)]"
-        viewBox="0 0 1000 1000"
-        fill="none"
-      >
-        <defs>
-          <pattern id="arena-grid" width="80" height="80" patternUnits="userSpaceOnUse">
-            <path d="M80 0H0V80" stroke="#a8bd82" stroke-width="1" />
-          </pattern>
-        </defs>
-        <rect
-          x="40"
-          y="40"
-          width="920"
-          height="920"
-          fill="url(#arena-grid)"
-          stroke="#d9f99b"
-          stroke-width="4"
-        />
-        <g fill="#344b37" stroke="#b7cf8e" stroke-width="2">
-          <rect x="160" y="160" width="230" height="100" />
-          <rect x="650" y="180" width="170" height="250" />
-          <rect x="160" y="580" width="160" height="240" />
-          <rect x="580" y="700" width="230" height="110" />
-        </g>
-        <circle cx="500" cy="500" r="130" stroke="#d9f99b" stroke-width="3" />
-        <path d="M460 500h80M500 460v80M40 500h320M640 500h320" stroke="#d9f99b" stroke-width="2" />
-      </svg>
-      <div class="absolute inset-0 bg-linear-to-r from-[#101611] via-[#101611bb] to-transparent" />
-    </div>
-    <header class="flex items-center justify-between border-b border-white/10 py-7">
-      <span class="text-2xl font-black tracking-[-1.5px]"
-        >CROSSLINE<span class="ml-1 text-lime-200">+</span></span
-      >
-      <span class="font-mono text-[10px] tracking-widest text-[#a4b397]">PROTOTYPE / 001</span>
+  <main class="lobby relative isolate flex min-h-dvh flex-col overflow-hidden bg-[#101619] text-[#edf1ef]">
+    <div class="lobby-scene absolute inset-0 -z-20" aria-hidden="true" />
+    <div class="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(8,13,16,.98)_0%,rgba(8,13,16,.86)_37%,rgba(8,13,16,.2)_75%),linear-gradient(0deg,rgba(8,13,16,.95),transparent_45%)]" aria-hidden="true" />
+    <header class="flex items-center justify-between border-b border-white/10 px-6 py-5 sm:px-12">
+      <a href="/" class="brand-word text-3xl font-black tracking-[-.06em]">CROSSLINE<span class="text-[#ffb15c]">+</span></a>
+      <div class="flex items-center gap-5 text-[11px] font-bold tracking-[.2em] text-white/65">
+        <span class="hidden sm:block"><i class="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#bed496]" />LOCAL OPERATOR</span>
+        <button data-ui-action class="border border-white/25 px-3 py-2 transition hover:border-[#ffb15c] focus-visible:outline-2 focus-visible:outline-[#ffb15c]" @click="showControls = true">CONTROLS</button>
+      </div>
     </header>
-    <section class="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center py-8 lg:py-10">
-      <div class="mb-6 flex items-end justify-between">
-        <div>
-          <p class="mb-3 font-mono text-[10px] tracking-[.3em] text-lime-200">CHOOSE YOUR MODE</p>
-          <h1 class="text-6xl leading-none font-black tracking-[-4px] sm:text-8xl">
-            PLAY<span class="text-lime-200">.</span>
-          </h1>
-        </div>
-        <span class="hidden pb-2 font-mono text-[10px] tracking-widest text-[#98a98a] sm:block"
-          >MERCER BLOCK / URBAN TRAINING</span
-        >
-      </div>
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-label="Game modes">
-        <button
-          v-for="(mode, index) in modes"
-          :id="`mode-${mode.id}`"
-          :key="mode.id"
-          type="button"
-          :tabindex="active === index ? 0 : -1"
-          :aria-pressed="active === index"
-          :aria-label="`${mode.title} — ${mode.available ? 'playable' : 'in development'}`"
-          :class="[
-            'group relative min-h-40 cursor-pointer border px-6 py-5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-lime-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101611]',
-            active === index
-              ? 'border-lime-200 bg-lime-200/10'
-              : 'border-[#50604b] bg-[#162019bb] hover:border-[#a5bd86]',
-          ]"
-          @focus="setFocus(index)"
-          @click="selectMode(index)"
-        >
-          <span
-            class="absolute top-4 right-5 font-mono text-[10px] tracking-wide"
-            :class="mode.available ? 'text-lime-200' : 'text-[#a4af9a]'"
-            >{{ mode.available ? '● PLAYABLE' : 'IN DEVELOPMENT' }}</span
-          >
-          <span class="font-mono text-[10px] text-[#7d8e71]"
-            >{{ mode.number }} / {{ mode.players }}</span
-          >
-          <h2
-            class="mt-5 text-3xl font-bold tracking-tight"
-            :class="active === index ? 'text-lime-200' : ''"
-          >
-            {{ mode.title
-            }}<span v-if="active === index" class="ml-3 text-xl" aria-hidden="true">↗</span>
-          </h2>
-          <p class="mt-2 font-mono text-[9px] tracking-[.2em] text-[#a9b49c]">
-            {{ mode.subtitle }}
-          </p>
+    <section class="flex w-full flex-1 flex-col justify-center px-6 py-10 sm:px-12 lg:max-w-[720px] lg:px-16">
+      <p class="mb-3 text-[11px] font-bold tracking-[.35em] text-[#ffb15c]">PLAY / MERCER BLOCK</p>
+      <h1 class="display-type mb-8 text-5xl leading-none font-black uppercase tracking-[-.035em] sm:text-7xl">Choose your<br />battleground.</h1>
+      <nav aria-label="Game modes" class="space-y-1">
+        <button v-for="(mode, index) in modes" :id="`mode-${mode.id}`" :key="mode.id"
+          class="group relative flex w-full items-center gap-5 border-l-4 px-5 py-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[#ffb15c]"
+          :class="active === index ? 'border-[#ffb15c] bg-white/10' : 'border-transparent bg-black/10 hover:bg-white/5'"
+          :aria-label="mode.available ? mode.title : `${mode.title} — in development`"
+          :aria-pressed="active === index" @mousemove="setFocus(index)" @focus="setFocus(index)" @click="setFocus(index)">
+          <span class="text-xs tabular-nums text-white/35">{{ mode.number }}</span>
+          <span class="flex-1"><strong class="display-type block text-2xl leading-none font-black uppercase tracking-wide sm:text-3xl">{{ mode.title }}</strong>
+            <span class="mt-2 block text-[10px] tracking-[.2em] text-white/45">{{ mode.players }}</span></span>
+          <span v-if="!mode.available" class="text-[9px] tracking-widest text-white/40">COMING LATER</span>
+          <span v-else class="text-xl" :class="active === index ? 'text-[#ffb15c]' : 'text-white/25'">↗</span>
         </button>
-      </div>
-      <div
-        class="mt-5 flex min-h-24 flex-col justify-between gap-5 border-t border-white/10 pt-5 sm:flex-row sm:items-center"
-      >
-        <div class="max-w-xl">
-          <p class="text-sm leading-6 text-[#b9c3af]">{{ selected.description }}</p>
-          <p class="mt-1 text-xs text-lime-200" role="status">{{ message }}</p>
-        </div>
-        <UButton
-          to="/play"
-          class="shrink-0 justify-center rounded-xs bg-lime-200 px-7 py-4 font-bold text-[#172011] hover:bg-lime-100"
-          >Enter training ↗</UButton
-        >
+      </nav>
+      <div class="mt-6 min-h-[105px] border-t border-white/15 pt-5">
+        <p class="mb-4 max-w-md text-sm leading-relaxed text-white/65">{{ selected.description }}</p>
+        <NuxtLink v-if="selected.available" :to="selected.id === 'solo' ? '/play?mode=solo' : '/play'"
+          :aria-label="selected.id === 'solo' ? 'Enter solo vs bots' : 'Enter training'"
+          class="inline-flex min-w-48 items-center justify-between gap-10 bg-[#ffb15c] px-6 py-3 text-sm font-black tracking-[.15em] text-[#161a1b] transition hover:bg-[#ffc98f] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">DEPLOY <span>→</span></NuxtLink>
+        <button v-else data-ui-action class="border border-white/20 px-6 py-3 text-xs font-bold tracking-widest text-white/40" @click="selectMode(active)">MATCHMAKING IN DEVELOPMENT</button>
+        <p v-if="message" role="status" class="mt-3 text-xs text-[#ffb15c]">{{ message }}</p>
       </div>
     </section>
-    <footer
-      class="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 py-5 font-mono text-[9px] tracking-widest text-[#98a98a]"
-    >
-      <span>ARROWS / D-PAD / LEFT STICK: SELECT · ENTER / A / ×: CONFIRM</span
-      ><span data-testid="menu-controller">{{ controller }}</span
-      ><NuxtLink to="/credits" class="underline">ASSET CREDITS</NuxtLink>
+    <div class="pointer-events-none absolute right-12 bottom-28 hidden text-right lg:block">
+      <p class="text-[10px] tracking-[.3em] text-white/50">URBAN COMBAT / LOCAL OPERATIONS</p>
+      <p class="display-type mt-2 text-4xl font-black tracking-tight">MERCER BLOCK</p>
+      <div class="mt-3 ml-auto h-px w-28 bg-[#ffb15c]" />
+    </div>
+    <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-6 py-4 text-[10px] font-bold tracking-[.1em] text-white/50 sm:px-12">
+      <span>← → / D-PAD SELECT <span class="mx-3 text-white/20">|</span> ENTER / A / × DEPLOY</span>
+      <div class="flex gap-6"><span data-testid="menu-controller">{{ controller }}</span><NuxtLink to="/credits" class="hover:text-white">CREDITS</NuxtLink></div>
     </footer>
+    <section v-if="showControls" role="dialog" aria-modal="true" aria-label="Controls" class="absolute inset-0 z-20 grid place-items-center bg-black/80 p-6 backdrop-blur-sm">
+      <div class="w-full max-w-lg border-t-2 border-[#ffb15c] bg-[#131d22] p-8 shadow-2xl">
+        <p class="text-xs tracking-[.25em] text-[#ffb15c]">FIELD GUIDE</p><h2 class="display-type mt-2 mb-7 text-4xl font-black">STAY IN CONTROL.</h2>
+        <dl class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm"><dt class="text-white/50">MOVE / LOOK</dt><dd>WASD + mouse / sticks</dd><dt class="text-white/50">FIRE</dt><dd>Left click / A / × / RT / R2</dd><dt class="text-white/50">AIM</dt><dd>Right click / LT / L2</dd><dt class="text-white/50">RELOAD</dt><dd>R / Xbox X / PlayStation □</dd><dt class="text-white/50">SELECT / BACK</dt><dd>A / × · B / ○</dd><dt class="text-white/50">PAUSE</dt><dd>Esc / Start / B / ○</dd></dl>
+        <p class="mt-6 text-xs leading-relaxed text-white/50">Release A / × after deploying, then press it to fire. For a generic controller, assign its trigger from the in-game Controls panel.</p>
+        <button data-ui-action class="mt-7 w-full bg-white/10 py-3 text-xs font-bold tracking-widest hover:bg-white/20" @click="showControls = false">CLOSE · ESC / B / ○</button>
+      </div>
+    </section>
   </main>
 </template>
+<style scoped>
+.display-type, .brand-word { font-family: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; font-stretch: condensed; }
+.lobby-scene { background: linear-gradient(130deg, #162026, #303c3e 55%, #171e21); background-image: url('/images/mercer-menu.jpg'); background-position: center; background-size: cover; }
+</style>

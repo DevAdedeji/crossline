@@ -1,3 +1,4 @@
+import { interiorDetails } from './interiorDetails'
 import { addFacades } from './urbanFacades'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { ReflectionProbe } from '@babylonjs/core/Probes/reflectionProbe'
@@ -30,7 +31,18 @@ export function createUrbanScene(canvas: HTMLCanvasElement) {
   scene.clearColor = new Color4(0.57, 0.66, 0.67, 1)
   scene.fogMode = Scene.FOGMODE_EXP2
   scene.fogDensity = 0.007
-  scene.fogColor = new Color3(0.57, 0.66, 0.67)
+  scene.fogColor = new Color3(0.68, 0.73, 0.73)
+  const skyTexture = new DynamicTexture('daylight sky', { width: 16, height: 256 }, scene, false)
+  const skyInk = skyTexture.getContext() as CanvasRenderingContext2D
+  const gradient = skyInk.createLinearGradient(0, 0, 0, 256)
+  gradient.addColorStop(0, '#39688b'); gradient.addColorStop(.5, '#c6d0cd'); gradient.addColorStop(1, '#778987')
+  skyInk.fillStyle = gradient; skyInk.fillRect(0, 0, 16, 256); skyTexture.update()
+  const skySurface = new StandardMaterial('daylight sky', scene)
+  skySurface.emissiveTexture = skyTexture; skySurface.disableLighting = true
+  skySurface.backFaceCulling = false; skySurface.fogEnabled = false
+  const skyDome = MeshBuilder.CreateSphere('sky dome', { diameter: 240, segments: 24 }, scene)
+  skyDome.material = skySurface; skyDome.infiniteDistance = true; skyDome.isPickable = false
+
   const camera = new UniversalCamera('player-camera', new Vector3(-3, 1.7, -22), scene)
   camera.minZ = 0.12
   camera.maxZ = 160
@@ -234,6 +246,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement) {
   // Cars are game-ready meshes, fitted to the existing conservative authoritative colliders.
   function addVehicles(assets: TrainingAssets) {
     addFacades(scene, assets, shadows)
+    interiorDetails(scene, shadows)
     const reflection = new ReflectionProbe('street reflection', 128, scene)
     reflection.position.set(0, 2, 0)
     scene.environmentTexture = reflection.cubeTexture

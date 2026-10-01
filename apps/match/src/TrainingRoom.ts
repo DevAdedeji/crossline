@@ -42,6 +42,7 @@ export const TrainingState = schema(
 )
 export type TrainingState = SchemaType<typeof TrainingState>
 export class TrainingRoom extends Room<{ state: TrainingState }> {
+  protected mode: 'training' | 'solo' = 'training'
   maxClients = 1
   maxMessagesPerSecond = 120
   private game?: TrainingGame
@@ -86,7 +87,7 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
       Number.isFinite(testDuration) && testDuration >= 1000 && testDuration <= TRAINING.durationMs
         ? testDuration
         : TRAINING.durationMs
-    this.game = new TrainingGame(client.sessionId, duration)
+    this.game = new TrainingGame(client.sessionId, duration, Math.random, this.mode)
     this.lastInput = this.clock.elapsedTime
     this.sync()
   }
@@ -110,4 +111,8 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
     this.game = undefined
     this.state.actors.clear()
   }
+}
+
+export class SoloRoom extends TrainingRoom {
+  protected override mode = 'solo' as const
 }
