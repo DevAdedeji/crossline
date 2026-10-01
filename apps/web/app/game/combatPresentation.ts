@@ -8,7 +8,7 @@ import type { Scene } from '@babylonjs/core/scene'
 import type { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera'
 import type { AnimationGroup } from '@babylonjs/core/Animations/animationGroup'
 import type { TrainingAssets } from './trainingAssets'
-import type { Combatant, ShotEvent } from '@crossline/shared/combat'
+import { RIFLE, type Combatant, type ShotEvent } from '@crossline/shared/combat'
 
 export function combatPresentation(
   scene: Scene,
@@ -23,7 +23,11 @@ export function combatPresentation(
   }
   const weapon = new TransformNode('CL-24', scene)
   weapon.parent = camera
-  assets.gun('first-person-carbine', weapon)
+  const gun = assets.gun('first-person-carbine', weapon)
+  const magazine = gun.getDescendants().find((node) => node.name.endsWith('Magazine')) as
+    | TransformNode
+    | undefined
+  const magazineHome = magazine?.position.clone()
   for (const mesh of weapon.getChildMeshes()) {
     mesh.renderingGroupId = 2
     mesh.isPickable = false
@@ -66,9 +70,12 @@ export function combatPresentation(
   >()
   let kick = 0,
     flashTime = 0,
-    clock = 0
+    clock = 0,
+    ads = 0
   const dust = material('fabric impact', '#aaa79b')
   dust.specularColor = Color3.Black()
+  const blood = material('small blood impact', '#8e2428')
+  blood.specularColor = Color3.Black()
   const impacts: {
     mesh: ReturnType<typeof MeshBuilder.CreateSphere>
     velocity: Vector3
@@ -195,7 +202,7 @@ export function combatPresentation(
         victim.reactUntil = clock + 0.3
       }
     }
-    // World dust and cloth impacts originate only from server-confirmed hit positions.
+    // Blood requires confirmed damage; solid world contacts produce dust.
     if (
       event.damage > 0 ||
       (!event.hitId &&
@@ -204,14 +211,14 @@ export function combatPresentation(
           new Vector3(event.end.x, event.end.y, event.end.z),
         ) < 79)
     ) {
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < (event.damage > 0 ? 7 : 5); i++) {
         const particle = MeshBuilder.CreateSphere(
-          'impact dust',
-          { diameter: event.damage > 0.0 ? 0.028 : 0.022, segments: 4 },
+          event.damage > 0 && event.hitId ? 'blood impact' : 'world impact',
+          { diameter: event.damage > 0.0 ? 0.035 : 0.022, segments: 6 },
           scene,
         )
         particle.position.set(event.end.x, event.end.y, event.end.z)
-        particle.material = dust
+        particle.material = event.damage > 0 && event.hitId ? blood : dust
         particle.isPickable = false
         impacts.push({
           mesh: particle,
@@ -247,7 +254,7 @@ export function combatPresentation(
     dt: number,
     aiming: boolean,
     moving: boolean,
-    reloading: boolean,
+    reloadRemaining: number,
     alive: boolean,
     running = true,
   ) {
@@ -277,38 +284,75 @@ export function combatPresentation(
           else if (!running && group.isPlaying) group.pause()
         }
     if (running) clock += dt
+    const effectDt = running ? dt : 0
     for (let i = impacts.length - 1; i >= 0; i--) {
       const effect = impacts[i]!
-      effect.remaining -= dt
-      effect.mesh.position.addInPlace(effect.velocity.scale(dt))
+      effect.remaining -= effectDt
+      effect.mesh.position.addInPlace(effect.velocity.scale(effectDt))
       effect.mesh.visibility = Math.max(0, effect.remaining / 0.22)
       if (effect.remaining <= 0) {
         effect.mesh.dispose()
         impacts.splice(i, 1)
       }
     }
-    kick = Math.max(0, kick - dt * 9)
-    flashTime -= dt
+    kick = Math.max(0, kick - effectDt * 9)
+    flashTime -= effectDt
     if (flashTime <= 0) flash.setEnabled(false)
     weapon.setEnabled(alive)
+    const reloading = reloadRemaining > 0
+    const reloadProgress = reloading
+      ? Math.max(0, Math.min(1, 1 - reloadRemaining / RIFLE.reloadMs))
+      : null
+    const tilt =
+      reloadProgress === null ? 0 : Math.min(1, reloadProgress / 0.16, (1 - reloadProgress) / 0.16)
+    if (magazine && magazineHome) {
+      const p = reloadProgress ?? 0
+      const drop =
+        p < 0.2
+          ? 0
+          : p < 0.4
+            ? (p - 0.2) / 0.2
+            : p < 0.55
+              ? 1
+              : p < 0.72
+                ? 1 - (p - 0.55) / 0.17
+                : 0
+      const offset = Vector3.TransformNormal(
+        Vector3.TransformNormal(new Vector3(0, -drop * 0.3, 0), weapon.computeWorldMatrix(true)),
+        Matrix.Invert((magazine.parent as TransformNode).computeWorldMatrix(true)),
+      )
+      magazine.position.copyFrom(magazineHome.add(offset))
+      magazine.setEnabled(!(p >= 0.4 && p < 0.55))
+    }
+    ads += ((aiming && !reloading ? 1 : 0) - ads) * Math.min(1, dt * 16)
     const bob = moving && !aiming ? Math.sin(clock * 10) * 0.008 : 0
     weapon.position.set(
-      aiming ? 0 : 0.24,
-      (aiming ? -0.123 : -0.22) + bob - (reloading ? 0.16 : 0),
-      0.65 - kick * 0.045,
+      (1 - ads) * 0.24,
+      -0.22 + ads * 0.097 + bob - tilt * 0.08,
+      0.35 - kick * 0.035,
     )
-    weapon.rotation.set(-kick * 0.05, reloading ? -0.4 : 0, reloading ? -0.45 : 0)
-    camera.fov += ((aiming ? 0.77 : 1.2) - camera.fov) * Math.min(1, dt * 15)
+    weapon.rotation.set(-kick * 0.05 + tilt * 0.15, -tilt * 0.12, -tilt * 0.45)
+    camera.fov += (1.2 - ads * 0.43 - camera.fov) * Math.min(1, dt * 15)
     for (let i = tracers.length - 1; i >= 0; i--) {
       const t = tracers[i]!
-      t.remaining -= dt
+      t.remaining -= effectDt
       if (t.remaining <= 0) {
         t.mesh.dispose()
         tracers.splice(i, 1)
       }
     }
   }
-  return { sync, shot, frame }
+  function reset() {
+    kick = 0
+    flashTime = 0
+    ads = 0
+    flash.setEnabled(false)
+    for (const impact of impacts) impact.mesh.dispose()
+    for (const tracer of tracers) tracer.mesh.dispose()
+    impacts.length = 0
+    tracers.length = 0
+  }
+  return { sync, shot, frame, reset }
 }
 
 export { trainingAudio } from './trainingAudio'

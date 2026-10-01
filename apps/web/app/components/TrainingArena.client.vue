@@ -102,6 +102,7 @@ function release() {
   if (document.pointerLockElement === canvas.value) document.exitPointerLock()
 }
 function pause() {
+  audio.stop()
   if (phase.value === 'playing') {
     action('pause')
     phase.value = 'paused'
@@ -161,7 +162,6 @@ function toggleAudio() {
 function reload() {
   if (active.value && reloadLeft.value === 0 && self.value && self.value.ammo < RIFLE.magazine) {
     action('reload')
-    audio.sound('reload')
   }
 }
 function keydown(event: KeyboardEvent) {
@@ -257,7 +257,7 @@ onMounted(async () => {
     const { scene, camera } = arena
     const cameraTarget = camera.position.clone()
     status.value = 'Loading models'
-    const assets = await loadTrainingAssets(scene)
+    const [assets] = await Promise.all([loadTrainingAssets(scene), audio.prepare()])
     if (stopped) {
       scene.dispose()
       return
@@ -291,9 +291,14 @@ onMounted(async () => {
         dt,
         active.value && (padActive.value ? padAim : mouseAim),
         keys.size > 0 || Math.hypot(padMovement.x, padMovement.y) > 0.1,
-        reloadLeft.value > 0,
+        reloadLeft.value,
         (self.value?.health ?? 0) > 0 && phase.value === 'playing',
         phase.value === 'playing',
+      )
+      audio.reload(
+        reloadLeft.value,
+        phase.value === 'playing' && (self.value?.health ?? 0) > 0,
+        self.value?.reloadUntil ?? 0,
       )
       scene.render()
     })
@@ -315,6 +320,10 @@ onMounted(async () => {
     room = joined
     status.value = 'Connected'
     room.onStateChange((state) => {
+      if (state.round !== round.value) {
+        visuals.reset()
+        audio.stop()
+      }
       if (phase.value !== state.phase) menuIndex.value = 0
       phase.value = state.phase
       elapsed.value = state.elapsed

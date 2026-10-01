@@ -253,7 +253,7 @@ test('urban rooftop route preserves stationary/moving 360-degree mouse look', as
   await page.screenshot({ path: info.outputPath('rooftop.png') })
 })
 
-test('confirmed body hits, misses and animated elimination with non-clipping layered audio', async ({
+test('confirmed body hits, misses and animated elimination with non-clipping recorded audio', async ({
   page,
 }, info) => {
   await page.addInitScript(() => {
@@ -339,4 +339,76 @@ test('confirmed body hits, misses and animated elimination with non-clipping lay
   await expect(page.locator('[data-actor="bot-0"]')).toHaveAttribute('data-health', '100', {
     timeout: 5000,
   })
+})
+
+test('recorded reload follows pause/resume and weapon framing survives viewport changes', async ({
+  page,
+}, info) => {
+  test.setTimeout(65000)
+  await page.addInitScript(() => {
+    const starts: { duration: number; offset: number; rate: number }[] = []
+    ;(window as unknown as { recordedStarts: typeof starts }).recordedStarts = starts
+    const original = AudioBufferSourceNode.prototype.start
+    AudioBufferSourceNode.prototype.start = function (
+      when?: number,
+      offset?: number,
+      duration?: number,
+    ) {
+      starts.push({
+        duration: this.buffer?.duration ?? 0,
+        offset: offset ?? 0,
+        rate: this.playbackRate.value,
+      })
+      const result = Reflect.apply(original, this, [when ?? 0, offset ?? 0, duration])
+      if (this.buffer?.duration === 1.6 && starts.filter((s) => s.duration === 1.6).length === 1) {
+        // Pause relative to playback start, before slow software-rendered polling can finish reload.
+        setTimeout(() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })), 250)
+      }
+      return result
+    }
+  })
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/play')
+  await connected(page)
+  await start(page)
+  const reloads = () =>
+    page.evaluate(() =>
+      (
+        window as unknown as {
+          recordedStarts: { duration: number; offset: number; rate: number }[]
+        }
+      ).recordedStarts.filter((s) => s.duration > 1.4 && s.duration < 2),
+    )
+  await page.keyboard.press('KeyR')
+  expect(await reloads()).toHaveLength(0)
+  await face(page, 180)
+  await page.mouse.down()
+  await page.waitForTimeout(180)
+  await page.mouse.up()
+  await expect(page.getByTestId('ammo')).not.toContainText('24 /')
+  await page.keyboard.press('KeyR')
+  await expect(page.getByRole('heading', { name: 'Training paused.' })).toBeVisible()
+  expect(await reloads()).toHaveLength(1)
+  await expect(page.getByText(/^RELOADING [0-9.]+s$/)).toBeVisible()
+  const frozen = await page.getByTestId('ammo').textContent()
+  await page.waitForTimeout(400)
+  await expect(page.getByTestId('ammo')).toHaveText(frozen!)
+  await page.getByRole('button', { name: 'Resume training', exact: true }).click()
+  await expect.poll(async () => (await reloads()).length).toBe(2)
+  expect((await reloads())[1]!.offset).toBeGreaterThan(0.1)
+  await expect(page.getByTestId('ammo')).toContainText('24 /')
+  for (const viewport of [
+    { width: 1024, height: 768 },
+    { width: 1920, height: 820 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.waitForTimeout(250)
+    await page.screenshot({ path: info.outputPath(`weapon-hip-${viewport.width}.png`) })
+    await page.mouse.down({ button: 'right' })
+    await page.waitForTimeout(350)
+    await page.screenshot({ path: info.outputPath(`weapon-aim-${viewport.width}.png`) })
+    await page.mouse.up({ button: 'right' })
+  }
+  expect(errors).toEqual([])
 })
