@@ -1,0 +1,13 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+@layer base {
+  body { @apply m-0 bg-[#141916] font-sans text-[#ebece3] antialiased; }
+  a, button { touch-action: manipulation; }
+}
+
+/* Decorative map grid; interface layout and styling use Tailwind utilities. */
+.field-art {
+  background: repeating-linear-gradient(0deg, transparent, transparent 49px, #738265 50px), repeating-linear-gradient(90deg, transparent, transparent 49px, #738265 50px);
+  mask-image: linear-gradient(to left, black, transparent);
+}

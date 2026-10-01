@@ -1,0 +1,16 @@
+<template>
+  <main class="mx-auto max-w-[1600px] px-[5vw]">
+    <header class="flex h-20 items-center justify-between border-b border-[#394138] md:h-25"><NuxtLink to="/" class="text-[26px] font-black tracking-[-1.5px] [&>span]:pl-1 [&>span]:text-lime-200">CROSSLINE<span>+</span></NuxtLink><span class="border border-[#4d5847] px-3 py-2 font-mono text-[10px] tracking-widest text-[#bec8b8]">PROTOTYPE / 001</span></header>
+    <section class="relative overflow-hidden py-16 md:py-20">
+      <div class="flex items-center gap-2.5 font-mono text-[11px] tracking-widest text-lime-200"><span class="inline-block size-1.5 rounded-full bg-lime-200" /> THE PROVING GROUND</div>
+      <h1 class="relative z-10 my-8 text-[clamp(54px,6.5vw,100px)] leading-none font-extrabold tracking-[-3px] md:tracking-[-5px]">Find your line.<br><em class="text-lime-200 not-italic">Hold your ground.</em></h1>
+      <p class="relative z-10 text-sm leading-8 text-[#aeb8ac] md:text-base">A browser-first shooter, starting with the fundamentals.<br>Step into the movement lab and help shape what comes next.</p>
+      <UButton to="/play" size="xl" class="my-6 inline-flex cursor-pointer gap-10 rounded-xs bg-lime-200 px-6 py-4 font-bold text-[#172011] hover:bg-lime-100 disabled:opacity-40">Enter training <span aria-hidden="true">↗</span></UButton>
+      <div class="font-mono text-[9px] tracking-widest text-[#87947f]">NO DOWNLOAD · DESKTOP + MOUSE · LOCAL PROTOTYPE</div>
+      <div class="field-art pointer-events-none absolute -right-25 top-8 size-[460px] -rotate-24 opacity-30" aria-hidden="true"><div class="absolute top-25 left-25 size-58 rounded-full border-2 border-lime-200 after:absolute after:top-0 after:left-17 after:text-[140px] after:text-lime-200 after:content-['+']" /><span class="absolute right-5 bottom-6 font-mono text-[10px]">SECTOR 01 / TRAINING</span></div>
+    </section>
+    <section class="grid items-center gap-6 border-y border-[#394138] py-9 md:grid-cols-[1fr_1.2fr_.6fr] md:gap-10"><div><span class="font-mono text-[11px] tracking-widest text-[#92a087]">01 / AVAILABLE NOW</span><h2 class="mt-3 text-2xl tracking-tight">Make your first move.</h2></div><p class="text-sm leading-7 text-[#aab5a4]">A shared 3D arena with first-person camera controls and server-authoritative movement. Open a second tab to see another player.</p><NuxtLink to="/play" class="text-sm text-lime-200 md:justify-self-end">Explore the arena ↗</NuxtLink></section>
+    <section class="grid gap-8 py-11 md:grid-cols-3 [&_article>span]:font-mono [&_article>span]:text-[9px] [&_article>span]:tracking-widest [&_article>span]:text-[#788471] [&_h3]:mt-3 [&_h3]:mb-2 [&_h3]:text-xl [&_p]:text-sm [&_p]:leading-7 [&_p]:text-[#aab5a4]"><article><span>ON THE HORIZON</span><h3>Solo operations</h3><p>Bot opponents and a space to sharpen your aim.</p></article><article><span>ON THE HORIZON</span><h3>Free-for-all</h3><p>Every player for themselves. Every angle matters.</p></article><article><span>ON THE HORIZON</span><h3>Four-person squads</h3><p>Move together. Cover each other. Own the objective.</p></article></section>
+    <footer class="flex justify-between gap-5 border-t border-[#394138] py-6 font-mono text-[10px] tracking-wide text-[#83907d]">CROSSLINE © {{ new Date().getFullYear() }}<span>Movement first. The rest is ahead.</span></footer>
+  </main>
+</template>

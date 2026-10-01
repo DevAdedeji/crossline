@@ -1,0 +1,32 @@
+{
+  "name": "crossline",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n match,web \"pnpm dev:match\" \"pnpm dev:web\"",
+    "dev:web": "pnpm --filter @crossline/web dev",
+    "dev:match": "pnpm --filter @crossline/match dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck && tsc --noEmit",
+    "lint": "oxlint --vue-plugin apps packages tests scripts",
+    "test": "tsx --test tests/*.test.ts",
+    "test:smoke": "tsx scripts/smoke.ts",
+    "test:browser": "playwright test",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:smoke",
+    "db:generate": "pnpm --filter @crossline/db generate",
+    "db:migrate": "pnpm --filter @crossline/db migrate"
+  },
+  "devDependencies": {
+    "@colyseus/sdk": "0.18.4",
+    "@playwright/test": "latest",
+    "@types/node": "^24",
+    "concurrently": "latest",
+    "oxlint": "latest",
+    "tsx": "latest",
+    "typescript": "~5.9.3"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "packageManager": "pnpm@11.10.0"
+}

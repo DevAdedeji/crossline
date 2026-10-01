@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+allowBuilds:
+  esbuild: true
+  '@parcel/watcher': true
+  msgpackr-extract: false
+  vue-demi: false
+minimumReleaseAgeExclude:
+  - '@babylonjs/core@9.29.0'
