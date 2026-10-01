@@ -15,6 +15,8 @@ Open **http://127.0.0.1:3000**. Enter training, click **Take control**, use **WA
 
 The match process listens at `127.0.0.1:2567`; `/health` reports its status. The web origin is intentionally `127.0.0.1`, not `localhost`. Stop both with Ctrl-C. To run them separately: `pnpm dev:match` and `pnpm dev:web`.
 
+The root screen is a game mode selector: **Solo vs Bots**, **Online Solo**, and **Squads** are marked in development; **Training** enters the playable prototype. Use arrow keys, the D-pad or left stick to move focus, then Enter or A / × to select. Future modes show their status and do not start a fake match.
+
 ## Controller controls
 
 Connect your controller by USB or Bluetooth, open the arena in a focused tab, and press a controller button so the browser can detect it. The panel shows its detected name and mapping status. For a **standard-mapped** pad: left stick moves, right stick looks, **A / ×** starts, and **B / ○** pauses. You can also click **Use gamepad**. Both sticks use an 18% radial deadzone. Losing focus or disconnecting stops controller input; keyboard/mouse remains available. Unsupported mappings are labeled explicitly and are not interpreted as standard.
@@ -23,7 +25,7 @@ Gamepad behavior is covered with a simulated browser controller; no physical con
 
 ## Implemented
 
-- Landing page and first-person training arena, pointer lock, camera controls, visible remote players, connection/error states, and resource cleanup on exit.
+- Full-screen mode menu and first-person training arena, pointer lock, camera controls, visible remote players, connection/error states, and resource cleanup on exit.
 - One training room, up to eight guest clients, 30 Hz server simulation and state patches. Clients send directional input; only the server computes positions. Input validation, diagonal normalization, arena bounds, payload limit, and a 250 ms stale-input timeout prevent obvious movement abuse.
 - PostgreSQL schema and generated migration for player profiles, matches, and match participants, with foreign keys, uniqueness, timestamp and score checks.
 - Unit, real WebSocket integration, and browser smoke checks.
@@ -56,7 +58,7 @@ pnpm test:browser     # production web build + built match server; test ports 30
 
 To reuse an installed Google Chrome instead of downloading Chromium: `PLAYWRIGHT_CHANNEL=chrome pnpm test:browser`.
 
-`pnpm test:smoke` launches the built match server on port 2568 and stops it afterward. It checks two-client join/state agreement, movement, invalid input rejection, stale-input stopping and leave cleanup. Browser verification checks navigation, WebGL canvas, connection, player count, pointer capture and WASD movement. Build before running either smoke command separately.
+`pnpm test:smoke` launches the built match server on port 2568 and stops it afterward. It checks two-client join/state agreement, movement, invalid input rejection, stale-input stopping and leave cleanup. Browser verification checks mode selection with keyboard and controller, navigation, WebGL canvas, connection, player count, pointer capture and WASD movement. Build before running either smoke command separately.
 
 ## Optional database
 

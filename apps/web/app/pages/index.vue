@@ -1,16 +1,85 @@
+<script setup lang="ts">
+import { readStick } from '@crossline/shared'
+
+const modes = [
+  { id: 'solo', number: '01', title: 'Solo vs Bots', subtitle: 'YOUR OWN BATTLEGROUND', description: 'Practice against AI opponents. Bot simulation and combat are in development.', available: false, players: '1 PLAYER + BOTS' },
+  { id: 'online', number: '02', title: 'Online Solo', subtitle: 'EVERY ANGLE IS YOURS', description: 'Online free-for-all. Match rules, weapons, and scoring are in development.', available: false, players: 'FREE-FOR-ALL' },
+  { id: 'squads', number: '03', title: 'Squads', subtitle: 'FOUR STRONG', description: 'Four-person teams. Parties, squad matchmaking, and team objectives are in development.', available: false, players: '4-PERSON TEAMS' },
+  { id: 'training', number: '04', title: 'Training', subtitle: 'ENTER THE PROVING GROUND', description: 'Explore the shared arena. Move, look, and meet other players. Movement prototype; no weapons yet.', available: true, players: 'UP TO 8 PLAYERS' },
+]
+const active = ref(3)
+const selected = computed(() => modes[active.value]!)
+const message = ref('')
+const controller = ref('MOUSE / KEYBOARD')
+let frame = 0
+let lastStep = 0
+let wasConfirmPressed = false
+let previousDirection = 0
+function selectMode(index: number) {
+  active.value = index
+  if (modes[index]?.available) { void navigateTo('/play'); return }
+  message.value = `${modes[index]!.title} is in development. Training is playable now.`
+}
+function focusMode(index: number) {
+  active.value = (index + modes.length) % modes.length
+  message.value = ''
+  document.getElementById(`mode-${modes[active.value]!.id}`)?.focus()
+}
+function keydown(event: KeyboardEvent) {
+  const steps: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 2, ArrowUp: -2 }
+  if (event.key in steps) { event.preventDefault(); focusMode(active.value + steps[event.key]!) }
+  else if (event.key === 'Enter') { event.preventDefault(); selectMode(active.value) }
+}
+function pollGamepad(time: number) {
+  const pads = Array.from(navigator.getGamepads?.() ?? []).filter((pad): pad is Gamepad => Boolean(pad?.connected))
+  const pad = pads.find((candidate) => candidate.mapping === 'standard')
+  controller.value = pad ? 'GAMEPAD CONNECTED' : pads.length ? 'UNSUPPORTED PAD MAPPING' : 'MOUSE / KEYBOARD'
+  if (pad && document.hasFocus() && !document.hidden) {
+    const stick = readStick(pad.axes[0], pad.axes[1])
+    const direction = pad.buttons[15]?.pressed || stick.x > 0.5 ? 1 : pad.buttons[14]?.pressed || stick.x < -0.5 ? -1 : pad.buttons[13]?.pressed || stick.y > 0.5 ? 2 : pad.buttons[12]?.pressed || stick.y < -0.5 ? -2 : 0
+    if (direction && (direction !== previousDirection || time - lastStep > 250)) { focusMode(active.value + direction); lastStep = time }
+    previousDirection = direction
+    const confirm = Boolean(pad.buttons[0]?.pressed)
+    if (confirm && !wasConfirmPressed) selectMode(active.value)
+    wasConfirmPressed = confirm
+  } else { wasConfirmPressed = false; previousDirection = 0 }
+  frame = requestAnimationFrame(pollGamepad)
+}
+onMounted(() => { window.addEventListener('keydown', keydown); frame = requestAnimationFrame(pollGamepad) })
+onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); cancelAnimationFrame(frame) })
+</script>
+
 <template>
-  <main class="mx-auto max-w-[1600px] px-[5vw]">
-    <header class="flex h-20 items-center justify-between border-b border-[#394138] md:h-25"><NuxtLink to="/" class="text-[26px] font-black tracking-[-1.5px] [&>span]:pl-1 [&>span]:text-lime-200">CROSSLINE<span>+</span></NuxtLink><span class="border border-[#4d5847] px-3 py-2 font-mono text-[10px] tracking-widest text-[#bec8b8]">PROTOTYPE / 001</span></header>
-    <section class="relative overflow-hidden py-16 md:py-20">
-      <div class="flex items-center gap-2.5 font-mono text-[11px] tracking-widest text-lime-200"><span class="inline-block size-1.5 rounded-full bg-lime-200" /> THE PROVING GROUND</div>
-      <h1 class="relative z-10 my-8 text-[clamp(54px,6.5vw,100px)] leading-none font-extrabold tracking-[-3px] md:tracking-[-5px]">Find your line.<br><em class="text-lime-200 not-italic">Hold your ground.</em></h1>
-      <p class="relative z-10 text-sm leading-8 text-[#aeb8ac] md:text-base">A browser-first shooter, starting with the fundamentals.<br>Step into the movement lab and help shape what comes next.</p>
-      <UButton to="/play" size="xl" class="my-6 inline-flex cursor-pointer gap-10 rounded-xs bg-lime-200 px-6 py-4 font-bold text-[#172011] hover:bg-lime-100 disabled:opacity-40">Enter training <span aria-hidden="true">↗</span></UButton>
-      <div class="font-mono text-[9px] tracking-widest text-[#87947f]">NO DOWNLOAD · MOUSE OR GAMEPAD · LOCAL PROTOTYPE</div>
-      <div class="field-art pointer-events-none absolute -right-25 top-8 size-[460px] -rotate-24 opacity-30" aria-hidden="true"><div class="absolute top-25 left-25 size-58 rounded-full border-2 border-lime-200 after:absolute after:top-0 after:left-17 after:text-[140px] after:text-lime-200 after:content-['+']" /><span class="absolute right-5 bottom-6 font-mono text-[10px]">SECTOR 01 / TRAINING</span></div>
+  <main class="relative isolate flex min-h-dvh flex-col overflow-hidden bg-[#101611] px-6 text-[#eef1e7] sm:px-12 lg:px-20">
+    <div class="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
+      <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_75%_20%,#354638_0%,transparent_65%)]" />
+      <svg class="absolute -right-[20%] -bottom-[35%] h-[135%] w-[110%] opacity-25 [transform:rotateX(45deg)_rotateZ(-25deg)]" viewBox="0 0 1000 1000" fill="none">
+        <defs><pattern id="arena-grid" width="80" height="80" patternUnits="userSpaceOnUse"><path d="M80 0H0V80" stroke="#a8bd82" stroke-width="1" /></pattern></defs>
+        <rect x="40" y="40" width="920" height="920" fill="url(#arena-grid)" stroke="#d9f99b" stroke-width="4" />
+        <g fill="#344b37" stroke="#b7cf8e" stroke-width="2"><rect x="160" y="160" width="230" height="100" /><rect x="650" y="180" width="170" height="250" /><rect x="160" y="580" width="160" height="240" /><rect x="580" y="700" width="230" height="110" /></g>
+        <circle cx="500" cy="500" r="130" stroke="#d9f99b" stroke-width="3" /><path d="M460 500h80M500 460v80M40 500h320M640 500h320" stroke="#d9f99b" stroke-width="2" />
+      </svg>
+      <div class="absolute inset-0 bg-linear-to-r from-[#101611] via-[#101611bb] to-transparent" />
+    </div>
+    <header class="flex items-center justify-between border-b border-white/10 py-7">
+      <span class="text-2xl font-black tracking-[-1.5px]">CROSSLINE<span class="ml-1 text-lime-200">+</span></span>
+      <span class="font-mono text-[10px] tracking-widest text-[#a4b397]">PROTOTYPE / 001</span>
+    </header>
+    <section class="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center py-8 lg:py-10">
+      <div class="mb-6 flex items-end justify-between"><div><p class="mb-3 font-mono text-[10px] tracking-[.3em] text-lime-200">CHOOSE YOUR MODE</p><h1 class="text-6xl leading-none font-black tracking-[-4px] sm:text-8xl">PLAY<span class="text-lime-200">.</span></h1></div><span class="hidden pb-2 font-mono text-[10px] tracking-widest text-[#98a98a] sm:block">THE PROVING GROUND / SECTOR 01</span></div>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label="Game modes">
+        <button v-for="(mode, index) in modes" :id="`mode-${mode.id}`" :key="mode.id" type="button" :tabindex="active === index ? 0 : -1" :aria-pressed="active === index" :aria-label="`${mode.title} — ${mode.available ? 'playable' : 'in development'}`" :class="['group relative min-h-40 cursor-pointer border px-6 py-5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-lime-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101611]', active === index ? 'border-lime-200 bg-lime-200/10' : 'border-[#50604b] bg-[#162019bb] hover:border-[#a5bd86]']" @focus="active = index; message = ''" @click="selectMode(index)">
+          <span class="absolute top-4 right-5 font-mono text-[10px] tracking-wide" :class="mode.available ? 'text-lime-200' : 'text-[#a4af9a]'">{{ mode.available ? '● PLAYABLE' : 'IN DEVELOPMENT' }}</span>
+          <span class="font-mono text-[10px] text-[#7d8e71]">{{ mode.number }} / {{ mode.players }}</span>
+          <h2 class="mt-5 text-3xl font-bold tracking-tight" :class="active === index ? 'text-lime-200' : ''">{{ mode.title }}<span v-if="active === index" class="ml-3 text-xl" aria-hidden="true">↗</span></h2>
+          <p class="mt-2 font-mono text-[9px] tracking-[.2em] text-[#a9b49c]">{{ mode.subtitle }}</p>
+        </button>
+      </div>
+      <div class="mt-5 flex min-h-24 flex-col justify-between gap-5 border-t border-white/10 pt-5 sm:flex-row sm:items-center">
+        <div class="max-w-xl"><p class="text-sm leading-6 text-[#b9c3af]">{{ selected.description }}</p><p class="mt-1 text-xs text-lime-200" role="status">{{ message }}</p></div>
+        <UButton to="/play" class="shrink-0 justify-center rounded-xs bg-lime-200 px-7 py-4 font-bold text-[#172011] hover:bg-lime-100">Enter training ↗</UButton>
+      </div>
     </section>
-    <section class="grid items-center gap-6 border-y border-[#394138] py-9 md:grid-cols-[1fr_1.2fr_.6fr] md:gap-10"><div><span class="font-mono text-[11px] tracking-widest text-[#92a087]">01 / AVAILABLE NOW</span><h2 class="mt-3 text-2xl tracking-tight">Make your first move.</h2></div><p class="text-sm leading-7 text-[#aab5a4]">A shared 3D arena with first-person camera controls and server-authoritative movement. Open a second tab to see another player.</p><NuxtLink to="/play" class="text-sm text-lime-200 md:justify-self-end">Explore the arena ↗</NuxtLink></section>
-    <section class="grid gap-8 py-11 md:grid-cols-3 [&_article>span]:font-mono [&_article>span]:text-[9px] [&_article>span]:tracking-widest [&_article>span]:text-[#788471] [&_h3]:mt-3 [&_h3]:mb-2 [&_h3]:text-xl [&_p]:text-sm [&_p]:leading-7 [&_p]:text-[#aab5a4]"><article><span>ON THE HORIZON</span><h3>Solo operations</h3><p>Bot opponents and a space to sharpen your aim.</p></article><article><span>ON THE HORIZON</span><h3>Free-for-all</h3><p>Every player for themselves. Every angle matters.</p></article><article><span>ON THE HORIZON</span><h3>Four-person squads</h3><p>Move together. Cover each other. Own the objective.</p></article></section>
-    <footer class="flex justify-between gap-5 border-t border-[#394138] py-6 font-mono text-[10px] tracking-wide text-[#83907d]">CROSSLINE © {{ new Date().getFullYear() }}<span>Movement first. The rest is ahead.</span></footer>
+    <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 py-5 font-mono text-[9px] tracking-widest text-[#98a98a]"><span>ARROWS / D-PAD / LEFT STICK: SELECT · ENTER / A / ×: CONFIRM</span><span data-testid="menu-controller">{{ controller }}</span></footer>
   </main>
 </template>

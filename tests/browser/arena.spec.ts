@@ -1,11 +1,16 @@
 import { expect, test } from '@playwright/test'
 
-test('landing, arena connection, mouse capture, movement and cleanup', async ({ page, context }, testInfo) => {
+test('mode menu, arena connection, mouse capture, movement and cleanup', async ({ page, context }, testInfo) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/')
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Find your line')
-  await page.screenshot({ path: testInfo.outputPath('landing.png'), fullPage: true })
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('PLAY')
+  await page.keyboard.press('ArrowLeft')
+  await expect(page.getByRole('button', { name: 'Squads — in development' })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('status')).toContainText('Squads is in development')
+  await expect(page).toHaveURL('/')
+  await page.screenshot({ path: testInfo.outputPath('menu.png'), fullPage: true })
   await page.getByRole('link', { name: 'Enter training' }).click()
   await expect(page.getByRole('status')).toContainText('Connected')
   await expect(page.locator('canvas')).toBeVisible()
@@ -27,7 +32,7 @@ test('landing, arena connection, mouse capture, movement and cleanup', async ({ 
   await page.keyboard.press('Escape')
   await expect(page.locator('.crosshair')).toBeHidden()
   await page.getByRole('link', { name: 'Leave arena' }).click()
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Find your line')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('PLAY')
   expect(errors).toEqual([])
 })
 
@@ -36,8 +41,18 @@ test('standard gamepad moves, looks, pauses, and handles disconnection and unsup
     const pad = { id: 'Simulated standard controller', index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0, touched: false })) }
     Object.defineProperty(navigator, 'getGamepads', { value: () => [pad], configurable: true })
   })
-  await page.goto('/play')
+  await page.goto('/')
+  await expect(page.getByTestId('menu-controller')).toContainText('GAMEPAD CONNECTED')
+  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0]!.buttons[14], 'pressed', { value: true, configurable: true }) })
+  await expect(page.getByRole('button', { name: 'Squads — in development' })).toBeFocused()
+  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0]!.buttons[14], 'pressed', { value: false }); Object.defineProperty(navigator.getGamepads()[0]!.buttons[15], 'pressed', { value: true, configurable: true }) })
+  await expect(page.getByRole('button', { name: 'Training — playable' })).toBeFocused()
+  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0]!.buttons[15], 'pressed', { value: false }); Object.defineProperty(navigator.getGamepads()[0]!.buttons[0], 'pressed', { value: true, configurable: true }) })
+  await expect(page).toHaveURL('/play')
+  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0]!.buttons[0], 'pressed', { value: false }); Object.defineProperty(navigator.getGamepads()[0]!.buttons[1], 'pressed', { value: true, configurable: true }) })
   await expect(page.getByRole('status')).toContainText('Connected')
+  await expect(page.locator('.crosshair')).toBeHidden()
+  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0]!.buttons[1], 'pressed', { value: false }) })
   await expect(page.getByTestId('gamepad-status')).toContainText('standard mapping')
   const initial = await page.getByTestId('position').innerText()
   await page.getByRole('button', { name: 'Use gamepad' }).click()
