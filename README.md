@@ -26,13 +26,23 @@ Gamepad behavior is covered with a simulated browser controller; no physical con
 ## Implemented
 
 - Full-screen mode menu and first-person training arena, pointer lock, camera controls, visible remote players, connection/error states, and resource cleanup on exit.
+- **Mercer Block:** one compact procedural urban neighbourhood with three enterable buildings (cafe, workshop, supply store), crossing streets, alleys, four parked cars, loading crates, street furniture, and a west ramp/landing onto the cafe rooftop.
+- Shared map geometry drives server collision and client rendering. Player-radius wall sliding, doorway clearance, solid parked-car cover, ramp elevation, and gravity run on the server; observers receive the same height.
 - One training room, up to eight guest clients, 30 Hz server simulation and state patches. Clients send directional input; only the server computes positions. Input validation, diagonal normalization, arena bounds, payload limit, and a 250 ms stale-input timeout prevent obvious movement abuse.
 - PostgreSQL schema and generated migration for player profiles, matches, and match participants, with foreign keys, uniqueness, timestamp and score checks.
 - Unit, real WebSocket integration, and browser smoke checks.
 
+Mouse look uses captured relative movement without holding a mouse button. Horizontal look turns freely through 360 degrees; vertical look is limited to about 83 degrees up/down. Both mouse and right-stick look share a local camera state, independent of movement or server position/elevation corrections. The HUD shows heading and capture state. Esc releases capture and shows the resume controls; a denied capture request keeps the retry button usable.
+
+## Mercer Block map
+
+Spawn at the south end of Mercer Street. Follow the road north to the intersection, enter the signed building doorways, or take the west alley to the marked **ROOF ACCESS** ramp behind the cafe. The ramp ends on a landing with a clear route onto the cafe roof. Ground-level movement cannot pass through parked cars, solid walls, windows, counters or crates; windows are decorative glazed panels. Falling is supported, but jumping, player-to-player collision and fall damage are not implemented. Parked cars are static cover, not drivable vehicles.
+
+The geometry and signage are original code-generated artwork. No downloaded asset packs, paid models, external textures, or new services are used. Static geometry is batched by material, the shadow map is capped at 1024px, and render resolution is capped relative to pixel density. Browser performance has been smoke-tested locally, not benchmarked across devices. Colliders are simple conservative shapes, not a general rigid-body physics simulation.
+
 ## Boundaries and next work
 
-This is a **movement prototype**, not a complete shooter. There are no weapons, damage, jumping, physics obstacles, bots, completed free-for-all rules, squad matchmaking, authentication, progression, or persisted results. Four-person squads and solo bots are roadmap modes; database enum values do not implement them. Future gunplay should prioritize responsive input, client prediction/reconciliation, interpolation, server-side hit validation and measured latency before adding content.
+This is a **movement prototype**, not a complete shooter. There are no weapons, damage, jumping, bots, completed free-for-all rules, squad matchmaking, authentication, progression, or persisted results. Four-person squads and solo bots are roadmap modes; database enum values do not implement them. Future gunplay should prioritize responsive input, client prediction/reconciliation, interpolation, server-side hit validation and measured latency before adding content.
 
 Authentication is intentionally deferred; Creda/Calendza use Better Auth, which is the preferred pattern to evaluate for future accounts. No auth code, secrets, or business logic was copied. The local match process defaults to loopback and refuses `NODE_ENV=production` until access controls, join/message rate limits, room resource budgets, secure origins/TLS, reconnect policy and observability are designed. An origin check is not authentication. Do not expose this prototype to the internet.
 
@@ -41,7 +51,7 @@ Authentication is intentionally deferred; Creda/Calendza use Better Auth, which 
 ```text
 apps/web          Nuxt UI and client-only Babylon rendering
 apps/match        Long-running authoritative Colyseus server
-packages/shared   Movement protocol and deterministic movement rules
+packages/shared   Movement protocol, urban geometry, collision and elevation rules
 packages/db       Drizzle schema and SQL migration; not loaded by the demo
 scripts/smoke.ts  Isolated real-server two-client integration check
 ```
@@ -58,7 +68,7 @@ pnpm test:browser     # production web build + built match server; test ports 30
 
 To reuse an installed Google Chrome instead of downloading Chromium: `PLAYWRIGHT_CHANNEL=chrome pnpm test:browser`.
 
-`pnpm test:smoke` launches the built match server on port 2568 and stops it afterward. It checks two-client join/state agreement, movement, invalid input rejection, stale-input stopping and leave cleanup. Browser verification checks mode selection with keyboard and controller, navigation, WebGL canvas, connection, player count, pointer capture and WASD movement. Build before running either smoke command separately.
+`pnpm test:smoke` launches the built match server on port 2568 and stops it afterward. It checks two-client join/state agreement, movement, invalid input rejection, stale-input stopping, parked-car blocking, alley/ramp traversal, synchronized rooftop elevation and leave cleanup. Browser verification checks mode selection with keyboard and controller, navigation, WebGL canvas, connection, player count, pointer capture, WASD movement and holding forward against parked-car cover. Build before running either smoke command separately.
 
 ## Optional database
 
@@ -79,6 +89,6 @@ No deployment is configured. Railway can be evaluated later with separately depl
 
 ## Setup verification (2026-10-01)
 
-Verified on Node 24.14.1 and pnpm 11.10.0: lint, all TypeScript checks (including verification scripts), four movement/controller unit tests, both application builds, the real two-client WebSocket smoke test, and both Playwright keyboard/mouse and simulated-gamepad browser flows using installed Google Chrome. Browser screenshots are in the ignored `test-results` folder after the browser test. The Babylon client chunk triggers a bundle-size warning; rendering loads only for the play route, and payload optimization remains future work. PostgreSQL migration generation passed; live database migration testing was intentionally not run. No services were deployed.
+Verified on Node 24.14.1 and pnpm 11.10.0: lint, all TypeScript checks (including verification scripts), 13 movement/controller/map/camera unit tests, both application builds, the real two-client WebSocket smoke test, and three Playwright browser flows covering keyboard/mouse, simulated gamepad, and rooftop/interior traversal plus stationary/moving 360-degree mouse and gamepad look using installed Google Chrome. Browser screenshots are in the ignored `test-results` folder after the browser test. The Babylon client chunk triggers a bundle-size warning; rendering loads only for the play route, and payload optimization remains future work. PostgreSQL migration generation passed; live database migration testing was intentionally not run. No services were deployed.
 
 API references: [Nuxt installation](https://nuxt.com/docs/4.x/getting-started/installation), [Colyseus server/router](https://docs.colyseus.io/server), [Colyseus state schema](https://docs.colyseus.io/state/schema).

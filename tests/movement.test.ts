@@ -7,12 +7,12 @@ test('rejects malformed, non-finite and out-of-range network input', () => {
 })
 test('diagonal input cannot move faster than straight input', () => {
   const input = parseInput({ x: 1, z: 1 })!
-  const next = move({ x: 0, z: 0 }, input, TICK_MS)
+  const next = move({ x: 0, y: 0, z: 0 }, input, TICK_MS)
   assert.ok(Math.abs(Math.hypot(next.x, next.z) - MOVE_SPEED * TICK_MS / 1000) < 0.00001)
 })
 test('movement remains inside the arena and simulation delta is bounded', () => {
-  assert.equal(move({ x: ARENA_LIMIT, z: 0 }, { x: 1, z: 0 }, TICK_MS).x, ARENA_LIMIT)
-  assert.deepEqual(move({ x: 0, z: 0 }, { x: 1, z: 0 }, 5000), move({ x: 0, z: 0 }, { x: 1, z: 0 }, TICK_MS))
+  assert.equal(move({ x: ARENA_LIMIT, y: 0, z: 0 }, { x: 1, z: 0 }, TICK_MS).x, ARENA_LIMIT)
+  assert.deepEqual(move({ x: 0, y: 0, z: 0 }, { x: 1, z: 0 }, 5000), move({ x: 0, y: 0, z: 0 }, { x: 1, z: 0 }, TICK_MS))
 })
 
 test('controller deadzone removes drift and bounds diagonal stick movement', () => {

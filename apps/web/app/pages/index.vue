@@ -5,7 +5,7 @@ const modes = [
   { id: 'solo', number: '01', title: 'Solo vs Bots', subtitle: 'YOUR OWN BATTLEGROUND', description: 'Practice against AI opponents. Bot simulation and combat are in development.', available: false, players: '1 PLAYER + BOTS' },
   { id: 'online', number: '02', title: 'Online Solo', subtitle: 'EVERY ANGLE IS YOURS', description: 'Online free-for-all. Match rules, weapons, and scoring are in development.', available: false, players: 'FREE-FOR-ALL' },
   { id: 'squads', number: '03', title: 'Squads', subtitle: 'FOUR STRONG', description: 'Four-person teams. Parties, squad matchmaking, and team objectives are in development.', available: false, players: '4-PERSON TEAMS' },
-  { id: 'training', number: '04', title: 'Training', subtitle: 'ENTER THE PROVING GROUND', description: 'Explore the shared arena. Move, look, and meet other players. Movement prototype; no weapons yet.', available: true, players: 'UP TO 8 PLAYERS' },
+  { id: 'training', number: '04', title: 'Training', subtitle: 'ENTER THE PROVING GROUND', description: 'Explore Mercer Block: streets, interiors, parked-car cover and a rooftop route. Movement prototype; no weapons yet.', available: true, players: 'UP TO 8 PLAYERS' },
 ]
 const active = ref(3)
 const selected = computed(() => modes[active.value]!)
@@ -66,7 +66,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); cancelAn
       <span class="font-mono text-[10px] tracking-widest text-[#a4b397]">PROTOTYPE / 001</span>
     </header>
     <section class="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center py-8 lg:py-10">
-      <div class="mb-6 flex items-end justify-between"><div><p class="mb-3 font-mono text-[10px] tracking-[.3em] text-lime-200">CHOOSE YOUR MODE</p><h1 class="text-6xl leading-none font-black tracking-[-4px] sm:text-8xl">PLAY<span class="text-lime-200">.</span></h1></div><span class="hidden pb-2 font-mono text-[10px] tracking-widest text-[#98a98a] sm:block">THE PROVING GROUND / SECTOR 01</span></div>
+      <div class="mb-6 flex items-end justify-between"><div><p class="mb-3 font-mono text-[10px] tracking-[.3em] text-lime-200">CHOOSE YOUR MODE</p><h1 class="text-6xl leading-none font-black tracking-[-4px] sm:text-8xl">PLAY<span class="text-lime-200">.</span></h1></div><span class="hidden pb-2 font-mono text-[10px] tracking-widest text-[#98a98a] sm:block">MERCER BLOCK / URBAN TRAINING</span></div>
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label="Game modes">
         <button v-for="(mode, index) in modes" :id="`mode-${mode.id}`" :key="mode.id" type="button" :tabindex="active === index ? 0 : -1" :aria-pressed="active === index" :aria-label="`${mode.title} — ${mode.available ? 'playable' : 'in development'}`" :class="['group relative min-h-40 cursor-pointer border px-6 py-5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-lime-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101611]', active === index ? 'border-lime-200 bg-lime-200/10' : 'border-[#50604b] bg-[#162019bb] hover:border-[#a5bd86]']" @focus="active = index; message = ''" @click="selectMode(index)">
           <span class="absolute top-4 right-5 font-mono text-[10px] tracking-wide" :class="mode.available ? 'text-lime-200' : 'text-[#a4af9a]'">{{ mode.available ? '● PLAYABLE' : 'IN DEVELOPMENT' }}</span>

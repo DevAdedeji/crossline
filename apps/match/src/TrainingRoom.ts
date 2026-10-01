@@ -1,8 +1,8 @@
 import { Room, type Client } from '@colyseus/core'
 import { schema, t, type SchemaType } from '@colyseus/schema'
-import { INPUT_TIMEOUT_MS, TICK_MS, move, parseInput, type MoveInput } from '@crossline/shared'
+import { INPUT_TIMEOUT_MS, TICK_MS, move, parseInput, type MoveInput, SPAWNS } from '@crossline/shared'
 
-const Player = schema({ x: t.number(), z: t.number() }, 'Player')
+const Player = schema({ x: t.number(), y: t.number(), z: t.number() }, 'Player')
 export const TrainingState = schema({ players: t.map(Player) }, 'TrainingState')
 export type TrainingState = SchemaType<typeof TrainingState>
 
@@ -19,15 +19,14 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
     this.setSimulationInterval(() => {
       for (const [id, player] of this.state.players) {
         const input = this.movementInputs.get(id)
-        if (!input || this.clock.elapsedTime - input.receivedAt > INPUT_TIMEOUT_MS) continue
-        Object.assign(player, move(player, input.value, TICK_MS))
+        const movement = input && this.clock.elapsedTime - input.receivedAt <= INPUT_TIMEOUT_MS ? input.value : { x: 0, z: 0 }
+        Object.assign(player, move(player, movement, TICK_MS))
       }
     }, TICK_MS)
   }
   onJoin(client: Client) {
     const player = new Player()
-    player.x = (this.state.players.size % 4) * 2 - 3
-    player.z = Math.floor(this.state.players.size / 4) * 2
+    Object.assign(player, SPAWNS[this.state.players.size % SPAWNS.length])
     this.state.players.set(client.sessionId, player)
   }
   onLeave(client: Client) {

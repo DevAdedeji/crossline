@@ -1,10 +1,16 @@
+import { COLLIDERS, RAMP, rampHeight, type Solid } from './urban-map.ts'
+export * from './urban-map.ts'
+
 export const ROOM_NAME = 'training'
 export const TICK_MS = 1000 / 30
 export const MOVE_SPEED = 6
-export const ARENA_LIMIT = 18
+export const ARENA_LIMIT = 26
 export const INPUT_TIMEOUT_MS = 250
 export interface MoveInput { x: number; z: number }
-export interface Position { x: number; z: number }
+export interface Position { x: number; y: number; z: number }
+export const PLAYER_RADIUS = 0.36
+export const PLAYER_HEIGHT = 1.75
+const STEP_HEIGHT = 0.24
 
 export function parseInput(value: unknown): MoveInput | null {
   if (typeof value !== 'object' || value === null || !('x' in value) || !('z' in value)) return null
@@ -15,10 +21,52 @@ export function parseInput(value: unknown): MoveInput | null {
   return { x: x / length, z: z / length }
 }
 
+function overlapsFootprint(x: number, z: number, solid: Solid): boolean {
+  const nearestX = Math.max(solid.x - solid.width / 2, Math.min(solid.x + solid.width / 2, x))
+  const nearestZ = Math.max(solid.z - solid.depth / 2, Math.min(solid.z + solid.depth / 2, z))
+  return (x - nearestX) ** 2 + (z - nearestZ) ** 2 < PLAYER_RADIUS ** 2 - 0.000001
+}
+function onRamp(x: number, z: number): boolean {
+  return x >= RAMP.minX && x <= RAMP.maxX && z >= RAMP.minZ && z <= RAMP.maxZ
+}
+function supportHeight(position: Position): number {
+  let height = 0
+  for (const solid of COLLIDERS) {
+    const top = solid.y + solid.height / 2
+    if (top <= position.y + STEP_HEIGHT && top > height && overlapsFootprint(position.x, position.z, solid)) height = top
+  }
+  if (onRamp(position.x, position.z)) {
+    const ramp = rampHeight(position.z)
+    if (ramp <= position.y + STEP_HEIGHT) height = Math.max(height, ramp)
+  }
+  return height
+}
+export function isBlocked(position: Position): boolean {
+  for (const solid of COLLIDERS) {
+    if (position.y >= solid.y + solid.height / 2 - 0.0001 || position.y + PLAYER_HEIGHT <= solid.y - solid.height / 2 + 0.0001) continue
+    if (overlapsFootprint(position.x, position.z, solid)) return true
+  }
+  // The ramp is solid below its sloped surface, so it cannot be entered sideways at height.
+  const rampX = Math.max(RAMP.minX, Math.min(RAMP.maxX, position.x))
+  const rampZ = Math.max(RAMP.minZ, Math.min(RAMP.maxZ, position.z))
+  const touchesRamp = (position.x - rampX) ** 2 + (position.z - rampZ) ** 2 < PLAYER_RADIUS ** 2 - 0.000001
+  if (touchesRamp && position.y < rampHeight(rampZ) - 0.001) return true
+  return false
+}
 export function move(position: Position, input: MoveInput, dt: number): Position {
   const seconds = Math.max(0, Math.min(dt, TICK_MS)) / 1000
   const clamp = (n: number) => Math.max(-ARENA_LIMIT, Math.min(ARENA_LIMIT, n))
-  return { x: clamp(position.x + input.x * MOVE_SPEED * seconds), z: clamp(position.z + input.z * MOVE_SPEED * seconds) }
+  let next = { x: position.x, y: position.y, z: position.z }
+  // Axis-separated resolution allows wall sliding; max movement is 0.2 m/tick.
+  for (const axis of ['x', 'z'] as const) {
+    const candidate = { ...next, [axis]: clamp(next[axis] + input[axis] * MOVE_SPEED * seconds) }
+    const support = supportHeight(candidate)
+    candidate.y = Math.max(candidate.y, support)
+    if (!isBlocked(candidate)) next = candidate
+  }
+  // Gravity continues after input times out; stepped-off roofs cannot leave players hovering.
+  next.y = Math.max(supportHeight(next), next.y - 9 * seconds)
+  return next
 }
 
 /** Radial deadzone preserves direction and scales the remaining stick range. */

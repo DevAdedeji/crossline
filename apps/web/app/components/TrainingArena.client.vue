@@ -1,23 +1,30 @@
 <script setup lang="ts">
-import { Engine } from '@babylonjs/core/Engines/engine'
-import { Scene } from '@babylonjs/core/scene'
-import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera'
-import { Vector3 } from '@babylonjs/core/Maths/math.vector'
-import { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
-import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
+import type { Engine } from '@babylonjs/core/Engines/engine'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
+import { createUrbanScene } from '~/game/createUrbanScene'
+import { rotateLook, MOUSE_SENSITIVITY } from '~/game/look'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { Client, type Room } from '@colyseus/sdk'
-import { ROOM_NAME, TICK_MS, readStick } from '@crossline/shared'
+import { ROOM_NAME, TICK_MS, readStick, BLOCK_NAME, BUILDINGS } from '@crossline/shared'
 
-interface PlayerState { x: number; z: number }
+interface PlayerState { x: number; y: number; z: number }
 interface ArenaState { players: { forEach(callback: (player: PlayerState, id: string) => void): void; size: number } }
 const canvas = ref<HTMLCanvasElement>()
 const status = ref('Connecting')
 const playerCount = ref(0)
 const position = ref('0.0 / 0.0')
+const altitude = ref('0.0')
+const area = ref('SOUTH APPROACH')
 const captured = ref(false)
+const look = { yaw: 0, pitch: 0 }
+const heading = ref(0)
+const pitch = ref(0)
+const captureError = ref('')
+const mouseLook = (event: MouseEvent) => {
+  if (document.pointerLockElement !== canvas.value || status.value !== 'Connected') return
+  Object.assign(look, rotateLook(look, event.movementX * MOUSE_SENSITIVITY, event.movementY * MOUSE_SENSITIVITY))
+}
+
 const padActive = ref(false)
 const padStatus = ref('Connect a controller and press a button')
 const padReady = ref(false)
@@ -37,45 +44,19 @@ const keys = new Set<string>()
 const keydown = (e: KeyboardEvent) => { if (e.code === 'Escape' && captured.value) document.exitPointerLock(); if (captured.value && ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) { e.preventDefault(); keys.add(e.code) } }
 const keyup = (e: KeyboardEvent) => keys.delete(e.code)
 const clearInput = () => { keys.clear(); room?.send('input', { x: 0, z: 0 }) }
-const pointerChange = () => { captured.value = document.pointerLockElement === canvas.value; if (!captured.value) clearInput() }
+const pointerChange = () => { captured.value = document.pointerLockElement === canvas.value; if (captured.value) captureError.value = ''; else clearInput() }
 const resize = () => engine?.resize()
 async function capture() {
-  try { pausePad(); await canvas.value?.requestPointerLock() } catch { status.value = 'Mouse capture unavailable. Click the arena to try again.' }
+  if (status.value !== 'Connected') return
+  try { pausePad(); captureError.value = ''; await canvas.value?.requestPointerLock() } catch { captureError.value = 'Mouse capture was declined. Click Take control again, or use a connected gamepad.' }
 }
 onMounted(async () => {
   await nextTick()
   if (!canvas.value) { status.value = 'Canvas unavailable. Reload to retry.'; return }
   try {
-    engine = new Engine(canvas.value, true)
-    const scene = new Scene(engine)
-    scene.clearColor = new Color4(0.065, 0.08, 0.075, 1)
-    scene.fogMode = Scene.FOGMODE_EXP2
-    scene.fogDensity = 0.014
-    scene.fogColor = new Color3(0.065, 0.08, 0.075)
-    const camera = new UniversalCamera('player-camera', new Vector3(0, 1.7, -5), scene)
-    camera.minZ = 0.1
-    camera.fov = 1.25
-    camera.keysUp = []; camera.keysDown = []; camera.keysLeft = []; camera.keysRight = []
-    camera.angularSensibility = 1800
-    camera.inertia = 0
-    camera.attachControl(canvas.value, true)
-    new HemisphericLight('sky', new Vector3(0.4, 1, 0.2), scene)
-    const material = (name: string, color: string) => { const m = new StandardMaterial(name, scene); m.diffuseColor = Color3.FromHexString(color); m.specularColor = Color3.Black(); return m }
-    const floor = MeshBuilder.CreateGround('floor', { width: 40, height: 40 }, scene)
-    floor.material = material('concrete', '#434c45')
-    const wallMaterial = material('walls', '#68705e')
-    for (const [x, z, width, depth] of [[0, 20, 40, 1], [0, -20, 40, 1], [20, 0, 1, 40], [-20, 0, 1, 40]]) {
-      const wall = MeshBuilder.CreateBox('boundary', { width, depth, height: 3 }, scene)
-      wall.position.set(x!, 1.5, z!); wall.material = wallMaterial
-    }
-    const lineMaterial = material('markings', '#d5e89b')
-    for (let i = -16; i <= 16; i += 4) {
-      for (const axis of ['x', 'z']) {
-        const line = MeshBuilder.CreateBox('floor-line', { width: axis === 'x' ? 36 : 0.035, depth: axis === 'z' ? 36 : 0.035, height: 0.012 }, scene)
-        line.position.set(axis === 'z' ? i : 0, 0.01, axis === 'x' ? i : 0); line.material = lineMaterial
-      }
-    }
-    const avatarMaterial = material('players', '#e3f7a4')
+    const arena = createUrbanScene(canvas.value)
+    engine = arena.engine
+    const { scene, camera, avatarMaterial } = arena
     const avatars = new Map<string, Mesh>()
     engine.runRenderLoop(() => {
       const pads = Array.from(navigator.getGamepads?.() ?? []).filter((pad): pad is Gamepad => Boolean(pad?.connected))
@@ -92,14 +73,17 @@ onMounted(async () => {
         previousStart = start
         if (padActive.value) {
           padMovement = readStick(pad.axes[0], pad.axes[1])
-          const look = readStick(pad.axes[2], pad.axes[3])
+          const stickLook = readStick(pad.axes[2], pad.axes[3])
+          const view = look
           const dt = Math.min(engine!.getDeltaTime(), 50) / 1000
-          camera.rotation.y += look.x * 2.4 * dt
-          camera.rotation.x += look.y * 1.8 * dt
+          Object.assign(view, rotateLook(view, stickLook.x * 2.4 * dt, stickLook.y * 1.8 * dt))
         }
       } else { previousStart = false; padMovement = { x: 0, y: 0 } }
-      camera.rotation.x = Math.max(-1.45, Math.min(1.45, camera.rotation.x)); scene.render() })
-    window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup)
+      camera.rotation.set(look.pitch, look.yaw, 0)
+      heading.value = ((look.yaw * 180 / Math.PI) % 360 + 360) % 360
+      pitch.value = look.pitch
+      scene.render() })
+    document.addEventListener('mousemove', mouseLook); window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup)
     window.addEventListener('blur', loseFocus); window.addEventListener('gamepaddisconnected', gamepadDisconnected); window.addEventListener('resize', resize)
     document.addEventListener('pointerlockchange', pointerChange)
     const joined = await new Client(String(config.public.matchUrl)).joinOrCreate<ArenaState>(ROOM_NAME)
@@ -111,10 +95,10 @@ onMounted(async () => {
       const active = new Set<string>()
       state.players.forEach((player, id) => {
         active.add(id)
-        if (id === joined.sessionId) { camera.position.x = player.x; camera.position.z = player.z; position.value = `${player.x.toFixed(1)} / ${player.z.toFixed(1)}`; return }
+        if (id === joined.sessionId) { camera.position.x = player.x; camera.position.y = player.y + 1.7; camera.position.z = player.z; altitude.value = player.y.toFixed(1); const building = BUILDINGS.find((value) => Math.abs(player.x - value.x) < value.width / 2 && Math.abs(player.z - value.z) < value.depth / 2); area.value = player.y > 3.8 ? 'ROOFTOPS' : building ? building.name : 'MERCER STREET'; position.value = `${player.x.toFixed(1)} / ${player.z.toFixed(1)}`; return }
         let mesh = avatars.get(id)
         if (!mesh) { mesh = MeshBuilder.CreateCapsule(id, { height: 1.8, radius: 0.35 }, scene); mesh.material = avatarMaterial; avatars.set(id, mesh) }
-        mesh.position.set(player.x, 0.9, player.z)
+        mesh.position.set(player.x, player.y + 0.9, player.z)
       })
       for (const [id, mesh] of avatars) if (!active.has(id)) { mesh.dispose(); avatars.delete(id) }
     })
@@ -123,11 +107,12 @@ onMounted(async () => {
     timer = setInterval(() => {
       const forward = padActive.value ? -padMovement.y : Number(keys.has('KeyW')) - Number(keys.has('KeyS'))
       const right = padActive.value ? padMovement.x : Number(keys.has('KeyD')) - Number(keys.has('KeyA'))
-      const yaw = camera.rotation.y
+      const yaw = look.yaw
       const length = Math.max(1, Math.hypot(forward, right))
       joined.send('input', { x: (Math.sin(yaw) * forward + Math.cos(yaw) * right) / length, z: (Math.cos(yaw) * forward - Math.sin(yaw) * right) / length })
     }, TICK_MS)
-  } catch {
+  } catch (error) {
+    console.error('Urban arena initialization failed', error)
     if (!stopped) status.value = 'Arena unavailable. Start the match server and reload; WebGL is required.'
   }
 })
@@ -135,7 +120,7 @@ onBeforeUnmount(() => {
   stopped = true; clearInterval(timer)
   if (document.pointerLockElement === canvas.value) document.exitPointerLock()
   void room?.leave(); engine?.dispose()
-  window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup)
+  document.removeEventListener('mousemove', mouseLook); window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup)
   window.removeEventListener('blur', loseFocus); window.removeEventListener('gamepaddisconnected', gamepadDisconnected); window.removeEventListener('resize', resize)
   document.removeEventListener('pointerlockchange', pointerChange)
 })
@@ -144,10 +129,10 @@ onBeforeUnmount(() => {
 <template>
   <div class="relative h-dvh min-h-[500px] overflow-hidden">
     <canvas ref="canvas" class="block size-full outline-none" aria-label="Crossline 3D training arena" @click="capture" />
-    <header class="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between bg-linear-to-b from-[#101711e6] to-transparent p-6 md:px-8 [&_a]:pointer-events-auto"><NuxtLink to="/" class="text-[26px] font-black tracking-[-1.5px] [&>span]:pl-1 [&>span]:text-lime-200">CROSSLINE<span>+</span></NuxtLink><div class="hidden text-center font-mono text-[11px] tracking-widest text-lime-200 md:block [&>span]:mt-1 [&>span]:block [&>span]:text-[9px] [&>span]:text-[#b6c0ac]">SECTOR 01 <span>TRAINING LAB</span></div><NuxtLink to="/" class="text-xs">Leave arena ↗</NuxtLink></header>
+    <header class="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between bg-linear-to-b from-[#101711e6] to-transparent p-6 md:px-8 [&_a]:pointer-events-auto"><NuxtLink to="/" class="text-[26px] font-black tracking-[-1.5px] [&>span]:pl-1 [&>span]:text-lime-200">CROSSLINE<span>+</span></NuxtLink><div class="hidden text-center font-mono text-[11px] tracking-widest text-lime-200 md:block [&>span]:mt-1 [&>span]:block [&>span]:text-[9px] [&>span]:text-[#b6c0ac]">{{ BLOCK_NAME }} <span>{{ area }}</span></div><NuxtLink to="/" class="text-xs">Leave arena ↗</NuxtLink></header>
     <div class="absolute top-24 left-5 flex items-center gap-2 bg-[#172019ce] px-3 py-2.5 font-mono text-[10px] tracking-wider md:left-8 [&>span:last-child]:ml-4 [&>span:last-child]:text-[#afbaa2]" role="status"><span class="inline-block size-1.5 rounded-full bg-lime-200" />{{ status }}<span>{{ playerCount }} / 8 PLAYERS</span></div>
-    <div v-if="!captured && !padActive" class="absolute top-1/2 left-1/2 w-[min(530px,90vw)] -translate-1/2 border border-[#687759] bg-[#141c16ed] p-7 text-center shadow-2xl md:p-10 [&_.eyebrow]:justify-center"><span class="eyebrow justify-center flex items-center gap-2.5 font-mono text-[11px] tracking-widest text-lime-200">MOVEMENT PROTOTYPE</span><h1 class="my-5 text-4xl font-bold tracking-tight">Step across the line.</h1><p class="text-sm text-[#b5bfaa]">W A S D to move. Mouse to look. Esc to release.</p><UButton :disabled="status !== 'Connected'" size="xl" class="my-6 inline-flex cursor-pointer gap-10 rounded-xs bg-lime-200 px-6 py-4 font-bold text-[#172011] hover:bg-lime-100 disabled:opacity-40" @click="capture">Take control ↗</UButton><UButton v-if="padReady" :disabled="status !== 'Connected'" class="ml-3 rounded-xs bg-lime-200 px-5 py-4 font-bold text-[#172011]" @click="activatePad">Use gamepad</UButton><p class="text-xs text-lime-200">Left stick: move · Right stick: look · A / ×: play · B / ○: pause</p><p data-testid="gamepad-status" class="mt-2 max-w-full truncate text-[10px] text-[#b5bfaa]">{{ padStatus }}</p><p class="mt-2.5 text-[10px] text-[#b5bfaa]">Movement only. Weapons and game modes are coming later.</p></div>
+    <div v-if="!captured && !padActive" class="absolute top-1/2 left-1/2 w-[min(530px,90vw)] -translate-1/2 border border-[#687759] bg-[#141c16ed] p-7 text-center shadow-2xl md:p-10 [&_.eyebrow]:justify-center"><span class="eyebrow justify-center flex items-center gap-2.5 font-mono text-[11px] tracking-widest text-lime-200">URBAN TRAINING</span><h1 class="my-5 text-4xl font-bold tracking-tight">Explore Mercer Block.</h1><p class="text-sm text-[#b5bfaa]">W A S D to move. Click Take control, then move your mouse to look freely in any direction. Esc pauses mouse control.</p><UButton :disabled="status !== 'Connected'" size="xl" class="my-6 inline-flex cursor-pointer gap-10 rounded-xs bg-lime-200 px-6 py-4 font-bold text-[#172011] hover:bg-lime-100 disabled:opacity-40" @click="capture">Take control ↗</UButton><UButton v-if="padReady" :disabled="status !== 'Connected'" class="ml-3 rounded-xs bg-lime-200 px-5 py-4 font-bold text-[#172011]" @click="activatePad">Use gamepad</UButton><UButton v-if="status.startsWith('Disconnected') || status.startsWith('Connection error') || status.startsWith('Arena unavailable')" class="my-3 rounded-xs bg-lime-200 px-5 py-3 text-[#172011]" @click="reloadNuxtApp()">Reload and reconnect</UButton><p v-if="captureError" class="mb-3 text-sm text-amber-200" role="alert">{{ captureError }}</p><p class="text-xs text-lime-200">Left stick: move · Right stick: look · A / ×: play · B / ○: pause</p><p data-testid="gamepad-status" class="mt-2 max-w-full truncate text-[10px] text-[#b5bfaa]">{{ padStatus }}</p><p class="mt-2.5 text-[10px] text-[#b5bfaa]">Three interiors · Parked-car cover · West ramp to the cafe rooftop. Movement only; no weapons yet.</p></div>
     <div v-if="captured || padActive" class="crosshair pointer-events-none absolute top-1/2 left-1/2 -translate-1/2 font-mono text-[26px] text-[#e3f7bd]" aria-hidden="true">+</div>
-    <footer class="absolute inset-x-0 bottom-0 flex flex-wrap justify-between gap-5 bg-[#121a13e8] px-5 py-5 font-mono text-[9px] tracking-wider text-[#83907d] md:px-8 [&_b]:font-normal [&_b]:text-[#c8d5b7]"><span>WASD <b>MOVE</b> / MOUSE <b>LOOK</b> / ESC <b>RELEASE</b></span><span data-testid="position">{{ position }}</span><span v-if="padActive">GAMEPAD / B or ○ TO PAUSE</span><span v-else>30 HZ / SERVER SIMULATION</span></footer>
+    <footer class="absolute inset-x-0 bottom-0 flex flex-wrap justify-between gap-5 bg-[#121a13e8] px-5 py-5 font-mono text-[9px] tracking-wider text-[#83907d] md:px-8 [&_b]:font-normal [&_b]:text-[#c8d5b7]"><span>WASD <b>MOVE</b> / MOUSE <b>LOOK</b> / ESC <b>RELEASE</b></span><span data-testid="heading" :data-pitch="pitch.toFixed(4)">LOOK {{ (Math.round(heading) % 360).toString().padStart(3, '0') }}°</span><span data-testid="position">{{ position }}</span><span>HEIGHT <span data-testid="altitude">{{ altitude }}</span> M</span><span v-if="padActive">RIGHT STICK: LOOK 360° / B or ○: PAUSE</span><span v-else>{{ captured ? 'MOUSE CAPTURED / LOOK 360°' : 'CLICK TAKE CONTROL TO RESUME' }}</span></footer>
   </div>
 </template>
