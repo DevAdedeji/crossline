@@ -1,3 +1,6 @@
+import { Mesh } from '@babylonjs/core/Meshes/mesh'
+import { Ray } from '@babylonjs/core/Culling/ray'
+import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
@@ -74,12 +77,41 @@ export function combatPresentation(
     ads = 0
   const dust = material('fabric impact', '#aaa79b')
   dust.specularColor = Color3.Black()
-  const blood = material('small blood impact', '#8e2428')
+  const blood = material('small blood impact', '#a92329')
   blood.specularColor = Color3.Black()
+  blood.emissiveColor = Color3.FromHexString('#481014')
+  const splashTexture = new DynamicTexture('blood splash texture', 128, scene, false)
+  splashTexture.hasAlpha = true
+  const ink = splashTexture.getContext() as CanvasRenderingContext2D
+  ink.clearRect(0, 0, 128, 128)
+  ink.fillStyle = '#b52b32'
+  for (let i = 0; i < 11; i++) {
+    const angle = i * 2.39996
+    const radius = 12 + (i % 4) * 8
+    ink.beginPath()
+    ink.ellipse(
+      64 + Math.cos(angle) * radius,
+      64 + Math.sin(angle) * radius,
+      5 + (i % 3) * 2,
+      3 + (i % 2),
+      angle,
+      0,
+      Math.PI * 2,
+    )
+    ink.fill()
+  }
+  splashTexture.update()
+  const splashMaterial = material('blood splash', '#ffffff')
+  splashMaterial.diffuseTexture = splashTexture
+  splashMaterial.useAlphaFromDiffuseTexture = true
+  splashMaterial.disableLighting = true
+  splashMaterial.emissiveColor = Color3.White()
+  splashMaterial.backFaceCulling = false
   const impacts: {
     mesh: ReturnType<typeof MeshBuilder.CreateSphere>
     velocity: Vector3
     remaining: number
+    duration: number
   }[] = []
   const tracers: { mesh: ReturnType<typeof MeshBuilder.CreateLines>; remaining: number }[] = []
   function sync(actors: Combatant[]) {
@@ -202,33 +234,47 @@ export function combatPresentation(
         victim.reactUntil = clock + 0.3
       }
     }
-    // Blood requires confirmed damage; solid world contacts produce dust.
-    if (
-      event.damage > 0 ||
-      (!event.hitId &&
-        Vector3.Distance(
-          new Vector3(event.start.x, event.start.y, event.start.z),
-          new Vector3(event.end.x, event.end.y, event.end.z),
-        ) < 79)
-    ) {
-      for (let i = 0; i < (event.damage > 0 ? 7 : 5); i++) {
+    // Resolve presentation against the visible victim surface, not an interior hitbox point.
+    const damagingHit = event.damage > 0 && !!event.hitId
+    const start = new Vector3(event.start.x, event.start.y, event.start.z)
+    let contact = new Vector3(event.end.x, event.end.y, event.end.z)
+    const direction = contact.subtract(start).normalize()
+    if (damagingHit) {
+      const victim = bots.get(event.hitId!)
+      const meshes = new Set(victim?.root.getChildMeshes().filter((mesh) => mesh.isEnabled()))
+      const surface = scene.pickWithRay(
+        new Ray(start, direction, Vector3.Distance(start, contact) + 2),
+        (mesh) => meshes.has(mesh),
+      )
+      contact = (surface?.pickedPoint ?? contact.subtract(direction.scale(0.25)))
+        .subtract(direction.scale(0.08))
+      const splash = MeshBuilder.CreatePlane('blood splash', { size: 0.38 }, scene)
+      splash.position.copyFrom(contact)
+      splash.billboardMode = Mesh.BILLBOARDMODE_ALL
+      splash.material = splashMaterial
+      splash.isPickable = false
+      impacts.push({ mesh: splash, velocity: direction.scale(-0.15), remaining: 0.48, duration: 0.48 })
+    }
+    // Misses at maximum range and protected/dead actors produce no blood.
+    if (damagingHit || (!event.hitId && Vector3.Distance(start, contact) < 79)) {
+      const duration = damagingHit ? 0.48 : 0.22
+      for (let i = 0; i < (damagingHit ? 9 : 5); i++) {
         const particle = MeshBuilder.CreateSphere(
-          event.damage > 0 && event.hitId ? 'blood impact' : 'world impact',
-          { diameter: event.damage > 0.0 ? 0.035 : 0.022, segments: 6 },
+          damagingHit ? 'blood impact' : 'world impact',
+          { diameter: damagingHit ? 0.065 : 0.022, segments: 4 },
           scene,
         )
-        particle.position.set(event.end.x, event.end.y, event.end.z)
-        particle.material = event.damage > 0 && event.hitId ? blood : dust
+        particle.position.copyFrom(contact)
+        particle.material = damagingHit ? blood : dust
         particle.isPickable = false
-        impacts.push({
-          mesh: particle,
-          velocity: new Vector3(
-            (Math.random() - 0.5) * 0.7,
-            Math.random() * 0.6,
-            (Math.random() - 0.5) * 0.7,
-          ),
-          remaining: 0.22,
-        })
+        const spread = damagingHit ? 1.5 : 0.7
+        const velocity = new Vector3(
+          (Math.random() - 0.5) * spread,
+          Math.random() * 0.6,
+          (Math.random() - 0.5) * spread,
+        )
+        if (damagingHit) velocity.subtractInPlace(direction.scale(0.6))
+        impacts.push({ mesh: particle, velocity, remaining: duration, duration })
       }
     }
 
@@ -289,7 +335,7 @@ export function combatPresentation(
       const effect = impacts[i]!
       effect.remaining -= effectDt
       effect.mesh.position.addInPlace(effect.velocity.scale(effectDt))
-      effect.mesh.visibility = Math.max(0, effect.remaining / 0.22)
+      effect.mesh.visibility = Math.max(0, effect.remaining / effect.duration)
       if (effect.remaining <= 0) {
         effect.mesh.dispose()
         impacts.splice(i, 1)

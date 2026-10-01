@@ -70,7 +70,7 @@ pnpm exec playwright install chromium  # one-time browser download, if unavailab
 pnpm test:browser     # production web build + built match server; test ports 3001/2569 must be free
 ```
 
-To reuse an installed Google Chrome instead of downloading Chromium: `PLAYWRIGHT_CHANNEL=chrome pnpm test:browser`.
+To reuse an installed Google Chrome instead of downloading Chromium: `PLAYWRIGHT_CHANNEL=chrome pnpm test:browser`. Tests use the normal browser renderer. Set `PLAYWRIGHT_SOFTWARE_RENDERING=1` only when a software fallback is needed; forced SwiftShader on this Mac runs near 6 fps and makes timing-sensitive acceptance unreliable.
 
 `pnpm test:smoke` launches the built match process on port 2568 and stops it afterward. It verifies private room isolation, six actors, movement/input validation, stale input stopping and auto-pause, shots/ammo/reload, pause/resume, natural timer completion, replay and early finish. Only test processes can set `TRAINING_TEST_DURATION_MS` to shorten timer tests; clients cannot change session duration.
 
@@ -105,7 +105,7 @@ Respawns select separated, collision-free locations while avoiding recent positi
 
 ## Current visual and audio limits
 
-First-person hands are intentionally omitted at the user's request. The gun is framed closer/lower so its grip and trigger stay outside view; aiming and reload motion preserve that framing. Reload sound and weapon/magazine motion use authoritative reload progress, including pause/resume. Small blood particles appear only at confirmed damaging bot contacts; wall impacts use dust. Shot/reload recordings and adaptations are documented in [audio provenance](apps/web/public/audio/ATTRIBUTION.md).
+First-person hands are intentionally omitted at the user's request. The gun is framed closer/lower so its grip and trigger stay outside view; aiming and reload motion preserve that framing. Reload sound and weapon/magazine motion use authoritative reload progress, including pause/resume. A small red splash and nine particles appear only on confirmed damaging bot contacts. Presentation resolves the visible character surface so the effect does not begin inside the hitbox, and fades over 0.48 seconds; wall impacts use dust. Close-range and normal 16-metre hits were visually checked, with expiration, protected-target, miss, wall and reset cleanup checks. Shot/reload recordings and adaptations are documented in [audio provenance](apps/web/public/audio/ATTRIBUTION.md).
 
 The environment combines textured Poly Haven facade modules with simple collision/interior geometry. The Quaternius human, rifle and sedan meshes remain visibly stylized and do not meet a photorealistic art target. Blender has not been installed: the current mesh selection, rig fixes and magazine separation were completed directly in the GLB/Babylon pipeline. Replacing those low-poly assets with a coherent realistic set remains art work, not a completed feature.
 
