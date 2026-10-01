@@ -30,3 +30,29 @@ test('landing, arena connection, mouse capture, movement and cleanup', async ({ 
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Find your line')
   expect(errors).toEqual([])
 })
+
+test('standard gamepad moves, looks, pauses, and handles disconnection and unsupported mapping', async ({ page }) => {
+  await page.addInitScript(() => {
+    const pad = { id: 'Simulated standard controller', index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0, touched: false })) }
+    Object.defineProperty(navigator, 'getGamepads', { value: () => [pad], configurable: true })
+  })
+  await page.goto('/play')
+  await expect(page.getByRole('status')).toContainText('Connected')
+  await expect(page.getByTestId('gamepad-status')).toContainText('standard mapping')
+  const initial = await page.getByTestId('position').innerText()
+  await page.getByRole('button', { name: 'Use gamepad' }).click()
+  await expect(page.locator('.crosshair')).toBeVisible()
+  await page.evaluate(() => { (navigator.getGamepads()[0]!.axes as number[])[1] = -1 })
+  await expect(page.getByTestId('position')).not.toHaveText(initial)
+  const beforeTurn = (await page.getByTestId('position').innerText()).split(' / ')[0]
+  await page.evaluate(() => { (navigator.getGamepads()[0]!.axes as number[])[2] = 1 })
+  await expect.poll(async () => (await page.getByTestId('position').innerText()).split(' / ')[0]).not.toBe(beforeTurn)
+  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0]!.buttons[1], 'pressed', { value: true, configurable: true }) })
+  await expect(page.locator('.crosshair')).toBeHidden()
+  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0], 'connected', { value: false, configurable: true }); window.dispatchEvent(new Event('gamepaddisconnected')) })
+  await expect(page.getByTestId('gamepad-status')).toContainText('disconnected')
+  await expect(page.getByRole('button', { name: 'Use gamepad' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Take control' })).toBeEnabled()
+  await page.evaluate(() => { const pad = navigator.getGamepads()[0]!; Object.defineProperty(pad, 'connected', { value: true }); Object.defineProperty(pad, 'mapping', { value: '' }) })
+  await expect(page.getByTestId('gamepad-status')).toContainText('Unsupported controller mapping')
+})

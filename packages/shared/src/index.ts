@@ -20,3 +20,13 @@ export function move(position: Position, input: MoveInput, dt: number): Position
   const clamp = (n: number) => Math.max(-ARENA_LIMIT, Math.min(ARENA_LIMIT, n))
   return { x: clamp(position.x + input.x * MOVE_SPEED * seconds), z: clamp(position.z + input.z * MOVE_SPEED * seconds) }
 }
+
+/** Radial deadzone preserves direction and scales the remaining stick range. */
+export function readStick(x = 0, y = 0): { x: number; y: number } {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return { x: 0, y: 0 }
+  const length = Math.hypot(x, y)
+  const deadzone = 0.18
+  if (length <= deadzone) return { x: 0, y: 0 }
+  const magnitude = (Math.min(length, 1) - deadzone) / (1 - deadzone)
+  return { x: x / length * magnitude, y: y / length * magnitude }
+}

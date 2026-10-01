@@ -9,7 +9,7 @@ import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { Client, type Room } from '@colyseus/sdk'
-import { ROOM_NAME, TICK_MS } from '@crossline/shared'
+import { ROOM_NAME, TICK_MS, readStick } from '@crossline/shared'
 
 interface PlayerState { x: number; z: number }
 interface ArenaState { players: { forEach(callback: (player: PlayerState, id: string) => void): void; size: number } }
@@ -18,6 +18,16 @@ const status = ref('Connecting')
 const playerCount = ref(0)
 const position = ref('0.0 / 0.0')
 const captured = ref(false)
+const padActive = ref(false)
+const padStatus = ref('Connect a controller and press a button')
+const padReady = ref(false)
+let padMovement = { x: 0, y: 0 }
+let previousStart = false
+function pausePad() { padActive.value = false; padMovement = { x: 0, y: 0 }; clearInput() }
+function activatePad() { if (padReady.value && status.value === 'Connected') { if (document.pointerLockElement) document.exitPointerLock(); padActive.value = true } }
+function gamepadDisconnected() { pausePad(); padReady.value = false; padStatus.value = 'Controller disconnected — keyboard/mouse available' }
+const loseFocus = () => { clearInput(); pausePad() }
+
 const config = useRuntimeConfig()
 let engine: Engine | undefined
 let room: Room<ArenaState> | undefined
@@ -30,7 +40,7 @@ const clearInput = () => { keys.clear(); room?.send('input', { x: 0, z: 0 }) }
 const pointerChange = () => { captured.value = document.pointerLockElement === canvas.value; if (!captured.value) clearInput() }
 const resize = () => engine?.resize()
 async function capture() {
-  try { await canvas.value?.requestPointerLock() } catch { status.value = 'Mouse capture unavailable. Click the arena to try again.' }
+  try { pausePad(); await canvas.value?.requestPointerLock() } catch { status.value = 'Mouse capture unavailable. Click the arena to try again.' }
 }
 onMounted(async () => {
   await nextTick()
@@ -67,9 +77,30 @@ onMounted(async () => {
     }
     const avatarMaterial = material('players', '#e3f7a4')
     const avatars = new Map<string, Mesh>()
-    engine.runRenderLoop(() => { camera.rotation.x = Math.max(-1.45, Math.min(1.45, camera.rotation.x)); scene.render() })
+    engine.runRenderLoop(() => {
+      const pads = Array.from(navigator.getGamepads?.() ?? []).filter((pad): pad is Gamepad => Boolean(pad?.connected))
+      const pad = pads.find((candidate) => candidate.mapping === 'standard')
+      padReady.value = Boolean(pad)
+      if (pad) padStatus.value = `${pad.id} — standard mapping`
+      else if (pads.length) padStatus.value = 'Unsupported controller mapping — use keyboard/mouse'
+      else if (padActive.value) gamepadDisconnected()
+      if (!pad && padActive.value) pausePad()
+      if (pad && document.hasFocus() && !document.hidden) {
+        const start = Boolean(pad.buttons[0]?.pressed)
+        if (start && !previousStart) activatePad()
+        if (pad.buttons[1]?.pressed) pausePad()
+        previousStart = start
+        if (padActive.value) {
+          padMovement = readStick(pad.axes[0], pad.axes[1])
+          const look = readStick(pad.axes[2], pad.axes[3])
+          const dt = Math.min(engine!.getDeltaTime(), 50) / 1000
+          camera.rotation.y += look.x * 2.4 * dt
+          camera.rotation.x += look.y * 1.8 * dt
+        }
+      } else { previousStart = false; padMovement = { x: 0, y: 0 } }
+      camera.rotation.x = Math.max(-1.45, Math.min(1.45, camera.rotation.x)); scene.render() })
     window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup)
-    window.addEventListener('blur', clearInput); window.addEventListener('resize', resize)
+    window.addEventListener('blur', loseFocus); window.addEventListener('gamepaddisconnected', gamepadDisconnected); window.addEventListener('resize', resize)
     document.addEventListener('pointerlockchange', pointerChange)
     const joined = await new Client(String(config.public.matchUrl)).joinOrCreate<ArenaState>(ROOM_NAME)
     if (stopped) { await joined.leave(); return }
@@ -87,11 +118,11 @@ onMounted(async () => {
       })
       for (const [id, mesh] of avatars) if (!active.has(id)) { mesh.dispose(); avatars.delete(id) }
     })
-    room.onLeave(() => { status.value = 'Disconnected. Reload to reconnect.'; clearInterval(timer); keys.clear(); if (document.pointerLockElement === canvas.value) document.exitPointerLock() })
+    room.onLeave(() => { status.value = 'Disconnected. Reload to reconnect.'; clearInterval(timer); keys.clear(); padActive.value = false; if (document.pointerLockElement === canvas.value) document.exitPointerLock() })
     room.onError(() => { status.value = 'Connection error. Reload to reconnect.' })
     timer = setInterval(() => {
-      const forward = Number(keys.has('KeyW')) - Number(keys.has('KeyS'))
-      const right = Number(keys.has('KeyD')) - Number(keys.has('KeyA'))
+      const forward = padActive.value ? -padMovement.y : Number(keys.has('KeyW')) - Number(keys.has('KeyS'))
+      const right = padActive.value ? padMovement.x : Number(keys.has('KeyD')) - Number(keys.has('KeyA'))
       const yaw = camera.rotation.y
       const length = Math.max(1, Math.hypot(forward, right))
       joined.send('input', { x: (Math.sin(yaw) * forward + Math.cos(yaw) * right) / length, z: (Math.cos(yaw) * forward - Math.sin(yaw) * right) / length })
@@ -105,7 +136,7 @@ onBeforeUnmount(() => {
   if (document.pointerLockElement === canvas.value) document.exitPointerLock()
   void room?.leave(); engine?.dispose()
   window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup)
-  window.removeEventListener('blur', clearInput); window.removeEventListener('resize', resize)
+  window.removeEventListener('blur', loseFocus); window.removeEventListener('gamepaddisconnected', gamepadDisconnected); window.removeEventListener('resize', resize)
   document.removeEventListener('pointerlockchange', pointerChange)
 })
 </script>
@@ -115,8 +146,8 @@ onBeforeUnmount(() => {
     <canvas ref="canvas" class="block size-full outline-none" aria-label="Crossline 3D training arena" @click="capture" />
     <header class="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between bg-linear-to-b from-[#101711e6] to-transparent p-6 md:px-8 [&_a]:pointer-events-auto"><NuxtLink to="/" class="text-[26px] font-black tracking-[-1.5px] [&>span]:pl-1 [&>span]:text-lime-200">CROSSLINE<span>+</span></NuxtLink><div class="hidden text-center font-mono text-[11px] tracking-widest text-lime-200 md:block [&>span]:mt-1 [&>span]:block [&>span]:text-[9px] [&>span]:text-[#b6c0ac]">SECTOR 01 <span>TRAINING LAB</span></div><NuxtLink to="/" class="text-xs">Leave arena ↗</NuxtLink></header>
     <div class="absolute top-24 left-5 flex items-center gap-2 bg-[#172019ce] px-3 py-2.5 font-mono text-[10px] tracking-wider md:left-8 [&>span:last-child]:ml-4 [&>span:last-child]:text-[#afbaa2]" role="status"><span class="inline-block size-1.5 rounded-full bg-lime-200" />{{ status }}<span>{{ playerCount }} / 8 PLAYERS</span></div>
-    <div v-if="!captured" class="absolute top-1/2 left-1/2 w-[min(530px,90vw)] -translate-1/2 border border-[#687759] bg-[#141c16ed] p-7 text-center shadow-2xl md:p-10 [&_.eyebrow]:justify-center"><span class="eyebrow justify-center flex items-center gap-2.5 font-mono text-[11px] tracking-widest text-lime-200">MOVEMENT PROTOTYPE</span><h1 class="my-5 text-4xl font-bold tracking-tight">Step across the line.</h1><p class="text-sm text-[#b5bfaa]">W A S D to move. Mouse to look. Esc to release.</p><UButton :disabled="status !== 'Connected'" size="xl" class="my-6 inline-flex cursor-pointer gap-10 rounded-xs bg-lime-200 px-6 py-4 font-bold text-[#172011] hover:bg-lime-100 disabled:opacity-40" @click="capture">Take control ↗</UButton><p class="mt-2.5 text-[10px] text-[#b5bfaa]">Movement only. Weapons and game modes are coming later.</p></div>
-    <div v-if="captured" class="crosshair pointer-events-none absolute top-1/2 left-1/2 -translate-1/2 font-mono text-[26px] text-[#e3f7bd]" aria-hidden="true">+</div>
-    <footer class="absolute inset-x-0 bottom-0 flex flex-wrap justify-between gap-5 bg-[#121a13e8] px-5 py-5 font-mono text-[9px] tracking-wider text-[#83907d] md:px-8 [&_b]:font-normal [&_b]:text-[#c8d5b7]"><span>WASD <b>MOVE</b> / MOUSE <b>LOOK</b> / ESC <b>RELEASE</b></span><span data-testid="position">{{ position }}</span><span>30 HZ / SERVER SIMULATION</span></footer>
+    <div v-if="!captured && !padActive" class="absolute top-1/2 left-1/2 w-[min(530px,90vw)] -translate-1/2 border border-[#687759] bg-[#141c16ed] p-7 text-center shadow-2xl md:p-10 [&_.eyebrow]:justify-center"><span class="eyebrow justify-center flex items-center gap-2.5 font-mono text-[11px] tracking-widest text-lime-200">MOVEMENT PROTOTYPE</span><h1 class="my-5 text-4xl font-bold tracking-tight">Step across the line.</h1><p class="text-sm text-[#b5bfaa]">W A S D to move. Mouse to look. Esc to release.</p><UButton :disabled="status !== 'Connected'" size="xl" class="my-6 inline-flex cursor-pointer gap-10 rounded-xs bg-lime-200 px-6 py-4 font-bold text-[#172011] hover:bg-lime-100 disabled:opacity-40" @click="capture">Take control ↗</UButton><UButton v-if="padReady" :disabled="status !== 'Connected'" class="ml-3 rounded-xs bg-lime-200 px-5 py-4 font-bold text-[#172011]" @click="activatePad">Use gamepad</UButton><p class="text-xs text-lime-200">Left stick: move · Right stick: look · A / ×: play · B / ○: pause</p><p data-testid="gamepad-status" class="mt-2 max-w-full truncate text-[10px] text-[#b5bfaa]">{{ padStatus }}</p><p class="mt-2.5 text-[10px] text-[#b5bfaa]">Movement only. Weapons and game modes are coming later.</p></div>
+    <div v-if="captured || padActive" class="crosshair pointer-events-none absolute top-1/2 left-1/2 -translate-1/2 font-mono text-[26px] text-[#e3f7bd]" aria-hidden="true">+</div>
+    <footer class="absolute inset-x-0 bottom-0 flex flex-wrap justify-between gap-5 bg-[#121a13e8] px-5 py-5 font-mono text-[9px] tracking-wider text-[#83907d] md:px-8 [&_b]:font-normal [&_b]:text-[#c8d5b7]"><span>WASD <b>MOVE</b> / MOUSE <b>LOOK</b> / ESC <b>RELEASE</b></span><span data-testid="position">{{ position }}</span><span v-if="padActive">GAMEPAD / B or ○ TO PAUSE</span><span v-else>30 HZ / SERVER SIMULATION</span></footer>
   </div>
 </template>

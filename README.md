@@ -11,9 +11,15 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open **http://127.0.0.1:3000**. Enter training, click **Take control**, use **WASD** to move and the **mouse** to look. **Esc** releases the mouse. A second tab joins the same room and appears as a capsule. No account, database, environment file, API key, or paid service is needed. Desktop keyboard/mouse and WebGL are required.
+Open **http://127.0.0.1:3000**. Enter training, click **Take control**, use **WASD** to move and the **mouse** to look. **Esc** releases the mouse. A second tab joins the same room and appears as a capsule. No account, database, environment file, API key, or paid service is needed. WebGL and a desktop browser are required. Keyboard/mouse and standard-mapped gamepads are supported.
 
 The match process listens at `127.0.0.1:2567`; `/health` reports its status. The web origin is intentionally `127.0.0.1`, not `localhost`. Stop both with Ctrl-C. To run them separately: `pnpm dev:match` and `pnpm dev:web`.
+
+## Controller controls
+
+Connect your controller by USB or Bluetooth, open the arena in a focused tab, and press a controller button so the browser can detect it. The panel shows its detected name and mapping status. For a **standard-mapped** pad: left stick moves, right stick looks, **A / ×** starts, and **B / ○** pauses. You can also click **Use gamepad**. Both sticks use an 18% radial deadzone. Losing focus or disconnecting stops controller input; keyboard/mouse remains available. Unsupported mappings are labeled explicitly and are not interpreted as standard.
+
+Gamepad behavior is covered with a simulated browser controller; no physical controller was available for validation. The user's controller still needs an actual browser compatibility check. Weapons and trigger actions are not implemented yet.
 
 ## Implemented
 
@@ -45,7 +51,7 @@ The simulation stays out of Nuxt request handlers. Persistence stores durable id
 ```sh
 pnpm verify           # lint, all package typechecks, unit tests, builds, network smoke
 pnpm exec playwright install chromium  # one-time browser download, if unavailable
-pnpm test:browser     # production web build + built match server; ports 3000/2567 must be free
+pnpm test:browser     # production web build + built match server; test ports 3001/2569 must be free
 ```
 
 To reuse an installed Google Chrome instead of downloading Chromium: `PLAYWRIGHT_CHANNEL=chrome pnpm test:browser`.
@@ -71,6 +77,6 @@ No deployment is configured. Railway can be evaluated later with separately depl
 
 ## Setup verification (2026-10-01)
 
-Verified on Node 24.14.1 and pnpm 11.10.0: lint, all TypeScript checks (including verification scripts), three movement unit tests, both application builds, the real two-client WebSocket smoke test, and the Playwright browser flow using installed Google Chrome. Browser screenshots are in the ignored `test-results` folder after the browser test. The Babylon client chunk triggers a bundle-size warning; rendering loads only for the play route, and payload optimization remains future work. PostgreSQL migration generation passed; live database migration testing was intentionally not run. No services were deployed.
+Verified on Node 24.14.1 and pnpm 11.10.0: lint, all TypeScript checks (including verification scripts), four movement/controller unit tests, both application builds, the real two-client WebSocket smoke test, and both Playwright keyboard/mouse and simulated-gamepad browser flows using installed Google Chrome. Browser screenshots are in the ignored `test-results` folder after the browser test. The Babylon client chunk triggers a bundle-size warning; rendering loads only for the play route, and payload optimization remains future work. PostgreSQL migration generation passed; live database migration testing was intentionally not run. No services were deployed.
 
 API references: [Nuxt installation](https://nuxt.com/docs/4.x/getting-started/installation), [Colyseus server/router](https://docs.colyseus.io/server), [Colyseus state schema](https://docs.colyseus.io/state/schema).
