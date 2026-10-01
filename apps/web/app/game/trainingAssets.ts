@@ -9,18 +9,20 @@ import '@babylonjs/loaders/glTF'
 export async function loadTrainingAssets(scene: Scene) {
   const [soldier, rifle, sedan, apartment, factory] = await Promise.all(
     [
-      'quaternius-swat',
-      'quaternius-rifle',
-      'quaternius-sedan',
+      'rocketbox-soldier',
+      'lamoot-ak47',
+      'rohezal-coupe',
       'polyhaven-apartment',
       'polyhaven-factory',
     ].map((name) => LoadAssetContainerAsync(`/models/${name}.glb`, scene)),
   )
   for (const material of soldier!.materials) {
-    if (material instanceof PBRMaterial) {
-      material.metallic = 0
-      material.roughness = material.name === 'Skin' ? 0.82 : 0.94
-      if (material.name === 'Swat') material.albedoColor = Color3.FromHexString('#465244')
+    if (material instanceof PBRMaterial) { material.metallic = 0; material.roughness = 0.82 }
+  }
+  for (const material of rifle!.materials) {
+    if (material instanceof PBRMaterial && material.name === 'blued steel') {
+      material.albedoColor = new Color3(0.12, 0.14, 0.16)
+      material.roughness = 0.38
     }
   }
   function gun(name: string, parent: TransformNode, length = 0.78) {

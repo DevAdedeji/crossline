@@ -38,7 +38,7 @@ export function combatPresentation(
   }
   const flash = MeshBuilder.CreateSphere('muzzle', { diameter: 0.1, segments: 6 }, scene)
   flash.parent = weapon
-  flash.position.set(0, 0.075, 0.39)
+  flash.position.set(0, 0, 0.39)
   flash.renderingGroupId = 2
   const glow = material('muzzle glow', '#fff2a1')
   glow.emissiveColor = Color3.FromHexString('#ffcd65')
@@ -164,10 +164,10 @@ export function combatPresentation(
           alive: true,
           gun,
           reactUntil: 0,
-          wrist: root.getDescendants().find((n) => n.name.endsWith('Wrist.R')) as
+          wrist: root.getDescendants().find((n) => n.name.endsWith('Bip01 R Hand')) as
             | TransformNode
             | undefined,
-          finger: root.getDescendants().find((n) => n.name.endsWith('Middle1.R')) as
+          finger: root.getDescendants().find((n) => n.name.endsWith('Bip01 R Finger2')) as
             | TransformNode
             | undefined,
           yaw: actor.yaw,
@@ -381,7 +381,7 @@ export function combatPresentation(
     const bob = moving && !aiming ? Math.sin(clock * 10) * 0.008 : 0
     weapon.position.set(
       (1 - ads) * 0.24,
-      -0.22 + ads * 0.097 + bob - tilt * 0.08,
+      -0.14 + ads * 0.105 + bob - tilt * 0.08,
       0.35 - kick * 0.035,
     )
     weapon.rotation.set(-kick * 0.05 + tilt * 0.15, -tilt * 0.12, -tilt * 0.45)

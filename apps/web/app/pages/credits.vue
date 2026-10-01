@@ -3,13 +3,14 @@
     <NuxtLink to="/" class="underline">← Back to Crossline</NuxtLink>
     <h1 class="mt-12 mb-6 text-4xl font-bold">Asset credits</h1>
     <p class="mb-5 max-w-2xl">
-      CC0 models and materials from Quaternius and Poly Haven, adapted for Crossline. All assets
+      MIT-licensed Microsoft Rocketbox character and CC0 assets from Lamoot, rohezal, Quaternius and Poly Haven, adapted for Crossline. All assets
       load locally. No creator endorsement is implied.
     </p>
     <ul class="space-y-4 [&_a]:underline">
-      <li><a href="https://poly.pizza/m/Btfn3G5Xv4">SWAT character — Quaternius</a></li>
-      <li><a href="https://poly.pizza/m/fpLucho45C">Assault Rifle — Quaternius</a></li>
-      <li><a href="https://poly.pizza/m/Cz6yDaUcM9">Car — Quaternius</a></li>
+      <li><a href="https://github.com/microsoft/Microsoft-Rocketbox">Military character — Microsoft Rocketbox</a> · <a href="/models/ROCKETBOX-LICENSE.txt">MIT notice</a></li>
+      <li><a href="https://poly.pizza/m/Btfn3G5Xv4">Combat animation source — Quaternius</a></li>
+      <li><a href="https://opengameart.org/content/high-poly-ak-47">AK rifle — Lamoot</a></li>
+      <li><a href="https://opengameart.org/content/car-vw-corradon-2">Textured car — rohezal</a></li>
       <li>
         <a href="https://polyhaven.com/a/modular_urban_apartments_facade"
           >Apartment facade — Poly Haven</a
@@ -37,7 +38,7 @@
       </li>
     </ul>
     <p class="mt-8 max-w-2xl text-sm">
-      Layout, collision and signs are original Crossline work. The current scene combines stylized
+      Layout, collision and signs are original Crossline work. The current scene combines textured
       characters and vehicles with textured architectural modules.
     </p>
   </main>
