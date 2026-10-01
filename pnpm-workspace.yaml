@@ -8,3 +8,4 @@ allowBuilds:
   vue-demi: false
 minimumReleaseAgeExclude:
   - '@babylonjs/core@9.29.0'
+  - '@babylonjs/loaders@9.29.0'

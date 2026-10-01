@@ -1,6 +1,6 @@
 # Crossline
 
-A browser shooter foundation: Nuxt 4 / Vue / Nuxt UI / Tailwind CSS 4, a client-only Babylon.js arena, a separate authoritative Colyseus Node.js match process, and a PostgreSQL / Drizzle schema.
+A browser shooter with a complete local Training mode: Nuxt 4 / Vue / Nuxt UI / Tailwind CSS 4, a client-only Babylon.js arena, a separate authoritative Colyseus Node.js match process, and a PostgreSQL / Drizzle schema.
 
 ## Run locally
 
@@ -11,38 +11,42 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open **http://127.0.0.1:3000**. Enter training, click **Take control**, use **WASD** to move and the **mouse** to look. **Esc** releases the mouse. A second tab joins the same room and appears as a capsule. No account, database, environment file, API key, or paid service is needed. WebGL and a desktop browser are required. Keyboard/mouse and standard-mapped gamepads are supported.
+Open **http://127.0.0.1:3000**, choose **Training**, then **Start training**. Each session is personal: one player, three stationary targets and two slow patrol bots, with a three-minute clock. No account, database, environment file, API key or paid service is needed. WebGL and a desktop browser are required.
+
+**WASD** moves, **mouse** looks through 360 degrees, **left click** fires, **right click** aims, **R** reloads and **Esc** pauses the entire session. The crosshair turns red over a living, unprotected target within range and clear of cover; a separate white hit marker and orange elimination flash confirm server hits. Targets hold assigned idle headings and patrols face their movement, without tracking the player. The CL-24 has 24 rounds and unlimited reserve ammunition. Targets respawn after three seconds with brief protection. Training targets never shoot; combat AI is reserved for a later mode. The session ends with score, kills/deaths, accuracy and head hits; replay or return to the menu. The pause menu also allows an early finish or fresh restart. Sound can be muted in the menu.
 
 The match process listens at `127.0.0.1:2567`; `/health` reports its status. The web origin is intentionally `127.0.0.1`, not `localhost`. Stop both with Ctrl-C. To run them separately: `pnpm dev:match` and `pnpm dev:web`.
 
-The root screen is a game mode selector: **Solo vs Bots**, **Online Solo**, and **Squads** are marked in development; **Training** enters the playable prototype. Use arrow keys, the D-pad or left stick to move focus, then Enter or A / × to select. Future modes show their status and do not start a fake match.
+The root screen is a game mode selector: **Solo vs Bots** and **Online Free-for-All** are marked in development; **Training** enters the playable prototype. Use arrow keys, the D-pad or left stick to move focus, then Enter or A / × to select. Future modes show their status and do not start a fake match.
 
 ## Controller controls
 
-Connect your controller by USB or Bluetooth, open the arena in a focused tab, and press a controller button so the browser can detect it. The panel shows its detected name and mapping status. For a **standard-mapped** pad: left stick moves, right stick looks, **A / ×** starts, and **B / ○** pauses. You can also click **Use gamepad**. Both sticks use an 18% radial deadzone. Losing focus or disconnecting stops controller input; keyboard/mouse remains available. Unsupported mappings are labeled explicitly and are not interpreted as standard.
+Connect a USB or Bluetooth controller, focus the browser and press a button for detection. Standard mappings support **left stick** move, **right stick** look, **RT / R2** fire, **LT / L2** aim, **X / □** reload, **A / ×** select and **Start / Options or B / ○** pause. Use the D-pad or left stick for menu selection. Both sticks have an 18% radial deadzone. Losing focus, controller disconnection or lost pointer lock pauses the whole simulation; keyboard/mouse remains available. Unsupported mappings are explicitly labeled.
 
-Gamepad behavior is covered with a simulated browser controller; no physical controller was available for validation. The user's controller still needs an actual browser compatibility check. Weapons and trigger actions are not implemented yet.
+Controller browser behavior is verified with a simulated standard controller. Physical controller compatibility still depends on the browser/device and has not been tested on hardware.
 
-## Implemented
+## Implemented Training mode
 
-- Full-screen mode menu and first-person training arena, pointer lock, camera controls, visible remote players, connection/error states, and resource cleanup on exit.
-- **Mercer Block:** one compact procedural urban neighbourhood with three enterable buildings (cafe, workshop, supply store), crossing streets, alleys, four parked cars, loading crates, street furniture, and a west ramp/landing onto the cafe rooftop.
-- Shared map geometry drives server collision and client rendering. Player-radius wall sliding, doorway clearance, solid parked-car cover, ramp elevation, and gravity run on the server; observers receive the same height.
-- One training room, up to eight guest clients, 30 Hz server simulation and state patches. Clients send directional input; only the server computes positions. Input validation, diagonal normalization, arena bounds, payload limit, and a 250 ms stale-input timeout prevent obvious movement abuse.
-- PostgreSQL schema and generated migration for player profiles, matches, and match participants, with foreign keys, uniqueness, timestamp and score checks.
-- Unit, real WebSocket integration, and browser smoke checks.
+- Licensed human soldier, carbine and sedan GLB models, skeletal movement/idle/death animation, aimed/hip fire, recoil, muzzle flash, shot tracers, hit and elimination feedback, localized impact dust, visible hit flinches, persistent death animations before respawn, damage vignette and original layered gunshot audio with a transient crack, low-frequency body, mechanical action, short tail, stereo direction and distance attenuation.
+- Server-authoritative ray hits against actors and world cover, head/body damage, fire cadence, ammo, reload, health, regeneration, elimination, protected respawn and scoring. Clients cannot submit damage or target IDs.
+- Three stationary human targets hold their current spawn position and do not attack. Two unarmed patrols follow predictable routes around map collision. Hits stop their movement for a flinch, then they resume their route. No target attacks the player or other targets. All targets respawn indefinitely within the session.
+- Personal private rooms, 30 Hz simulation, ready/play/pause/finish/replay lifecycle and a three-minute practice clock. Every new tab creates its own practice room.
+- Radar, health/ammo/time/score HUD, kill feed, respawn countdown, results and controller-operable menus.
+- **Mercer Block:** three enterable buildings, crossing streets and alleys, parked-car cover, loading crates, street furniture and a cafe rooftop reached by the west ramp.
+- Shared geometry drives client rendering, authoritative collision, gravity and shot occlusion. Input validation, bounded movement, per-client message cap, 250 ms stale-input stop and 1.2-second missing-input pause.
+- PostgreSQL/Drizzle schema foundation for future profiles, matches and participants. Training results currently last only for the session.
 
-Mouse look uses captured relative movement without holding a mouse button. Horizontal look turns freely through 360 degrees; vertical look is limited to about 83 degrees up/down. Both mouse and right-stick look share a local camera state, independent of movement or server position/elevation corrections. The HUD shows heading and capture state. Esc releases capture and shows the resume controls; a denied capture request keeps the retry button usable.
+Horizontal look is local and unrestricted through repeated full rotations; pitch is bounded to about 83 degrees. Network position/elevation patches preserve your view. Mouse capture rejection offers a retry. Leaving disposes the scene, audio, room, input listeners and timers.
 
 ## Mercer Block map
 
 Spawn at the south end of Mercer Street. Follow the road north to the intersection, enter the signed building doorways, or take the west alley to the marked **ROOF ACCESS** ramp behind the cafe. The ramp ends on a landing with a clear route onto the cafe roof. Ground-level movement cannot pass through parked cars, solid walls, windows, counters or crates; windows are decorative glazed panels. Falling is supported, but jumping, player-to-player collision and fall damage are not implemented. Parked cars are static cover, not drivable vehicles.
 
-The geometry and signage are original code-generated artwork. No downloaded asset packs, paid models, external textures, or new services are used. Static geometry is batched by material, the shadow map is capped at 1024px, and render resolution is capped relative to pixel density. Browser performance has been smoke-tested locally, not benchmarked across devices. Colliders are simple conservative shapes, not a general rigid-body physics simulation.
+Buildings use selected CC0 Poly Haven apartment/factory modules with local 1K maps. Human SWAT characters, rifles and sedans are free Quaternius assets. Sources, licenses and adaptations are recorded in `apps/web/public/models/ATTRIBUTION.md` and the in-game Credits page. Layout, signs and collision remain original game code. No paid assets or new services are used. Static geometry is batched or instanced; the shadow map is capped at 2048px and render resolution is capped relative to pixel density. Characters and cars are stylized low-polygon assets alongside textured architectural surfaces, not photorealistic Call of Duty fidelity. Browser behavior has been checked locally, not benchmarked across devices. Colliders are conservative shapes rather than a general rigid-body physics simulation.
 
 ## Boundaries and next work
 
-This is a **movement prototype**, not a complete shooter. There are no weapons, damage, jumping, bots, completed free-for-all rules, squad matchmaking, authentication, progression, or persisted results. Four-person squads and solo bots are roadmap modes; database enum values do not implement them. Future gunplay should prioritize responsive input, client prediction/reconciliation, interpolation, server-side hit validation and measured latency before adding content.
+Training is complete within the scope above. The separate **Solo vs Bots** and **Online Free-for-All** modes remain unavailable roadmap modes. Online play is planned as a shared arena with unlimited respawns. Training already supports unlimited respawns during the session. One basic rifle is implemented; more weapons and selection are future work. Grenades and monetization remain ideas, with no payments or paid features implemented. Authentication, progression, persisted results, jumping, sprinting, weapon selection, matchmaking, player prediction/reconciliation, network lag compensation and production hosting are future work. Patrol targets use a compact waypoint graph; this is an original practice mode, not a production competitive shooter.
 
 Authentication is intentionally deferred; Creda/Calendza use Better Auth, which is the preferred pattern to evaluate for future accounts. No auth code, secrets, or business logic was copied. The local match process defaults to loopback and refuses `NODE_ENV=production` until access controls, join/message rate limits, room resource budgets, secure origins/TLS, reconnect policy and observability are designed. An origin check is not authentication. Do not expose this prototype to the internet.
 
@@ -51,12 +55,12 @@ Authentication is intentionally deferred; Creda/Calendza use Better Auth, which 
 ```text
 apps/web          Nuxt UI and client-only Babylon rendering
 apps/match        Long-running authoritative Colyseus server
-packages/shared   Movement protocol, urban geometry, collision and elevation rules
+packages/shared   Movement/combat protocol, urban geometry, collision and ray hits
 packages/db       Drizzle schema and SQL migration; not loaded by the demo
-scripts/smoke.ts  Isolated real-server two-client integration check
+scripts/smoke.ts  Isolated real-server personal-session integration check
 ```
 
-The simulation stays out of Nuxt request handlers. Persistence stores durable identity/results, not per-frame positions. Future bot agents can supply validated inputs to the simulation; future modes should own explicit rules and lifecycle. Squad capacity and membership will need transactional enforcement when squad services are implemented.
+The simulation stays out of Nuxt request handlers. Persistence stores durable identity/results, not per-frame positions. Bot agents and human input share the same authoritative movement and combat rules; future modes should own explicit rules and lifecycle. Weapon catalog and loadout selection should share server-owned weapon definitions when expanded.
 
 ## Verification
 
@@ -68,7 +72,9 @@ pnpm test:browser     # production web build + built match server; test ports 30
 
 To reuse an installed Google Chrome instead of downloading Chromium: `PLAYWRIGHT_CHANNEL=chrome pnpm test:browser`.
 
-`pnpm test:smoke` launches the built match server on port 2568 and stops it afterward. It checks two-client join/state agreement, movement, invalid input rejection, stale-input stopping, parked-car blocking, alley/ramp traversal, synchronized rooftop elevation and leave cleanup. Browser verification checks mode selection with keyboard and controller, navigation, WebGL canvas, connection, player count, pointer capture, WASD movement and holding forward against parked-car cover. Build before running either smoke command separately.
+`pnpm test:smoke` launches the built match process on port 2568 and stops it afterward. It verifies private room isolation, six actors, movement/input validation, stale input stopping and auto-pause, shots/ammo/reload, pause/resume, natural timer completion, replay and early finish. Only test processes can set `TRAINING_TEST_DURATION_MS` to shorten timer tests; clients cannot change session duration.
+
+Unit tests exercise ray occlusion (including ramp/doors), head damage, cadence, ammo/reload, protection, death/respawn, non-attacking target behavior and hit recovery, lifecycle, navigation and movement/map/camera regressions. Browser tests use the real production client and match server, actual pointer lock and synthesized standard Gamepad API inputs. Build before running either smoke command separately.
 
 ## Optional database
 
@@ -87,8 +93,12 @@ Review generated SQL before applying it. Applied migrations are immutable. The i
 
 No deployment is configured. Railway can be evaluated later with separately deployed web, long-running match, and PostgreSQL services after explicit deployment approval.
 
-## Setup verification (2026-10-01)
+## Training verification (2026-10-01)
 
-Verified on Node 24.14.1 and pnpm 11.10.0: lint, all TypeScript checks (including verification scripts), 13 movement/controller/map/camera unit tests, both application builds, the real two-client WebSocket smoke test, and three Playwright browser flows covering keyboard/mouse, simulated gamepad, and rooftop/interior traversal plus stationary/moving 360-degree mouse and gamepad look using installed Google Chrome. Browser screenshots are in the ignored `test-results` folder after the browser test. The Babylon client chunk triggers a bundle-size warning; rendering loads only for the play route, and payload optimization remains future work. PostgreSQL migration generation passed; live database migration testing was intentionally not run. No services were deployed.
+Verification uses Node 24.14.1, pnpm 11.10.0 and installed Google Chrome. The final run passed lint, all TypeScript checks, 25 unit tests, both application builds, the real WebSocket smoke test, and all four production-browser acceptance tests. The live preview was separately exercised through movement, red target feedback, elimination, a changed respawn position, pause/resume, results, replay and exit with no browser errors. Six rendered hit/death/respawn cycles were also checked for intact skeleton poses. Screenshots from browser acceptance runs are saved in ignored `test-results/`. The Babylon client chunk has a bundle-size advisory and loads only for the play route. Live database migration testing is outside this local Training mode. No services are deployed.
 
 API references: [Nuxt installation](https://nuxt.com/docs/4.x/getting-started/installation), [Colyseus server/router](https://docs.colyseus.io/server), [Colyseus state schema](https://docs.colyseus.io/state/schema).
+
+Asset sources and adaptations are documented in [asset provenance](apps/web/public/models/ATTRIBUTION.md) and the in-game Credits page. Buildings use selected CC0 Poly Haven facade modules and 1K surface maps. Characters and vehicles remain stylized; Blender is not required to run or edit this version.
+
+Respawns select separated, collision-free locations while avoiding recent positions. The renderer resets animation, pose, recoil and hit state on each new life. Three practice targets remain stationary between respawns; two unarmed patrols walk slowly, stop to react to hits, then continue their routes.

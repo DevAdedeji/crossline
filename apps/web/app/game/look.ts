@@ -1,4 +1,7 @@
-export interface LookState { yaw: number; pitch: number }
+export interface LookState {
+  yaw: number
+  pitch: number
+}
 export const MOUSE_SENSITIVITY = 0.0024
 export const MAX_PITCH = 1.45
 

@@ -1,36 +1,113 @@
 import { Room, type Client } from '@colyseus/core'
 import { schema, t, type SchemaType } from '@colyseus/schema'
-import { INPUT_TIMEOUT_MS, TICK_MS, move, parseInput, type MoveInput, SPAWNS } from '@crossline/shared'
+import { TICK_MS } from '@crossline/shared'
+import { TRAINING, IDLE_INPUT } from '@crossline/shared/combat'
+import { TrainingGame } from './training/TrainingGame.js'
 
-const Player = schema({ x: t.number(), y: t.number(), z: t.number() }, 'Player')
-export const TrainingState = schema({ players: t.map(Player) }, 'TrainingState')
+const Actor = schema(
+  {
+    id: t.string(),
+    name: t.string(),
+    bot: t.boolean(),
+    x: t.number(),
+    y: t.number(),
+    z: t.number(),
+    yaw: t.number(),
+    pitch: t.number(),
+    health: t.number(),
+    ammo: t.number(),
+    kills: t.number(),
+    deaths: t.number(),
+    score: t.number(),
+    shots: t.number(),
+    hits: t.number(),
+    headshots: t.number(),
+    reloadUntil: t.number(),
+    respawnUntil: t.number(),
+    protectedUntil: t.number(),
+    lastShot: t.number(),
+    lastDamage: t.number(),
+  },
+  'Actor',
+)
+export const TrainingState = schema(
+  {
+    actors: t.map(Actor),
+    phase: t.string().default('ready'),
+    elapsed: t.number(),
+    duration: t.number().default(TRAINING.durationMs),
+    round: t.number().default(1),
+  },
+  'TrainingState',
+)
 export type TrainingState = SchemaType<typeof TrainingState>
-
 export class TrainingRoom extends Room<{ state: TrainingState }> {
-  maxClients = 8
-  private movementInputs = new Map<string, { value: MoveInput; receivedAt: number }>()
+  maxClients = 1
+  maxMessagesPerSecond = 120
+  private game?: TrainingGame
+  private lastInput = 0
   onCreate() {
     this.setState(new TrainingState())
+    this.setPrivate(true)
     this.setPatchRate(TICK_MS)
-    this.onMessage('input', (client, value: unknown) => {
-      const input = parseInput(value)
-      if (input) this.movementInputs.set(client.sessionId, { value: input, receivedAt: this.clock.elapsedTime })
+    this.onMessage('input', (_client, value: unknown) => {
+      if (this.game?.acceptInput(value)) this.lastInput = this.clock.elapsedTime
+    })
+    this.onMessage('action', (_client, value: unknown) => {
+      if (!this.game || typeof value !== 'string') return
+      if (value === 'start') {
+        this.game.start()
+        this.lastInput = this.clock.elapsedTime
+      } else if (value === 'pause') this.game.pause()
+      else if (value === 'reload') this.game.reload(this.game.humanId)
+      else if (value === 'finish' && this.game.phase !== 'ready') this.game.finish()
+      else if (
+        value === 'restart' &&
+        (this.game.phase === 'finished' || this.game.phase === 'paused')
+      )
+        this.game.restart()
+      this.sync()
     })
     this.setSimulationInterval(() => {
-      for (const [id, player] of this.state.players) {
-        const input = this.movementInputs.get(id)
-        const movement = input && this.clock.elapsedTime - input.receivedAt <= INPUT_TIMEOUT_MS ? input.value : { x: 0, z: 0 }
-        Object.assign(player, move(player, movement, TICK_MS))
-      }
+      if (!this.game) return
+      if (this.game.phase === 'playing' && this.clock.elapsedTime - this.lastInput > 1200)
+        this.game.pause()
+      if (this.clock.elapsedTime - this.lastInput > 250)
+        this.game.input = { ...IDLE_INPUT, yaw: this.game.input.yaw, pitch: this.game.input.pitch }
+      this.game.step(TICK_MS)
+      this.sync()
+      for (const event of this.game.drainEvents()) this.broadcast('event', event)
     }, TICK_MS)
   }
   onJoin(client: Client) {
-    const player = new Player()
-    Object.assign(player, SPAWNS[this.state.players.size % SPAWNS.length])
-    this.state.players.set(client.sessionId, player)
+    const testDuration =
+      process.env.NODE_ENV === 'test' ? Number(process.env.TRAINING_TEST_DURATION_MS) : NaN
+    const duration =
+      Number.isFinite(testDuration) && testDuration >= 1000 && testDuration <= TRAINING.durationMs
+        ? testDuration
+        : TRAINING.durationMs
+    this.game = new TrainingGame(client.sessionId, duration)
+    this.lastInput = this.clock.elapsedTime
+    this.sync()
   }
-  onLeave(client: Client) {
-    this.movementInputs.delete(client.sessionId)
-    this.state.players.delete(client.sessionId)
+  private sync() {
+    if (!this.game) return
+    this.state.phase = this.game.phase
+    this.state.elapsed = this.game.elapsed
+    this.state.duration = this.game.durationMs
+    this.state.round = this.game.round
+    for (const [id, value] of this.game.actors) {
+      let actor = this.state.actors.get(id)
+      if (!actor) {
+        actor = new Actor()
+        this.state.actors.set(id, actor)
+      }
+      Object.assign(actor, value)
+    }
+  }
+  onLeave() {
+    this.game?.pause()
+    this.game = undefined
+    this.state.actors.clear()
   }
 }

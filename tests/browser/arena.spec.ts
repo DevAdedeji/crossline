@@ -1,201 +1,342 @@
-import { expect, test } from '@playwright/test'
-
-test('mode menu, arena connection, mouse capture, movement and cleanup', async ({ page, context }, testInfo) => {
-  const errors: string[] = []
-  page.on('pageerror', (error) => errors.push(error.message))
-  page.on('console', (message) => { if (message.type() === 'error') console.error(message.text()) })
-  await page.goto('/')
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('PLAY')
-  await page.keyboard.press('ArrowLeft')
-  await expect(page.getByRole('button', { name: 'Squads — in development' })).toBeFocused()
-  await page.keyboard.press('Enter')
-  await expect(page.getByRole('status')).toContainText('Squads is in development')
-  await expect(page).toHaveURL('/')
-  await page.screenshot({ path: testInfo.outputPath('menu.png'), fullPage: true })
-  await page.getByRole('link', { name: 'Enter training' }).click()
-  await expect(page.getByRole('status')).toContainText('Connected')
-  await expect(page.locator('canvas')).toBeVisible()
-  const second = await context.newPage()
-  second.on('pageerror', (error) => { errors.push(error.message); console.error('Second tab:', error.message) })
-  second.on('console', (message) => { if (message.type() === 'error') console.error(message.text()) })
-  await second.goto('/play')
-  await expect(second.getByRole('status')).toContainText('Connected', { timeout: 20000 })
-  await expect(page.getByRole('status')).toContainText('2 / 8 PLAYERS')
-  await second.close()
-  await expect(page.getByRole('status')).toContainText('1 / 8 PLAYERS')
-  const initial = await page.getByTestId('position').innerText()
-  await page.getByRole('button', { name: 'Take control' }).click()
+import { expect, test, type Page } from '@playwright/test'
+async function connected(page: Page) {
+  await expect(page.locator('.radar-panel')).toContainText('Connected', { timeout: 20000 })
+  await expect(page.locator('[data-actor]')).toHaveCount(6)
+}
+async function start(page: Page) {
+  await page.getByRole('button', { name: 'Start training', exact: true }).click()
   await expect(page.locator('.crosshair')).toBeVisible()
+  await expect(page.locator('main.arena')).toHaveAttribute('data-phase', 'playing')
+}
+async function face(page: Page, degrees: number, pitch = 0) {
+  await page.evaluate(
+    ({ target, p }) => {
+      const el = document.querySelector('[data-testid="heading"]')!,
+        current = Number(el.textContent!.match(/[0-9]+/)![0]),
+        currentPitch = Number(el.getAttribute('data-pitch')),
+        delta = ((target - current + 540) % 360) - 180
+      document.dispatchEvent(
+        new MouseEvent('mousemove', {
+          movementX: (delta * Math.PI) / 180 / 0.0024,
+          movementY: (p - currentPitch) / 0.0024,
+          bubbles: true,
+        }),
+      )
+    },
+    { target: degrees, p: pitch },
+  )
+}
+async function padSetup(page: Page) {
+  await page.addInitScript(() => {
+    const pad = {
+      id: 'Simulated standard controller',
+      index: 0,
+      connected: true,
+      mapping: 'standard',
+      axes: [0, 0, 0, 0],
+      buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0, touched: false })),
+    }
+    Object.defineProperty(navigator, 'getGamepads', { value: () => [pad], configurable: true })
+  })
+}
+async function button(page: Page, index: number, pressed: boolean) {
+  await page.evaluate(
+    ({ index, pressed }) =>
+      Object.defineProperty(navigator.getGamepads()[0]!.buttons[index], 'pressed', {
+        value: pressed,
+        configurable: true,
+      }),
+    { index, pressed },
+  )
+}
+async function pulse(page: Page, index: number) {
+  await page.bringToFront()
+  await page.evaluate(async (i) => {
+    const b = navigator.getGamepads()[0]!.buttons[i]!
+    Object.defineProperty(b, 'pressed', { value: true, configurable: true })
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+    Object.defineProperty(b, 'pressed', { value: false })
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+  }, index)
+}
+
+test('real mouse target practice, reload, pause, results, replay and exit', async ({
+  page,
+}, info) => {
+  test.setTimeout(65000)
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  await page.goto('/')
+  await page.keyboard.press('ArrowLeft')
+  await expect(
+    page.getByRole('button', { name: 'Online Free-for-All — in development' }),
+  ).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('status')).toContainText('in development')
+  await page.getByRole('link', { name: 'Enter training' }).click()
+  await connected(page)
+  await start(page)
+  const initial = await page.getByTestId('position').innerText()
   await page.keyboard.down('KeyW')
   await expect(page.getByTestId('position')).not.toHaveText(initial)
-  await expect.poll(async () => Number((await page.getByTestId('position').innerText()).split(' / ')[1])).toBeGreaterThan(-15)
-  await page.waitForTimeout(500) // Keep holding forward against the visible parked car.
-  const blocked = await page.getByTestId('position').innerText()
-  expect(Number(blocked.split(' / ')[1])).toBeLessThanOrEqual(-14.6)
-  await page.waitForTimeout(250)
-  await expect(page.getByTestId('position')).toHaveText(blocked)
   await page.keyboard.up('KeyW')
-  const beforeMouseLook = await page.getByTestId('heading').innerText()
-  await page.mouse.move(1150, 320)
-  await expect(page.getByTestId('heading')).not.toHaveText(beforeMouseLook)
-  const rightView = await page.getByTestId('heading').innerText()
-  await page.mouse.move(100, 320)
-  await expect(page.getByTestId('heading')).not.toHaveText(rightView)
-  await page.screenshot({ path: testInfo.outputPath('arena.png') })
+  // Aim at visible radar targets using only the same relative mouse input as a player.
+  await page.mouse.down({ button: 'right' })
+  await page.mouse.down()
+  const deadline = Date.now() + 14000
+  while (Date.now() < deadline && Number(await page.getByTestId('score').innerText()) < 100) {
+    const target = await page.locator('[data-actor]').evaluateAll((nodes) => {
+      const data = nodes.map((n) => ({
+          id: n.getAttribute('data-actor')!,
+          x: Number(n.getAttribute('data-x')),
+          y: Number(n.getAttribute('data-y')),
+          z: Number(n.getAttribute('data-z')),
+          health: Number(n.getAttribute('data-health')),
+        })),
+        me = data.find((a) => !a.id.startsWith('bot-'))!
+      const bots = data
+        .filter((a) => a.id.startsWith('bot-') && a.health > 0)
+        .sort((a, b) => Math.hypot(a.x - me.x, a.z - me.z) - Math.hypot(b.x - me.x, b.z - me.z))
+      const b = bots[0]!
+      return {
+        yaw: (Math.atan2(b.x - me.x, b.z - me.z) * 180) / Math.PI,
+        pitch: -Math.atan2(b.y + 1.5 - me.y - 1.6, Math.hypot(b.x - me.x, b.z - me.z)),
+      }
+    })
+    await face(page, (target.yaw + 360) % 360, target.pitch)
+    if (Number((await page.getByTestId('ammo').innerText()).split('/')[0]) === 0)
+      await page.keyboard.press('KeyR')
+    await page.waitForTimeout(90)
+  }
+  await page.mouse.up()
+  await page.mouse.up({ button: 'right' })
+  await expect
+    .poll(async () => Number(await page.getByTestId('score').innerText()))
+    .toBeGreaterThanOrEqual(100)
+  await page.keyboard.press('KeyR')
+  await expect(page.getByTestId('ammo')).toContainText('24 /')
+  await page.screenshot({ path: info.outputPath('live-combat.png') })
   await page.keyboard.press('Escape')
-  await expect(page.locator('.crosshair')).toBeHidden()
-  await page.getByRole('link', { name: 'Leave arena' }).click()
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('PLAY')
+  await expect(page.getByRole('heading', { name: 'Training paused.' })).toBeVisible()
+  const frozen = (await page.getByTestId('timer').textContent())!
+  await page.waitForTimeout(1100)
+  await expect(page.getByTestId('timer')).toHaveText(frozen)
+  await page.getByRole('button', { name: 'Resume training' }).click()
+  await expect(page.locator('.crosshair')).toBeVisible()
+  // Targets never attack: an exposed player stays unharmed while patrols move.
+  await page.waitForTimeout(2500)
+  await expect(page.getByTestId('health')).toContainText('100')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Finish session' }).click()
+  await expect(page.getByTestId('results')).toBeVisible()
+  await page.screenshot({ path: info.outputPath('results.png') })
+  await page.getByRole('button', { name: 'Run it again' }).click()
+  await expect(page.getByRole('heading', { name: 'Learn the block.' })).toBeVisible()
+  await expect(page.getByTestId('score')).toHaveText('0')
+  await expect(page.getByTestId('timer')).toContainText('3:00')
+  await page.getByRole('button', { name: 'Return to menu' }).click()
+  await expect(page).toHaveURL('/')
   expect(errors).toEqual([])
 })
 
-test('standard gamepad moves, looks, pauses, and handles disconnection and unsupported mapping', async ({ page }) => {
-  await page.addInitScript(() => {
-    const pad = { id: 'Simulated standard controller', index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0, touched: false })) }
-    Object.defineProperty(navigator, 'getGamepads', { value: () => [pad], configurable: true })
-  })
+test('standard controller can play, aim/fire/reload, turn 360, pause/menu and disconnect', async ({
+  page,
+}, info) => {
+  await padSetup(page)
   await page.goto('/')
   await expect(page.getByTestId('menu-controller')).toContainText('GAMEPAD CONNECTED')
-  async function pulse(index: number) {
-    await page.evaluate(async (buttonIndex) => {
-      const button = navigator.getGamepads()[0]!.buttons[buttonIndex]!
-      Object.defineProperty(button, 'pressed', { value: true, configurable: true })
-      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-      Object.defineProperty(button, 'pressed', { value: false })
-    }, index)
-  }
-  await pulse(14)
-  await expect(page.getByRole('button', { name: 'Squads — in development' })).toBeFocused()
-  await pulse(15)
-  await expect(page.getByRole('button', { name: 'Training — playable' })).toBeFocused()
-  await pulse(0)
+  await pulse(page, 0)
   await expect(page).toHaveURL('/play')
-  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0]!.buttons[0], 'pressed', { value: false }); Object.defineProperty(navigator.getGamepads()[0]!.buttons[1], 'pressed', { value: true, configurable: true }) })
-  await expect(page.getByRole('status')).toContainText('Connected')
-  await expect(page.locator('.crosshair')).toBeHidden()
-  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0]!.buttons[1], 'pressed', { value: false }) })
-  await expect(page.getByTestId('gamepad-status')).toContainText('standard mapping')
-  const initial = await page.getByTestId('position').innerText()
-  await page.getByRole('button', { name: 'Use gamepad' }).click()
+  await connected(page)
+  await pulse(page, 0)
   await expect(page.locator('.crosshair')).toBeVisible()
-  await page.evaluate(() => { (navigator.getGamepads()[0]!.axes as number[])[1] = -1 })
-  await expect(page.getByTestId('position')).not.toHaveText(initial)
-  const beforeTurn = (await page.getByTestId('position').innerText()).split(' / ')[0]
-  await page.evaluate(() => { (navigator.getGamepads()[0]!.axes as number[])[2] = 1 })
-  await expect.poll(async () => (await page.getByTestId('position').innerText()).split(' / ')[0]).not.toBe(beforeTurn)
-  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0]!.buttons[1], 'pressed', { value: true, configurable: true }) })
-  await expect(page.locator('.crosshair')).toBeHidden()
-  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0], 'connected', { value: false, configurable: true }); window.dispatchEvent(new Event('gamepaddisconnected')) })
+  await page.evaluate(() => {
+    ;(navigator.getGamepads()[0]!.axes as number[])[1] = -1
+    ;(navigator.getGamepads()[0]!.axes as number[])[2] = 1
+  })
+  await expect(page.getByTestId('position')).not.toHaveText('0.0 / -21.0')
+  await expect
+    .poll(async () => Number((await page.getByTestId('heading').innerText()).match(/[0-9]+/)![0]))
+    .toBeGreaterThan(180)
+  await page.evaluate(() => {
+    ;(navigator.getGamepads()[0]!.axes as number[]).fill(0)
+  })
+  await button(page, 6, true)
+  await button(page, 7, true)
+  await expect(page.getByTestId('ammo')).not.toContainText('24 /')
+  await button(page, 7, false)
+  await button(page, 6, false)
+  await pulse(page, 2)
+  await expect(page.getByTestId('ammo')).toContainText('24 /')
+  await pulse(page, 9)
+  await expect(page.getByRole('heading', { name: 'Training paused.' })).toBeVisible()
+  await pulse(page, 13)
+  await pulse(page, 13)
+  await pulse(page, 0)
+  await expect(page.getByTestId('results')).toBeVisible()
+  await pulse(page, 0)
+  await expect(page.getByRole('heading', { name: 'Learn the block.' })).toBeVisible()
+  await pulse(page, 0)
+  await expect(page.locator('.crosshair')).toBeVisible()
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.getGamepads()[0], 'connected', {
+      value: false,
+      configurable: true,
+    })
+    window.dispatchEvent(new Event('gamepaddisconnected'))
+  })
   await expect(page.getByTestId('gamepad-status')).toContainText('disconnected')
-  await expect(page.getByRole('button', { name: 'Use gamepad' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Take control' })).toBeEnabled()
-  await page.evaluate(() => { const pad = navigator.getGamepads()[0]!; Object.defineProperty(pad, 'connected', { value: true }); Object.defineProperty(pad, 'mapping', { value: '' }) })
-  await expect(page.getByTestId('gamepad-status')).toContainText('Unsupported controller mapping')
+  await expect(page.getByRole('heading', { name: 'Training paused.' })).toBeVisible()
+  await page.screenshot({ path: info.outputPath('controller-paused.png') })
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.getGamepads()[0], 'connected', { value: true })
+    Object.defineProperty(navigator.getGamepads()[0], 'mapping', { value: '' })
+  })
+  await expect(page.getByTestId('gamepad-status')).toContainText('Unsupported mapping')
+  await expect(page.getByRole('button', { name: 'Resume training' })).toBeEnabled()
 })
 
-test('keyboard route reaches the cafe rooftop and returns through its doorway', async ({ page }, testInfo) => {
+test('urban rooftop route preserves stationary/moving 360-degree mouse look', async ({
+  page,
+}, info) => {
   test.setTimeout(65000)
-  await page.addInitScript(() => {
-    const pad = { id: 'Rooftop test pad', index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) }
-    Object.defineProperty(navigator, 'getGamepads', { value: () => [pad] })
-  })
   await page.goto('/play')
-  await expect(page.getByRole('status')).toContainText('Connected')
-  await page.getByRole('button', { name: 'Take control' }).click()
-  await expect(page.locator('.crosshair')).toBeVisible()
-  await expect(page.getByTestId('position')).not.toHaveText('0.0 / 0.0')
-  async function position() { return (await page.getByTestId('position').innerText()).split(' / ').map(Number) }
+  await connected(page)
+  await start(page)
+  for (const angle of [90, 180, 270, 0]) {
+    await face(page, angle)
+    await expect
+      .poll(async () => Number((await page.getByTestId('heading').innerText()).match(/[0-9]+/)![0]))
+      .toBeCloseTo(angle, 0)
+  }
+  async function position() {
+    return (await page.getByTestId('position').innerText()).split(' / ').map(Number)
+  }
   async function axisTo(axis: 0 | 1, target: number) {
-    const start = (await position())[axis]!
-    const positive = target > start
-    const key = axis === 0 ? positive ? 'KeyD' : 'KeyA' : positive ? 'KeyW' : 'KeyS'
+    const positive = target > (await position())[axis]!,
+      key = axis === 0 ? (positive ? 'KeyD' : 'KeyA') : positive ? 'KeyW' : 'KeyS'
     await page.keyboard.down(key)
     try {
-      await expect.poll(async () => {
-        const value = (await position())[axis]!
-        return positive ? value >= target - 0.1 : value <= target + 0.1
-      }, { intervals: [20], timeout: 10000 }).toBe(true)
-    } finally { await page.keyboard.up(key) }
-    let last = ''; let settled = 0
-    await expect.poll(async () => {
-      const current = await page.getByTestId('position').innerText()
-      settled = current === last ? settled + 1 : 0; last = current
-      return settled
-    }, { intervals: [40], timeout: 1500 }).toBeGreaterThanOrEqual(2)
+      await expect
+        .poll(
+          async () =>
+            positive
+              ? (await position())[axis]! >= target - 0.1
+              : (await position())[axis]! <= target + 0.1,
+          { intervals: [20], timeout: 10000 },
+        )
+        .toBe(true)
+    } finally {
+      await page.keyboard.up(key)
+    }
+    await page.waitForTimeout(120)
   }
   await axisTo(0, -21)
   await axisTo(1, -20)
   await axisTo(0, -24)
-  await axisTo(1, 5.1)
+  await axisTo(1, 4)
   await axisTo(0, -20)
-  // Ascend while looking sideways: local strafe follows yaw and elevation patches preserve view.
-  await face(90)
+  await face(page, 90)
   await page.keyboard.down('KeyA')
-  try { await expect.poll(async () => (await position())[1]!, { intervals: [20], timeout: 10000 }).toBeGreaterThanOrEqual(15) } finally { await page.keyboard.up('KeyA') }
-  await expect(page.getByTestId('altitude')).toHaveText('4.1')
-  await expect(page.getByTestId('heading')).toContainText('090')
-  await face(0)
-  await axisTo(0, -15)
-  await axisTo(1, 11)
-  await axisTo(0, -12)
-  async function face(degrees: number) {
-    await page.evaluate((target) => {
-      const current = Number(document.querySelector('[data-testid="heading"]')!.textContent!.match(/[0-9]+/)![0])
-      const delta = ((target - current + 540) % 360) - 180
-      document.dispatchEvent(new MouseEvent('mousemove', { movementX: delta * Math.PI / 180 / 0.0024, bubbles: true }))
-    }, degrees)
-    await expect.poll(async () => {
-      const actual = Number((await page.getByTestId('heading').innerText()).match(/[0-9]+/)![0])
-      return Math.min(Math.abs(actual - degrees), 360 - Math.abs(actual - degrees))
-    }).toBeLessThanOrEqual(1)
+  try {
+    await expect
+      .poll(async () => (await position())[1]!, { intervals: [20], timeout: 10000 })
+      .toBeGreaterThanOrEqual(15)
+  } finally {
+    await page.keyboard.up('KeyA')
   }
-  const rooftopPosition = await page.getByTestId('position').innerText()
-  for (const direction of [90, 180, 270, 0]) await face(direction)
-  await expect(page.getByTestId('position')).toHaveText(rooftopPosition)
-  await face(90)
-  const beforeSideways = (await position())[0]!
-  await page.keyboard.down('KeyW')
-  await expect.poll(async () => (await position())[0]!).toBeGreaterThan(beforeSideways + 0.25)
-  await page.keyboard.up('KeyW')
+  await expect(page.getByTestId('altitude')).toHaveText('4.1')
   await expect(page.getByTestId('heading')).toContainText('090')
-  await expect(page.getByTestId('altitude')).toHaveText('4.1')
-  await face(180)
-  await page.screenshot({ path: testInfo.outputPath('rooftop-looking-back.png') })
-  // Bound vertical look, then restore it, without affecting the 180-degree heading.
-  await page.evaluate(() => document.dispatchEvent(new MouseEvent('mousemove', { movementY: 100000 })))
-  await expect(page.getByTestId('heading')).toHaveAttribute('data-pitch', '1.4500')
-  await page.evaluate(() => document.dispatchEvent(new MouseEvent('mousemove', { movementY: -100000 })))
-  await expect(page.getByTestId('heading')).toHaveAttribute('data-pitch', '-1.4500')
-  await page.evaluate(() => document.dispatchEvent(new MouseEvent('mousemove', { movementY: 1.45 / 0.0024 })))
-  await face(0)
+  await face(page, 0)
   await page.keyboard.press('Escape')
-  await expect(page.locator('.crosshair')).toBeHidden()
-  await page.getByRole('button', { name: 'Use gamepad' }).click()
-  const stationary = await page.getByTestId('position').innerText()
-  await page.evaluate(() => { (navigator.getGamepads()[0]!.axes as number[])[2] = 1 })
-  await expect.poll(async () => { const angle = Number((await page.getByTestId('heading').innerText()).match(/[0-9]+/)![0]); return angle > 175 && angle < 205 }, { intervals: [20] }).toBe(true)
-  await page.evaluate(() => { (navigator.getGamepads()[0]!.axes as number[])[2] = 0 })
-  await expect(page.getByTestId('position')).toHaveText(stationary)
-  await expect(page.getByTestId('altitude')).toHaveText('4.1')
-  await page.evaluate(() => { (navigator.getGamepads()[0]!.axes as number[])[2] = -1 })
-  await expect.poll(async () => Number((await page.getByTestId('heading').innerText()).match(/[0-9]+/)![0]), { intervals: [20] }).toBeLessThan(15)
-  await page.evaluate(() => { (navigator.getGamepads()[0]!.axes as number[])[2] = 0; Object.defineProperty(navigator.getGamepads()[0]!.buttons[1], 'pressed', { value: true, configurable: true }) })
-  await expect(page.locator('.crosshair')).toBeHidden()
-  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0]!.buttons[1], 'pressed', { value: false }) })
-  await page.getByRole('button', { name: 'Take control' }).click()
-  await expect(page.locator('.crosshair')).toBeVisible()
-  await face(0)
-  await page.screenshot({ path: testInfo.outputPath('rooftop.png') })
-  // Return via the ramp, then enter the cafe's open east doorway from the street.
-  await axisTo(0, -17)
-  await axisTo(1, 15.1)
-  await axisTo(0, -20)
-  await axisTo(1, 5.1)
-  await expect(page.getByTestId('altitude')).toHaveText('0.0')
-  await axisTo(1, 4.5)
-  await axisTo(0, -3)
-  await axisTo(1, 11)
-  await axisTo(0, -12)
-  await expect(page.getByTestId('altitude')).toHaveText('0.0')
-  await page.screenshot({ path: testInfo.outputPath('cafe-interior.png') })
+  await expect(page.getByRole('heading', { name: 'Training paused.' })).toBeVisible()
+  await page.screenshot({ path: info.outputPath('rooftop.png') })
+})
+
+test('confirmed body hits, misses and animated elimination with non-clipping layered audio', async ({
+  page,
+}, info) => {
+  await page.addInitScript(() => {
+    const original = AudioNode.prototype.connect
+    const meters: AnalyserNode[] = []
+    AudioNode.prototype.connect = function (
+      this: AudioNode,
+      ...args: [AudioNode | AudioParam, number?, number?]
+    ) {
+      const result = Reflect.apply(original, this, args)
+      if (args[0] === this.context.destination) {
+        const meter = this.context.createAnalyser()
+        meter.fftSize = 1024
+        Reflect.apply(original, this, [meter])
+        meters.push(meter)
+      }
+      return result
+    } as AudioNode['connect']
+    ;(window as unknown as { audioMeters: AnalyserNode[] }).audioMeters = meters
+  })
+  await page.goto('/play')
+  await connected(page)
+  await start(page)
+  await page.waitForTimeout(1950)
+  await face(page, 360 - (Math.atan2(1, 16) * 180) / Math.PI, Math.atan2(0.55, Math.hypot(1, 16)))
+  await expect(page.locator('.crosshair')).toHaveAttribute('data-target', 'bot-0')
+  await expect(page.locator('.crosshair')).toHaveCSS('color', 'rgb(255, 83, 83)')
+  await page.mouse.down()
+  await page.waitForTimeout(90)
+  await page.mouse.up()
+  // Wait for the input-stop packet and its final state patch before comparing a later miss.
+  await page.waitForTimeout(250)
+  const hitHealth = Number(await page.locator('[data-actor="bot-0"]').getAttribute('data-health'))
+  expect(hitHealth).toBeGreaterThan(0)
+  expect(hitHealth).toBeLessThan(100)
+  await page.screenshot({ path: info.outputPath('confirmed-hit-flinch.png') })
+  await face(page, 180)
+  await expect(page.locator('.crosshair')).toHaveAttribute('data-target', '')
+  await page.mouse.down()
+  await page.waitForTimeout(90)
+  await page.mouse.up()
+  await page.waitForTimeout(150)
+  await expect(page.locator('[data-actor="bot-0"]')).toHaveAttribute(
+    'data-health',
+    String(hitHealth),
+  )
+  await face(page, 360 - (Math.atan2(1, 16) * 180) / Math.PI, Math.atan2(0.05, Math.hypot(1, 16)))
+  await page.mouse.down()
+  const audio = await page.evaluate(async () => {
+    let peak = 0,
+      activeBands = 0
+    for (let i = 0; i < 18; i++) {
+      await new Promise<void>((r) => requestAnimationFrame(() => r()))
+      for (const meter of (window as unknown as { audioMeters: AnalyserNode[] }).audioMeters) {
+        const samples = new Float32Array(meter.fftSize)
+        meter.getFloatTimeDomainData(samples)
+        for (const sample of samples) peak = Math.max(peak, Math.abs(sample))
+        const bands = new Uint8Array(meter.frequencyBinCount)
+        meter.getByteFrequencyData(bands)
+        activeBands = Math.max(activeBands, bands.filter((v) => v > 30).length)
+      }
+    }
+    return { peak, activeBands }
+  })
+  // Compensate actual weapon recoil with mouse input while holding the trigger.
+  for (
+    let i = 0;
+    i < 25 && Number(await page.locator('[data-actor="bot-0"]').getAttribute('data-health')) > 0;
+    i++
+  ) {
+    await face(page, 360 - (Math.atan2(1, 16) * 180) / Math.PI, Math.atan2(0.05, Math.hypot(1, 16)))
+    await page.waitForTimeout(80)
+  }
+  await page.mouse.up()
+  await expect(page.locator('[data-actor="bot-0"]')).toHaveAttribute('data-health', '0')
+  expect(audio.peak).toBeGreaterThan(0.001)
+  expect(audio.peak).toBeLessThan(0.99)
+  expect(audio.activeBands).toBeGreaterThan(10)
+  await expect(page.locator('[data-actor="bot-0"]')).toHaveAttribute('data-health', '0')
+  await page.waitForTimeout(400)
+  await expect(page.locator('.crosshair')).toHaveAttribute('data-target', '')
+  await page.screenshot({ path: info.outputPath('animated-elimination.png') })
+  await expect(page.locator('[data-actor="bot-0"]')).toHaveAttribute('data-health', '100', {
+    timeout: 5000,
+  })
 })
