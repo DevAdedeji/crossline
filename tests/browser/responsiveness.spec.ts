@@ -48,3 +48,12 @@ test('gameplay stays unobscured through aim, pause and resume',async({page},info
  await expect(page.locator('.overlay')).toHaveCount(0)
  await page.keyboard.press('Escape');await page.getByRole('button',{name:'Return to menu',exact:true}).click()
 })
+
+test('cold entry avoids a flood of tiny engine script requests',async({page})=>{
+ const scripts=new Set<string>()
+ page.on('request',request=>{if(request.resourceType()==='script')scripts.add(new URL(request.url()).pathname)})
+ await page.goto('/play')
+ await expect(page.locator('.radar-panel')).toContainText('Connected',{timeout:60000})
+ console.log('Cold entry script requests:',scripts.size)
+ expect(scripts.size).toBeLessThan(40)
+})

@@ -4,6 +4,9 @@ export default defineNuxtConfig({
   modules: ['@nuxt/ui', '@vite-pwa/nuxt'],
   css: ['~/assets/main.css'],
   ui: { fonts: false },
+  // Keep Babylon's shader/loader modules together. Hundreds of tiny dynamic
+  // chunks congested cold mobile entry before the scene could connect.
+  vite: {build: {rolldownOptions: {output: {codeSplitting: {groups: [{name: 'babylon', test: /\/@babylonjs\//}]}}}}},
   pwa: {
     strategies: 'injectManifest', srcDir: '../service-worker', filename: 'sw.ts',
     registerType: 'prompt', injectRegister: false, client: {registerPlugin: false},

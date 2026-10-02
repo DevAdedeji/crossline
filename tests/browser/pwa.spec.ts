@@ -27,7 +27,7 @@ test('install manifest, bounded static cache, offline fallback and API exclusion
  await page.evaluate(async()=>{await fetch('/api/auth/get-session');await fetch('/api/arena')})
  const chunks=(await readdir('apps/web/.output/public/_nuxt')).filter(f=>f.endsWith('.js')).slice(0,44)
  await page.evaluate(async chunks=>{for(const chunk of chunks)await (await fetch('/_nuxt/'+chunk)).arrayBuffer()},chunks)
- await expect.poll(()=>page.evaluate(async()=> (await (await caches.open('crossline-code-v1')).keys()).length)).toBe(32)
+ await expect.poll(()=>page.evaluate(async()=> (await (await caches.open('crossline-code-v1')).keys()).length)).toBeLessThanOrEqual(32)
  const urls=await cachedUrls(page)
  expect(urls.length).toBeGreaterThan(5)
  expect(urls.some(u=>new URL(u).pathname.startsWith('/api/'))).toBe(false)
@@ -48,6 +48,10 @@ test('a waiting worker cannot update a match tab and never reloads it',async({br
  const code=await readFile('apps/web/.output/public/sw.js','utf8')
  // Serve two real worker revisions without modifying the build or a deployment.
  const proxy=createServer((request,response)=>{
+  if(request.url?.startsWith('/_nuxt/cache-fixture-')) {
+   response.writeHead(200,{'content-type':'text/javascript'})
+   response.end(request.url.includes('oversize') ? ' '.repeat(3*1024*1024+1) : 'export const fixture=true;');return
+  }
   if(request.url==='/sw.js') {response.writeHead(200,{'content-type':'text/javascript','cache-control':'no-store'});response.end(code+`\n/* browser update fixture ${revision} */`);return}
   if(request.url==='/play?update-fixture') {response.writeHead(200,{'content-type':'text/html'});response.end('<!doctype html><title>Open match route</title><h1>Match route held open</h1>');return}
   const upstream=httpRequest({hostname:'127.0.0.1',port:3001,path:request.url,method:request.method,headers:{...request.headers,host:'127.0.0.1:3001'}},remote=>{response.writeHead(remote.statusCode??502,remote.headers);remote.pipe(response)})
@@ -58,6 +62,10 @@ test('a waiting worker cannot update a match tab and never reloads it',async({br
  const context=await browser.newContext(),menu=await context.newPage()
  try{
   await menu.goto(base);await controlled(menu)
+  await menu.evaluate(async()=>{for(let i=0;i<40;i++)await (await fetch(`/_nuxt/cache-fixture-${i}.js`)).arrayBuffer()})
+  await expect.poll(()=>menu.evaluate(async()=> (await (await caches.open('crossline-code-v1')).keys()).length)).toBe(32)
+  await menu.evaluate(async()=>{await (await fetch('/_nuxt/cache-fixture-oversize.js')).arrayBuffer()})
+  expect(await menu.evaluate(async()=>Boolean(await (await caches.open('crossline-code-v1')).match('/_nuxt/cache-fixture-oversize.js')))).toBe(false)
   const match=await context.newPage();await match.goto(base+'/play?update-fixture')
   const matchTime=await match.evaluate(()=>performance.timeOrigin),menuTime=await menu.evaluate(()=>performance.timeOrigin)
   revision=2
