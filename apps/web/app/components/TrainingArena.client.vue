@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { localSession, type ArenaState, type ArenaSession } from '~/game/arenaSession'
+import { observeArenaViewport } from '~/game/viewport'
 import { NetworkHealth } from '~/game/networkHealth'
 import { MovementPrediction } from '~/game/prediction'
 import { WeaponFeedback } from '~/game/weaponFeedback'
@@ -58,6 +59,7 @@ function saveFireBinding(pad: Gamepad, binding: FireBinding) {
   bindingFire.value = false
   try { localStorage.setItem(`crossline.fire.${pad.id}`, JSON.stringify(binding)) } catch { /* Session binding still works. */ }
 }
+const viewport=ref({width:0,height:0}),stopViewport=ref<(()=>void)>()
 const touchDevice=ref(false),portrait=ref(false),touchActive=ref(false)
 let touchMovement={x:0,z:0},touchFiring=false,touchAiming=false
 const canvas = ref<HTMLCanvasElement>(),
@@ -314,7 +316,7 @@ function pointerChange() {
 function hidden() {
   if (document.hidden) pause()
 }
-const resize = () => {portrait.value=window.innerHeight>window.innerWidth;if(touchDevice.value && portrait.value)pause();else if(pendingLaunch && self.value)launchEntry();engine?.resize()}
+const resize = () => {if(touchDevice.value && portrait.value)pause();else if(pendingLaunch && self.value)launchEntry();void nextTick(()=>engine?.resize())}
 function launchEntry(){if(!pendingLaunch || (touchDevice.value && portrait.value))return;pendingLaunch=false;void start(entry?.input==='pad')}
 function touchMode(){if(phase.value!=='playing')return;touchActive.value=true;padActive.value=false}
 function touchMove(x:number,z:number){touchMode();touchMovement={x,z}}
@@ -407,7 +409,7 @@ onMounted(async () => {
   try{personalBest.value=Number(localStorage.getItem(`crossline.best.${props.mode}`))||0}catch{}
   duration.value=props.mode==='training'?180000:QUICK_MATCH_MS
   touchDevice.value=matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints>0
-  portrait.value=window.innerHeight>window.innerWidth
+  stopViewport.value=observeArenaViewport(value=>{viewport.value=value;portrait.value=value.portrait;resize()})
   await nextTick()
   if (!canvas.value) return
   try {
@@ -486,7 +488,6 @@ onMounted(async () => {
     window.addEventListener('keyup', keyup)
     window.addEventListener('blur', pause)
     window.addEventListener('gamepaddisconnected', gamepadDisconnected)
-    window.addEventListener('resize', resize)
     resize()
     const client = new Client(String(config.public.matchUrl),{urlBuilder:url=>url.protocol==='http:'||url.protocol==='https:'?window.location.origin+'/api/match'+url.pathname+url.search:url.href})
     let name=''
@@ -685,12 +686,12 @@ onBeforeUnmount(() => {
   window.removeEventListener('keyup', keyup)
   window.removeEventListener('blur', pause)
   window.removeEventListener('gamepaddisconnected', gamepadDisconnected)
-  window.removeEventListener('resize', resize)
+  stopViewport.value?.()
 })
 </script>
 
 <template>
-  <main :data-client-position="clientPosition" :data-feedback-shots="feedbackShots" :data-network-stalled="networkStalled" class="arena" :class="{ 'touch-layout': touchDevice }" :data-phase="phase" :data-server-phase="confirmedPhase" :data-mode="mode" :data-room-id="roomCode" :data-player-id="self?.id" :data-crouch="self?.crouch ?? 0" :data-eye-height="self ? stanceEye(self) : 1.6">
+  <main :data-client-position="clientPosition" :data-feedback-shots="feedbackShots" :data-network-stalled="networkStalled" :style="touchDevice && viewport.width ? {width: viewport.width+'px', height: viewport.height+'px'} : undefined" class="arena" :class="{ 'touch-layout': touchDevice }" :data-phase="phase" :data-server-phase="confirmedPhase" :data-mode="mode" :data-room-id="roomCode" :data-player-id="self?.id" :data-crouch="self?.crouch ?? 0" :data-eye-height="self ? stanceEye(self) : 1.6">
     <p v-if="networkNotice" class="network-notice" role="status" data-testid="network-notice">{{ networkNotice }}</p>
     <canvas ref="canvas" :aria-label="`Crossline ${modeTitle} arena`" @contextmenu.prevent />
     <div v-if="touchDevice && portrait" class="rotate-phone" role="dialog" aria-modal="true" aria-label="Rotate phone">

@@ -68,6 +68,7 @@ test('a waiting worker cannot update a match tab and never reloads it',async({br
   expect(await menu.evaluate(async()=>Boolean(await (await caches.open('crossline-code-v1')).match('/_nuxt/cache-fixture-oversize.js')))).toBe(false)
   const match=await context.newPage();await match.goto(base+'/play?update-fixture')
   const matchTime=await match.evaluate(()=>performance.timeOrigin),menuTime=await menu.evaluate(()=>performance.timeOrigin)
+  await menu.evaluate(async()=>{await (await caches.open('crossline-offline-obsolete-fixture')).put('/models/old.glb',new Response('old asset'))})
   revision=2
   await menu.evaluate(async()=>{await (await navigator.serviceWorker.getRegistration())!.update()})
   await expect(menu.getByRole('button',{name:'Update app',exact:true})).toBeVisible()
@@ -83,5 +84,6 @@ test('a waiting worker cannot update a match tab and never reloads it',async({br
   expect(await menu.evaluate(()=>performance.timeOrigin)).not.toBe(menuTime)
   await expect.poll(()=>menu.evaluate(async()=>Boolean((await navigator.serviceWorker.getRegistration())?.waiting))).toBe(false)
   await expect(menu.getByRole('button',{name:'Practice',exact:true})).toBeVisible()
+  expect(await menu.evaluate(()=>caches.has('crossline-offline-obsolete-fixture'))).toBe(false)
  }finally{await context.close();await new Promise<void>(resolve=>proxy.close(()=>resolve()))}
 })

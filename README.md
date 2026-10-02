@@ -33,7 +33,7 @@ The match server defaults to `127.0.0.1:2567`. `/health` reports liveness, `/are
 
 A / × selects menus and fires in play. Release it after selecting or resuming before pressing to shoot. Controller axes have an 18% radial deadzone; Controls → Assign fire trigger supports generic layouts. Losing focus, disconnecting the active controller, or losing mouse capture releases input. Practice/Solo pause the whole simulation; Online only pauses your controls and leaves your character vulnerable.
 
-Touch movement, look and fire support simultaneous fingers. Pointer cancellation, backgrounding and rotation to portrait release held input. Rotation back requires Resume. Safe-area layout, a reduced render resolution and 1024px shadows are used on touch devices. Chrome touch emulation checks 667×375 and 932×430; physical Android/iPhone and Safari behavior remain unverified.
+Touch movement, look and fire support simultaneous fingers. Pointer cancellation, backgrounding and rotation to portrait release held input. Rotation back dismisses the blocker and resizes the renderer automatically, then requires Resume. The arena observes visual-viewport/orientation/foreground changes with bounded settling checks for installed WebKit viewports; no refresh or reinstall is required. Safe-area layout, a reduced render resolution and 1024px shadows are used on touch devices. Chrome touch emulation checks 667×375 and 932×430; physical Android/iPhone and Safari behavior remain unverified.
 
 ## Combat and recovery
 
