@@ -86,7 +86,7 @@ export class TrainingGame {
     this.actors.clear()
     this.memories.clear()
     this.healthPacks.clear()
-    if(this.mode === 'solo')for(const pack of SOLO_HEALTH_PACKS)this.healthPacks.set(pack.id,{...pack,availableAt:0})
+    if(this.mode !== 'training')for(const pack of SOLO_HEALTH_PACKS)this.healthPacks.set(pack.id,{...pack,availableAt:0})
     this.elapsed = 0
     this.phase = 'ready'
     this.input = { ...IDLE_INPUT }
@@ -130,7 +130,7 @@ export class TrainingGame {
   }
   enterHuman(id: string) {
     const actor=this.actors.get(id)
-    if(!actor || actor.participating !== false) return
+    if(this.phase !== 'playing' || !actor || actor.participating !== false) return
     actor.participating=true; this.respawn(actor)
   }
   stopHuman(id: string) {
@@ -190,7 +190,7 @@ export class TrainingGame {
           -Math.atan2(point.y + 1.1 - other.y - stanceEye(other), Math.hypot(point.x - other.x, point.z - other.z))),
       ) < Math.hypot(point.x - other.x, point.z - other.z) - 0.5).length * 6
       : 0)
-    const nearby = this.mode === 'online' ? pool.filter(p=>separation(p)>=12 && separation(p)<=45) : []
+    const nearby = this.mode !== 'training' ? pool.filter(p=>separation(p)>=12 && separation(p)<=45) : []
     const ranked = [...(nearby.length ? nearby : pool)].sort((a, b) => safety(b) - safety(a))
     const spawn = actor.bot
       ? (ranked[Math.floor(this.random() * Math.min(4, ranked.length))] ?? this.spawns[0]!)
@@ -285,6 +285,7 @@ export class TrainingGame {
         actor.score += 100 + (headshot ? 25 : 0)
         this.events.push({
           type: 'kill',
+          killerId:actor.id,victimId:victim.id,
           killer: actor.name,
           victim: victim.name,
           humanKill: actor.id === this.humanId,
@@ -441,7 +442,13 @@ export class TrainingGame {
       // A nearby human shot interrupts wandering instead of expiring behind a long patrol route.
       if(noise && this.humanTarget(this.actors.get(noise.id)) && this.elapsed-noise.at < 5000 && Math.hypot(noise.position.x-bot.x,noise.position.z-bot.z)<55)
         destination=noise.position
-      else if(!memory.path.length)destination=this.navigation.points[Math.floor(this.random()*this.navigation.points.length)]
+      else if(!memory.path.length) {
+        // Keep patrol routes near the active human district without granting sight or firing through cover.
+        const human=[...this.actors.values()].find(actor=>!actor.bot && actor.participating!==false)
+        const local=human ? this.navigation.points.filter(p=>Math.hypot(p.x-human.x,p.z-human.z)<32 && Math.abs(p.y-human.y)<4.2) : []
+        const patrol=local.length?local:this.navigation.points
+        destination=patrol[Math.floor(this.random()*patrol.length)]
+      }
     }
     if (destination && (this.elapsed >= memory.nextPlan || !memory.path.length)) {
       memory.path = this.navigation.findPath(bot, destination)
@@ -465,8 +472,9 @@ export class TrainingGame {
   step(delta = TICK_MS) {
     if (this.phase !== 'playing') return
     const dt = Math.max(0, Math.min(delta, TICK_MS))
+    if(this.mode==='online' && ![...this.actors.values()].some(a=>a.participating))return
     this.elapsed += dt
-    if (this.mode !== 'online' && this.elapsed >= this.durationMs) {
+    if (this.durationMs > 0 && this.elapsed >= this.durationMs) {
       this.elapsed = this.durationMs
       this.finish()
       return
@@ -481,7 +489,7 @@ export class TrainingGame {
         actor.ammo = RIFLE.magazine
         actor.reloadUntil = 0
       }
-      if (!(this.mode === 'solo' && !actor.bot) && this.elapsed - actor.lastDamage > 5000)
+      if (!(this.mode !== 'training' && !actor.bot) && this.elapsed - actor.lastDamage > 5000)
         actor.health = Math.min(100, actor.health + dt * 0.01)
       if (actor.bot) this.botStep(actor, dt)
       else {
@@ -508,9 +516,9 @@ export class TrainingGame {
     this.collectHealth()
   }
   private collectHealth() {
-    if(this.mode !== 'solo')return
+    if(this.mode === 'training')return
     for(const actor of this.actors.values()) {
-      if(actor.bot || actor.health<=0 || actor.health>=SOLO.maxHealth)continue
+      if(actor.bot || actor.participating===false || actor.protectedUntil>this.elapsed || actor.health<=0 || actor.health>=SOLO.maxHealth)continue
       for(const pack of this.healthPacks.values()) {
         if(pack.availableAt>this.elapsed || Math.abs(actor.y-pack.y)>SOLO.pickupFloorTolerance)continue
         const dx=pack.x-actor.x,dy=pack.y+.35-(actor.y+.5),dz=pack.z-actor.z

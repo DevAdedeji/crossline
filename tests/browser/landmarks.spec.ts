@@ -4,14 +4,14 @@ import {getNavigation} from '../../apps/match/src/training/navigation.js'
 import {COMBAT_WORLD,type Position} from '../../packages/shared/src/index.js'
 import type {Combatant} from '../../packages/shared/src/combat.js'
 test('a real player walks the factory mezzanine/roof and all tower stairs with replicated elevation',async({page},info)=>{
- test.setTimeout(240000);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
+ test.setTimeout(300000);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
  await page.addInitScript(()=>{const pad={id:'Landmark tour controller',index:0,connected:true,mapping:'standard',axes:[0,0,0,0],buttons:Array.from({length:17},()=>({pressed:false,value:0}))};Object.defineProperty(navigator,'getGamepads',{value:()=>[pad],configurable:true})})
  await page.goto('/play?mode=online');await page.bringToFront();await expect(page.locator('.radar-panel')).toContainText('Connected',{timeout:30000})
  await page.evaluate(()=>Object.defineProperty(navigator.getGamepads()[0]!.buttons[0],'pressed',{value:true,configurable:true}));await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
  await page.evaluate(()=>Object.defineProperty(navigator.getGamepads()[0]!.buttons[0],'pressed',{value:false,configurable:true}))
  const id=(await page.locator('main.arena').getAttribute('data-player-id'))!,roomId=(await page.locator('main.arena').getAttribute('data-room-id'))!
  const peer:Room<{actors:{get(id:string):Combatant|undefined}}>=await new Client('ws://127.0.0.1:2569').joinById(roomId)
- peer.onMessage('event',()=>{})
+ peer.onMessage('event',()=>{});peer.onMessage('leaderboard',()=>{})
  const actor=page.locator(`[data-actor="${id}"]`),nav=getNavigation(COMBAT_WORLD);await nav.precompute()
  const position=async()=>({x:Number(await actor.getAttribute('data-x')),y:Number(await actor.getAttribute('data-y')),z:Number(await actor.getAttribute('data-z'))})
  async function axes(x=0,z=0,look=0){await page.evaluate(({x,z,look})=>Object.defineProperty(navigator.getGamepads()[0]!,'axes',{value:[x,z,look,0],configurable:true}),{x,z,look})}
@@ -35,6 +35,9 @@ test('a real player walks the factory mezzanine/roof and all tower stairs with r
   await walk({x:0,y:8,z:45});await page.screenshot({path:info.outputPath('factory-roof.png')})
   await walk({x:48,y:3.2,z:48});await walk({x:48,y:9.6,z:48});await walk({x:48,y:12.8,z:48})
   await face(270);await page.screenshot({path:info.outputPath('tower-roof.png')})
+  await walk({x:-48,y:0,z:-48});await face(0);await page.screenshot({path:info.outputPath('hospital-corridor.png')})
+  await walk({x:-54,y:3.2,z:-48});await page.screenshot({path:info.outputPath('hospital-ward.png')})
+  await walk({x:-48,y:9.6,z:-48});await face(45);await page.screenshot({path:info.outputPath('hospital-roof.png')})
   expect(errors).toEqual([])
  }finally{await page.locator('a.brand').click();await expect(page).toHaveURL('/');await expect.poll(()=>peer.state.actors.get(id)).toBeUndefined();peer.reconnection.enabled=false;await peer.leave()}
 })

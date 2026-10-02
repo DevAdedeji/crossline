@@ -3,12 +3,13 @@ import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { Client, type Room } from '@colyseus/sdk'
 import { getNavigation } from '../apps/match/src/training/navigation.js'
-import { COMBAT_WORLD } from '../packages/shared/src/index.ts'
+import { COMBAT_WORLD, SOLO_HEALTH_PACKS } from '../packages/shared/src/index.ts'
 import { direction, worldHit, type Combatant, type CombatInput, type GameEvent } from '../packages/shared/src/combat.ts'
-interface State { actors: {size:number;get(id:string):Combatant|undefined}; elapsed:number;phase:string;capacity:number }
+interface State { actors: {size:number;get(id:string):Combatant|undefined}; elapsed:number;phase:string;capacity:number;healthPacks:{get(id:string):{availableAt:number}|undefined} }
 const port=2570
-const child=spawn(process.execPath,['apps/match/dist/index.js'],{env:{...process.env,NODE_ENV:'test',MATCH_PORT:String(port),FFA_MAX_CLIENTS:'8'},stdio:['ignore','pipe','pipe']})
+const child=spawn(process.execPath,['apps/match/dist/index.js'],{env:{...process.env,NODE_ENV:'test',DATABASE_URL:'',MATCH_PORT:String(port),FFA_MAX_CLIENTS:'8'},stdio:['ignore','pipe','pipe']})
 let logs='';child.stdout.on('data',d=>logs+=d);child.stderr.on('data',d=>logs+=d)
+const profiles=new Map<string,{id:string;token:string}>()
 const rooms:Room<State>[]=[],inputs=new Map<Room<State>,CombatInput>()
 const delay=(ms:number)=>new Promise(r=>setTimeout(r,ms))
 async function until(check:()=>boolean|Promise<boolean>,label:string,timeout=10000){const end=Date.now()+timeout;while(Date.now()<end){if(await check())return;await delay(30)}throw Error(`${label}: ${logs}`)}
@@ -17,9 +18,10 @@ const pulse=setInterval(()=>{for(const [room,input] of inputs)if(!room.reconnect
 try {
  await until(async()=>{try{return(await fetch(`http://127.0.0.1:${port}/health`)).ok}catch{return false}},'server ready')
  const client=new Client(`ws://127.0.0.1:${port}`)
- async function join(name:string){const room=await client.joinOrCreate<State>('ffa',{name});rooms.push(room);room.onMessage('event',()=>{});return room}
+ async function join(name:string){const room=await client.joinOrCreate<State>('ffa',{name});rooms.push(room);room.onMessage('event',()=>{});room.onMessage('leaderboard',()=>{});room.onMessage('guest',g=>profiles.set(room.sessionId,g));room.send('profile');return room}
  const a=await join('ALPHA'),b=await join('BRAVO');assert.equal(a.roomId,b.roomId)
  await until(()=>a.state?.actors?.size===2&&b.state?.actors?.size===2,'two genuine clients')
+ await until(()=>profiles.has(a.sessionId)&&profiles.has(b.sessionId),'private guest profiles received')
  assert.equal(a.state.capacity,8);assert.equal(a.state.actors.get(a.sessionId)!.participating,false)
  a.send('action','start');await until(()=>a.state.actors.get(a.sessionId)!.participating===true,'alpha enters')
  b.send('action','start');await until(()=>b.state.actors.get(b.sessionId)!.participating===true,'bravo enters')
@@ -58,6 +60,7 @@ try {
  inputs.set(a,idle());const score=a.state.actors.get(a.sessionId)!.score
  assert.equal(b.state.actors.get(b.sessionId)!.health,0)
  assert.ok(events.some(e=>e.type==='shot'&&e.hitId===b.sessionId&&e.damage>0))
+ await until(async()=>{const leaders=await (await fetch(`http://127.0.0.1:${port}/leaderboard`)).json() as {durable:boolean;topKills:{id:string;kills:number}[];topDeaths:{id:string;deaths:number}[]};return !leaders.durable && leaders.topKills.some(r=>r.id===profiles.get(a.sessionId)?.id&&r.kills===1)&&leaders.topDeaths.some(r=>r.id===profiles.get(b.sessionId)?.id&&r.deaths===1)},'server-confirmed public kill/death totals').catch(async error=>{console.error({profileIds:[profiles.get(a.sessionId)?.id,profiles.get(b.sessionId)?.id],leaders:await (await fetch(`http://127.0.0.1:${port}/leaderboard`)).json(),kills:events.filter(e=>e.type==='kill')});throw error})
  const deadPosition={x:b.state.actors.get(b.sessionId)!.x,z:b.state.actors.get(b.sessionId)!.z}
  await until(()=>b.state.actors.get(b.sessionId)!.health===100,'unlimited respawn')
  const respawned=b.state.actors.get(b.sessionId)!
@@ -68,10 +71,21 @@ try {
  inputs.set(b,aim(b,a.sessionId,true))
  await until(()=>a.state.actors.get(a.sessionId)!.health<100,'reciprocal remote damage')
  inputs.set(b,idle())
+ const healStart=events.length,nav=getNavigation(COMBAT_WORLD),hurt=a.state.actors.get(a.sessionId)!
+ const supply=SOLO_HEALTH_PACKS.filter(p=>(a.state.healthPacks.get(p.id)?.availableAt ?? Infinity)<=a.state.elapsed).sort((p,q)=>Math.hypot(p.x-hurt.x,p.z-hurt.z)-Math.hypot(q.x-hurt.x,q.z-hurt.z))[0]!
+ const route=nav.findPath(hurt,supply);route.push(supply)
+ for(const point of route){
+  await until(()=>{const actor=a.state.actors.get(a.sessionId)!,dx=point.x-actor.x,dz=point.z-actor.z,d=Math.hypot(dx,dz);if(d<.12)return true;const speed=Math.min(1,d/1.2);inputs.set(a,{...idle(),x:dx/d*speed,z:dz/d*speed});return false},'walk to Online supplies',10000).catch(error=>{const actor=a.state.actors.get(a.sessionId)!;console.error({walkPosition:{x:actor.x,y:actor.y,z:actor.z},waypoint:point,supply:supply.id});throw error})
+  if(events.slice(healStart).some(e=>e.type==='heal'&&e.targetId===a.sessionId))break
+ }
+ inputs.set(a,idle());await until(()=>events.slice(healStart).some(e=>e.type==='heal'&&e.targetId===a.sessionId),'authoritative Online heal')
+ const heal=events.slice(healStart).find(e=>e.type==='heal'&&e.targetId===a.sessionId)!
+ assert.ok(heal.type==='heal');assert.ok(heal.amount>0&&heal.amount<=35);await until(()=>a.state.healthPacks.get(heal.pickupId)!.availableAt>a.state.elapsed,'replicated health cooldown')
+ inputs.set(a,idle());a.send('input',idle());await delay(150)
  // No client-controlled damage, teleport, score, phase, or cross-player input authority.
  const x=a.state.actors.get(a.sessionId)!.x
  a.send('input',{...idle(),x:999,playerId:b.sessionId,health:0,score:99999})
- a.send('damage',{targetId:b.sessionId,damage:99999});a.send('action','finish');a.send('action','restart');a.send('action','start')
+ a.send('score',{kills:99999,deaths:99999});a.send('damage',{targetId:b.sessionId,damage:99999});a.send('action','finish');a.send('action','restart');a.send('action','start')
  await delay(160);assert.equal(a.state.actors.get(a.sessionId)!.x,x);assert.equal(a.state.actors.get(a.sessionId)!.score,score);assert.equal(a.state.phase,'playing')
  const elapsed=a.state.elapsed;a.send('action','pause');await delay(180);assert.ok(a.state.elapsed>elapsed)
  const late=await join('LATE');await until(()=>late.state?.actors?.size===3,'late state');assert.equal(late.state.actors.get(a.sessionId)!.score,score)
@@ -79,23 +93,25 @@ try {
  const token=a.reconnectionToken,id=a.sessionId,roomId=a.roomId,health=a.state.actors.get(a.sessionId)!.health
  inputs.delete(a);a.reconnection.enabled=false;a.connection.close()
  await until(()=>b.state.actors.get(id)?.connected===false,'drop visible to peer')
- const recovered=await client.reconnect<State>(token);rooms.push(recovered);recovered.onMessage('event',()=>{});inputs.set(recovered,idle())
+ const recovered=await client.reconnect<State>(token);rooms.push(recovered);recovered.onMessage('event',()=>{});recovered.onMessage('leaderboard',()=>{});inputs.set(recovered,idle())
  await until(()=>recovered.state?.actors?.get(id)?.connected===true,'reconnection accepted')
  assert.equal(recovered.sessionId,id);assert.equal(recovered.roomId,roomId);assert.equal(recovered.state.actors.get(id)!.score,score)
  assert.equal(recovered.state.actors.get(id)!.health,health)
- // Capacity is real: fill eight seats, then matchmaking creates another room.
+ // Capacity is real: the singleton rejects overflow instead of creating a second public arena.
  let expiring:Room<State>|undefined
  for(let i=3;i<8;i++)expiring=await join(`EXTRA${i}`)
  await until(()=>b.state.actors.size===8,'eight occupied seats')
- const overflow=await join('OVERFLOW');assert.notEqual(overflow.roomId,roomId)
+ const full=await (await fetch(`http://127.0.0.1:${port}/arena`)).json() as {roomId:string;full:boolean};assert.equal(full.roomId,roomId);assert.equal(full.full,true)
+ await assert.rejects(()=>join('OVERFLOW'),error=>error instanceof Error && 'code' in error && error.code===500)
  const practice=await client.create<State>('training');rooms.push(practice);practice.onMessage('event',()=>{})
  await until(()=>practice.state?.actors?.size===6,'training isolation');assert.equal(practice.state.phase,'ready');assert.notEqual(practice.roomId,roomId)
  await late.leave();await until(()=>!b.state.actors.get(late.sessionId),'consented departure removed')
+ const replacement=await join('REPLACEMENT');assert.equal(replacement.roomId,roomId)
  inputs.delete(b);b.send('input',{...idle(),x:1});await delay(550);const stopped=b.state.actors.get(b.sessionId)!.x;await delay(180);assert.equal(b.state.actors.get(b.sessionId)!.x,stopped)
  expiring!.reconnection.enabled=false;expiring!.connection.close()
  await until(()=>b.state.actors.get(expiring!.sessionId)?.connected===false,'reserved dropped seat')
  await until(()=>!b.state.actors.get(expiring!.sessionId),'expired reconnect seat removed',24000)
- console.info('PASS: genuine shared FFA clients, lobby entry, protected spawn, remote shots/kill/respawn, forged-input rejection, local-only pause, late join, transport reconnect preserving identity/score, eight-seat cap/overflow, reconnect expiry, leave cleanup, stale-input stop and Training isolation')
+ console.info('PASS: genuine shared FFA clients, lobby entry, protected spawn, remote shots/kill/respawn, forged-input rejection, local-only pause, late join, transport reconnect preserving identity/score, public kill/death totals, eight-seat singleton cap/rejection, reconnect expiry, leave cleanup, stale-input stop and Training isolation')
 } finally {
  clearInterval(pulse)
  for(const room of rooms) {try{room.reconnection.enabled=false;void room.leave()}catch{}}

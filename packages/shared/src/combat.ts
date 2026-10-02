@@ -2,6 +2,7 @@ import { stanceHeight } from './stance.ts'
 import { TRAINING_WORLD, RAMP, rampHeight, type WorldGeometry } from './urban-map.ts'
 import { parseInput, type MoveInput, type Position } from './index.ts'
 
+export const QUICK_MATCH_MS = 300_000
 export const TRAINING = {
   durationMs: 180_000,
   botCount: 5,
@@ -94,7 +95,7 @@ export type GameEvent =
   | ShotEvent
   | { type: 'damage'; targetId: string; sourceId: string; damage: number; health: number }
   | { type: 'spawn'; actorId: string; yaw: number }
-  | { type: 'kill'; killer: string; victim: string; humanKill: boolean }
+  | { type: 'kill'; killer: string; victim: string; killerId:string; victimId:string; humanKill: boolean }
 export function direction(yaw: number, pitch: number): Position {
   return {
     x: Math.sin(yaw) * Math.cos(pitch),

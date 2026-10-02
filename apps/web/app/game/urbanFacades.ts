@@ -66,6 +66,19 @@ export function addFacades(scene: Scene, assets: TrainingAssets, shadows: Shadow
       }
       continue
     }
+    if(building.id==='mercer-hospital') {
+      for(let floor=0;floor<3;floor++)for(const side of [-1,1]) {
+        for(const offset of [-12,-8,-4,0,4,8,12]) {
+          if(floor===0 && Math.abs(offset)<4)continue
+          module('apartment','panel',-48+offset,floor*3.2+.1,-48+side*13.25,side>0?Math.PI:0,3.6,2.7)
+        }
+        for(const offset of [-10,-6,-2,2,6,10]) {
+          if(side>0 && Math.abs(offset-(floor%2===0?-11:11))<3)continue
+          module('apartment','panel',-48+side*15.25,floor*3.2+.1,-48+offset,side>0?-Math.PI/2:Math.PI/2,3.5,2.7)
+        }
+      }
+      continue
+    }
     const kit = building.material === 'brick' || building.material === 'metal' ? 'factory' : 'apartment'
     // Window bays flank the central openings. Source front faces -Z after glTF conversion.
     for (const side of [-1, 1]) {

@@ -1,5 +1,5 @@
 import { defineConfig } from 'tsup'
 export default defineConfig({
   entry: ['src/index.ts'], format: ['esm'], platform: 'node', clean: true,
-  noExternal: ['@crossline/shared'],
+  noExternal: ['@crossline/shared', '@crossline/db'],
 })

@@ -12,7 +12,8 @@
     "@colyseus/core": "0.18.18",
     "@colyseus/schema": "5.0.35",
     "@colyseus/ws-transport": "0.18.4",
-    "@crossline/shared": "workspace:*"
+    "@crossline/shared": "workspace:*",
+    "@crossline/db": "workspace:*"
   },
   "devDependencies": {
     "tsup": "latest",

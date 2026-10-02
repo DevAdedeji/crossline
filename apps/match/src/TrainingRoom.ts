@@ -1,7 +1,8 @@
 import { Room, type Client } from '@colyseus/core'
 import { schema, t, type SchemaType } from '@colyseus/schema'
 import { TICK_MS } from '@crossline/shared'
-import { TRAINING, IDLE_INPUT } from '@crossline/shared/combat'
+import { TRAINING, QUICK_MATCH_MS, IDLE_INPUT } from '@crossline/shared/combat'
+import { playerName } from './playerName.js'
 import { TrainingGame } from './training/TrainingGame.js'
 
 export const Actor = schema(
@@ -71,8 +72,11 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
       else if (
         value === 'restart' &&
         (this.game.phase === 'finished' || this.game.phase === 'paused')
-      )
+      ) {
+        const name=this.game.actors.get(this.game.humanId)?.name
         this.game.restart()
+        if(name)this.game.actors.get(this.game.humanId)!.name=name
+      }
       this.sync()
     })
     this.setSimulationInterval(() => {
@@ -86,14 +90,16 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
       for (const event of this.game.drainEvents()) this.broadcast('event', event)
     }, TICK_MS)
   }
-  onJoin(client: Client) {
+  onJoin(client: Client, options?: {name?:unknown}) {
     const testDuration =
       process.env.NODE_ENV === 'test' ? Number(process.env.TRAINING_TEST_DURATION_MS) : NaN
+    const defaultDuration=this.mode==='solo'?QUICK_MATCH_MS:TRAINING.durationMs
     const duration =
       Number.isFinite(testDuration) && testDuration >= 1000 && testDuration <= TRAINING.durationMs
         ? testDuration
-        : TRAINING.durationMs
+        : defaultDuration
     this.game = new TrainingGame(client.sessionId, duration, Math.random, this.mode)
+    this.game.actors.get(client.sessionId)!.name=playerName(options?.name,client.sessionId)
     this.lastInput = this.clock.elapsedTime
     this.sync()
   }

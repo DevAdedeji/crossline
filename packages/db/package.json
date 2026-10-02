@@ -2,7 +2,10 @@
   "name": "@crossline/db",
   "private": true,
   "type": "module",
-  "exports": "./src/schema.ts",
+  "exports": {
+    ".": "./src/schema.ts",
+    "./server": "./src/server.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "generate": "drizzle-kit generate",

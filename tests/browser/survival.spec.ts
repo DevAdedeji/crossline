@@ -24,22 +24,22 @@ for(const controller of [false,true])test(`Solo health supplies and crouch work 
  else {await page.keyboard.press('KeyC');await expect(page.locator('main.arena')).toHaveAttribute('data-crouch','0');await page.keyboard.down('ControlLeft');await expect(page.locator('main.arena')).toHaveAttribute('data-crouch','1');await page.keyboard.up('ControlLeft')}
  await expect(page.locator('main.arena')).toHaveAttribute('data-crouch','0')
  const human=await page.locator('main.arena').getAttribute('data-player-id'),actor=page.locator(`[data-actor="${human}"]`)
- // Fire safely upward after protection to draw a bot through normal human gunfire cues.
- await page.waitForTimeout(4200);await page.bringToFront()
- if(controller){
-  await page.evaluate(()=>Object.defineProperty(navigator.getGamepads()[0]!,'axes',{value:[0,0,0,-1],configurable:true}));await page.waitForTimeout(650)
-  await page.evaluate(()=>Object.defineProperty(navigator.getGamepads()[0]!,'axes',{value:[0,0,0,0],configurable:true}));await button(page,0,true);await page.waitForTimeout(180);await button(page,0,false)
-  await page.evaluate(()=>Object.defineProperty(navigator.getGamepads()[0]!,'axes',{value:[0,0,0,1],configurable:true}));await page.waitForTimeout(650)
-  await page.evaluate(()=>Object.defineProperty(navigator.getGamepads()[0]!,'axes',{value:[0,0,0,0],configurable:true}))
- }else{
-  await page.evaluate(()=>document.dispatchEvent(new MouseEvent('mousemove',{movementY:-500,bubbles:true})));await page.mouse.down();await page.waitForTimeout(180);await page.mouse.up()
-  await page.evaluate(()=>document.dispatchEvent(new MouseEvent('mousemove',{movementY:500,bubbles:true})))
- }
- await expect(page.getByTestId('ammo')).not.toContainText('24 /')
- await expect.poll(async()=>Number(await actor.getAttribute('data-health')),{timeout:25000}).toBeLessThan(100)
- await expect(page.getByRole('progressbar',{name:'Health'})).not.toHaveAttribute('aria-valuenow','100')
+ // Reach nearby cover while protected, then take genuine incoming damage within a short walk of supplies.
  const pack=page.locator('[data-pack="south-cover"]')
  const target={x:Number(await pack.getAttribute('data-x')),z:Number(await pack.getAttribute('data-z'))}
+ await expect.poll(async()=>{
+  const x=Number(await actor.getAttribute('data-x')),z=Number(await actor.getAttribute('data-z')),dx=target.x+1.8-x,dz=target.z-z,d=Math.hypot(dx,dz)
+  if(d<.3)return true
+  const yaw=Number((await page.getByTestId('heading').innerText()).match(/[0-9]+/)![0])*Math.PI/180
+  if(controller)await page.evaluate(({dx,dz,d,yaw})=>Object.defineProperty(navigator.getGamepads()[0]!,'axes',{value:[(Math.cos(yaw)*dx-Math.sin(yaw)*dz)/d,-(Math.sin(yaw)*dx+Math.cos(yaw)*dz)/d,0,0],configurable:true}),{dx,dz,d,yaw})
+  else{const delta=Math.atan2(Math.sin(Math.atan2(dx,dz)-yaw),Math.cos(Math.atan2(dx,dz)-yaw));await page.evaluate(delta=>document.dispatchEvent(new MouseEvent('mousemove',{movementX:delta/.0024,bubbles:true})),delta);await page.keyboard.down('KeyW')}
+  return false
+ },{timeout:5000,intervals:[35]}).toBe(true)
+ if(controller)await page.evaluate(()=>Object.defineProperty(navigator.getGamepads()[0]!,'axes',{value:[0,0,0,0],configurable:true}));else await page.keyboard.up('KeyW')
+ await expect(page.getByText('SPAWN PROTECTION',{exact:true})).toBeHidden({timeout:6000})
+ if(controller){await button(page,0,true);await page.waitForTimeout(180);await button(page,0,false)}else{await page.mouse.down();await page.waitForTimeout(180);await page.mouse.up()}
+ await expect.poll(async()=>Number(await actor.getAttribute('data-health')),{timeout:25000}).toBeLessThan(100)
+ await expect(page.getByRole('progressbar',{name:'Health'})).not.toHaveAttribute('aria-valuenow','100')
  // Walk normally to the nearby case. Only keyboard/gamepad input is changed, never game state.
  await expect.poll(async()=>{
   const x=Number(await actor.getAttribute('data-x')),z=Number(await actor.getAttribute('data-z'))

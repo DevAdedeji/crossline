@@ -82,3 +82,10 @@ export function readStick(x = 0, y = 0): { x: number; y: number } {
   const magnitude = (Math.min(length, 1) - deadzone) / (1 - deadzone)
   return { x: x / length * magnitude, y: y / length * magnitude }
 }
+
+export * from './leaderboard.ts'
+export * from './nameVisibility.ts'
+
+/** Requested scaling target, not the currently verified admission cap. */
+export const ONLINE_CAPACITY_TARGET = 500
+export const VERIFIED_ONLINE_CAPACITY = 8

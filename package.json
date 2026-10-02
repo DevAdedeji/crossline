@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@colyseus/sdk": "0.18.4",
+    "@electric-sql/pglite": "^0.5.8",
     "@playwright/test": "latest",
     "@types/node": "^24",
     "concurrently": "latest",

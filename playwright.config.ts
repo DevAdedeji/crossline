@@ -11,7 +11,7 @@ export default defineConfig({
     },
   },
   webServer: [
-    { command: 'node apps/match/dist/index.js', url: 'http://127.0.0.1:2569/health', env: { MATCH_PORT: '2569', WEB_ORIGIN: 'http://127.0.0.1:3001' }, reuseExistingServer: false, timeout: 15000 },
+    { command: 'node apps/match/dist/index.js', url: 'http://127.0.0.1:2569/health', env: { DATABASE_URL: '', MATCH_PORT: '2569', WEB_ORIGIN: 'http://127.0.0.1:3001' }, reuseExistingServer: false, timeout: 15000 },
     { command: 'node apps/web/.output/server/index.mjs', url: 'http://127.0.0.1:3001', env: { HOST: '127.0.0.1', PORT: '3001', NUXT_PUBLIC_MATCH_URL: 'ws://127.0.0.1:2569' }, reuseExistingServer: false, timeout: 15000 },
   ],
 })

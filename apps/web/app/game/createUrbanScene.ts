@@ -30,10 +30,10 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   engine.setHardwareScalingLevel(options.mobile ? Math.max(1.25,window.devicePixelRatio/1.25) : Math.max(1, window.devicePixelRatio / 1.5))
   const scene = new Scene(engine)
   scene.skipPointerMovePicking=true
-  scene.clearColor = new Color4(0.57, 0.66, 0.67, 1)
+  scene.clearColor = new Color4(0.52, 0.61, 0.67, 1)
   scene.fogMode = Scene.FOGMODE_EXP2
   scene.fogDensity = world.limit > 26 ? 0.005 : 0.007
-  scene.fogColor = new Color3(0.68, 0.73, 0.73)
+  scene.fogColor = new Color3(0.66, 0.71, 0.73)
   const skyTexture = new DynamicTexture('daylight sky', { width: 16, height: 256 }, scene, false)
   const skyInk = skyTexture.getContext() as CanvasRenderingContext2D
   const gradient = skyInk.createLinearGradient(0, 0, 0, 256)
@@ -123,6 +123,11 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     metal: material('metal', '#4d615e'),
     wood: material('wood', '#977a4e'),
   }
+  const hospitalWall=material('hospital-wall','#d4e1d8'),hospitalTiles=material('hospital-tile','#c4d0cb'),hospitalLinen=material('hospital-linen','#e2ebe7'),hospitalSteel=material('hospital-enamel','#789b99')
+  hospitalWall.emissiveColor=new Color3(.17,.19,.18)
+  hospitalTiles.diffuseTexture=surfaceTexture('interior-floor',scene);hospitalTiles.emissiveColor=new Color3(.13,.15,.14)
+  hospitalLinen.emissiveColor=new Color3(.22,.24,.23)
+  const hospitalLight=material('hospital-light','#e5f0e9');hospitalLight.emissiveColor=new Color3(.75,.85,.8)
   const staticMeshes: Mesh[] = []
   function box(
     name: string,
@@ -159,7 +164,13 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   const asphalt = material('asphalt', '#414e50'), paint = material('road-paint', '#d7ceaa'), curb = material('curb', '#d1ccba')
   for (const center of world.roadCenters) {
     box('north-south-street', center, .003, 0, 9, .014, span, asphalt)
-    box('east-west-street', 0, .004, center, span, .014, 8, asphalt)
+    // Split crossing roads at intersections: overlapping near-coplanar asphalt caused flicker.
+    let edge=-span/2
+    for(const cross of [...world.roadCenters,span/2+4.5]) {
+      const end=cross-4.5
+      if(end>edge)box('east-west-street',(edge+end)/2,.003,center,end-edge,.014,8,asphalt)
+      edge=cross+4.5
+    }
     for (let n=-world.limit+2;n<world.limit;n+=4) {
       if(world.roadCenters.some(c=>Math.abs(n-c)<5))continue
       box('lane-dash',center,.02,n,.1,.02,1.8,paint)
@@ -170,7 +181,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   for (const x of world.roadCenters) for(const z of world.roadCenters)
     for(let stripe=-3.6;stripe<=3.7;stripe+=1.2)for(const side of [-5.1,5.1])
       box('crosswalk',x+stripe,.025,z+side,.65,.015,1.5,paint)
-  for (const solid of MAP_SOLIDS.filter(s=>!['landmark-factory-crane','landmark-factory-hoist'].includes(s.id)))
+  for (const solid of MAP_SOLIDS.filter(s=>!['landmark-factory-crane','landmark-factory-hoist'].includes(s.id) && !/hospital-bed-\d/.test(s.id)))
     box(
       solid.id,
       solid.x,
@@ -179,7 +190,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
       solid.width,
       solid.height,
       solid.depth,
-      palette[solid.material],
+      solid.id.startsWith('landmark-hospital') ? solid.id.includes('mattress') ? hospitalLinen : /hospital-(floor|roof$)/.test(solid.id) ? hospitalTiles : solid.material==='plaster' ? hospitalWall : /bedhead|locker|nurses/.test(solid.id) ? hospitalSteel : palette[solid.material] : palette[solid.material],
     )
 
   // Solid sloped wedge uses exactly the authoritative ramp's extent and height.
@@ -214,6 +225,26 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   glass.specularColor = Color3.FromHexString('#9fbab4')
   glass.specularPower = 64
   if(world.limit>26) {
+    const medical=material('hospital white','#dbe3dc'),teal=material('hospital teal','#367c78')
+    box('hospital ground floor',-48,.05,-48,29.5,.02,25.5,hospitalTiles)
+    sign('MERCER GENERAL HOSPITAL',-48,8.5,-62.05,0,24,1.1)
+    sign('EMERGENCY / WALK IN',-48,2.7,-65.65,0,10,.55)
+    sign('WARD FLOORS / ROOF ↑',-30.5,1.5,-65.5,0,5,.65)
+    for(let floor=0;floor<3;floor++) {
+      for(const x of [-57,-48,-39])for(const z of [-54,-42])box('hospital ceiling light',x,floor*3.2+2.875,z,1.4,.025,.45,hospitalLight)
+      for(const side of [-1,1])for(const dz of [-7,7]){
+        const x=-48+side*9,z=-48+dz,y=floor*3.2
+        box('hospital bed frame',x,y+.7,z,1.12,.12,2.22,hospitalSteel)
+        for(const dx of [-.43,.43])for(const zz of [-.85,.85])box('hospital bed leg',x+dx,y+.32,z+zz,.07,.64,.07,hospitalSteel)
+        box('hospital pillow',x,y+.95,z+.65,.8,.1,.45,hospitalLinen)
+        box('hospital blanket',x,y+.91,z-.25,1.08,.03,1.4,hospitalSteel)
+      }
+      sign(floor===0?'RECEPTION / EMERGENCY':floor===1?'WARD A / RECOVERY':'WARD B / OBSERVATION',-48,floor*3.2+2.5,-60.65,Math.PI,4,.45)
+      for(const side of [-1,1])box('hospital corridor guide',-48+side*3.18,floor*3.2+1.1,-54.5,.02,.18,9,teal)
+    }
+    box('hospital roof landing marker',-48,9.62,-48,7,.025,.22,medical)
+    box('hospital roof landing marker',-51,9.62,-48,.22,.025,7,medical)
+    box('hospital roof landing marker',-45,9.62,-48,.22,.025,7,medical)
     box('factory work floor',0,.05,48,33.4,.02,25.4,palette.concrete)
     box('tower ground floor',48,.05,48,13.4,.02,15.4,palette.concrete)
     sign('NORTH IRONWORKS',0,7.65,33.95,0,17,1.3)
@@ -232,8 +263,8 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     box('factory hoist cable',1,4.1,46,.05,.9,.05,palette.metal)
     for(const x of [-8,6,-7])box('factory warning band',x,1.55,x===-8?42.47:x===6?46.47:50.47,3.8,.18,.025,paint)
     for(let floor=1;floor<=4;floor++) {
-      const z=floor%2===1?55.3:39.3,y=floor*3.2
-      for(const x of [57.5,60.5])box('stair rail post',x,y+.5,z+(floor%2===1?1.6:-1.6),.09,1,.09,palette.metal)
+      const z=floor%2===1?55.6:38.6,y=floor*3.2
+      for(const x of [57.5,60.5])box('stair rail post',x,y+.5,z+(floor%2===1?.9:-.9),.09,1,.09,palette.metal)
     }
   }
   for (const building of BUILDINGS) {
@@ -360,12 +391,13 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     surface.freeze()
   }
   // Batch immutable geometry by material. Rendering never performs gameplay collision.
-  const groups = new Map<StandardMaterial, Mesh[]>()
+  const groups = new Map<string, Mesh[]>()
   for (const mesh of staticMeshes) {
     const surface = mesh.material as StandardMaterial
-    const group = groups.get(surface) ?? []
+    const key=`${surface.uniqueId}/${Math.floor(mesh.position.x/32)}/${Math.floor(mesh.position.z/32)}`
+    const group = groups.get(key) ?? []
     group.push(mesh)
-    groups.set(surface, group)
+    groups.set(key, group)
   }
   for (const group of groups.values()) {
     const merged = Mesh.MergeMeshes(group, true, true)

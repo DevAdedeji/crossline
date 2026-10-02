@@ -6,7 +6,7 @@ export const COMBAT_DISTRICTS = [
   { name: 'MERCER CENTRE', x: 0, z: 0 },
   { name: 'OLD QUARTER', x: -48, z: 48 },
   { name: 'FOUNDRY', x: 48, z: 48 },
-  { name: 'MARKET ROW', x: -48, z: -48 },
+  { name: 'MERCER HOSPITAL', x: -48, z: -48 },
   { name: 'FREIGHT YARD', x: 48, z: -48 },
   { name: 'NORTH IRONWORKS', x: 0, z: 48 },
   { name: 'SOUTH MOTOR COURT', x: 0, z: -48 },
@@ -39,7 +39,7 @@ function building(id: string, name: string, x: number, z: number, material: Soli
 }
 // Distinct outer districts: shops, industrial buildings, loading lots and staggered street cover.
 for(const [i,d] of COMBAT_DISTRICTS.entries()) {
-  if(i===0 || i===2 || i===5)continue
+  if(i===0 || i===2 || i===3 || i===5)continue
   const industrial=[2,4,7,8].includes(i)
   building(`district-${i}-a`,`${d.name} / ${industrial?'WORKSHOP':'SUPPLY'}`,d.x-12,d.z+12,industrial?'brick':'plaster')
   if(i<=4)building(`district-${i}-b`,`${d.name} / ${industrial?'STORES':'ARCADE'}`,d.x+13,d.z-12,industrial?'metal':'concrete')

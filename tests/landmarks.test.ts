@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { move,TICK_MS } from '../packages/shared/src/index.js'
 import { COMBAT_WORLD, LANDMARK_BUILDINGS, LANDMARK_SPAWNS, isBlocked } from '../packages/shared/src/index.js'
 import { worldHit } from '../packages/shared/src/combat.js'
 import { getNavigation } from '../apps/match/src/training/navigation.js'
@@ -23,4 +24,12 @@ test('landmark factory roof and tower floors occlude shots, while loading bay ad
  assert.ok(worldHit({x:0,y:1.6,z:42},{x:0,y:1,z:0},20,COMBAT_WORLD)>5)
  assert.ok(worldHit({x:48,y:1.6,z:48},{x:0,y:1,z:0},20,COMBAT_WORLD)<1.5)
  assert.ok(worldHit({x:48,y:4.8,z:48},{x:0,y:1,z:0},20,COMBAT_WORLD)<1.5)
+})
+
+test('tower landing admits slow analog stair movement without a double-height lip',()=>{
+ for(const speed of [.2,.4,1]) {
+  let p={x:60.5,y:3.2,z:56}
+  for(let i=0;i<1200 && p.z>38.7;i++)p=move(p,{x:0,z:-speed},TICK_MS,COMBAT_WORLD)
+  assert.ok(p.z<39,JSON.stringify({speed,p}));assert.ok(Math.abs(p.y-6.4)<.01)
+ }
 })

@@ -43,7 +43,33 @@ for(const scenario of [{width:667,height:375,mode:'training'},{width:932,height:
   await page.setViewportSize({width:scenario.width,height:scenario.height});await page.getByRole('button',{name:scenario.mode==='online'?'Resume match':'Resume training',exact:true}).tap()
   await expect(page.getByTestId('ammo')).toBeVisible();await expect(page.getByTestId('ammo')).toHaveText(/\d+ \/ ∞/);const resumed=(await page.getByTestId('ammo').innerText())!;await page.waitForTimeout(350);await expect(page.getByTestId('ammo')).toHaveText(resumed)
   await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await expect(page.locator('main.arena')).toHaveAttribute('data-phase','paused')
+  if(scenario.mode==='online'){
+   await page.getByRole('button',{name:/^LEADERBOARD/}).tap()
+   await expect(page.getByRole('dialog',{name:'Arena leaders'})).toBeVisible()
+   await page.getByRole('button',{name:'BACK · ESC / B / ○',exact:true}).tap()
+   await expect(page.getByRole('dialog',{name:'Arena leaders'})).toBeHidden()
+  }
   await page.getByRole('button',{name:'Return to menu',exact:true}).tap();await expect(page).toHaveURL('http://127.0.0.1:3001/')
   expect(errors).toEqual([])
+ }finally{await context.close()}
+})
+
+test('phone mode tap launches Solo directly, unlocks audio and replays without another Start',async({browser},info)=>{
+ const context=await browser.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true,deviceScaleFactor:2}),page=await context.newPage()
+ try{
+  await page.addInitScript(()=>{const Original=window.AudioContext;const contexts:AudioContext[]=[];(window as unknown as {testAudio:AudioContext[]}).testAudio=contexts;window.AudioContext=class extends Original{constructor(options?:AudioContextOptions){super(options);contexts.push(this)}}})
+  await page.goto('http://127.0.0.1:3001/');await page.getByRole('textbox',{name:'Nickname'}).fill('MOBILE')
+  await page.getByRole('button',{name:'Solo vs Bots',exact:true}).tap()
+  await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing',{timeout:30000})
+  await expect(page.getByRole('button',{name:'Fire',exact:true})).toBeVisible()
+  await expect(page.getByTestId('timer')).toContainText(/4:5|5:00/)
+  expect(await page.evaluate(()=>(window as unknown as {testAudio:AudioContext[]}).testAudio.some(c=>c.state==='running'))).toBe(true)
+  await page.getByRole('button',{name:'Pause',exact:true}).tap();await page.getByRole('button',{name:'Finish session',exact:true}).tap()
+  await expect(page.getByTestId('results')).toBeVisible();await expect(page.getByTestId('personal-best')).toBeVisible()
+  await page.screenshot({path:info.outputPath('phone-solo-results.png')})
+  await page.getByRole('button',{name:'Play again',exact:true}).tap()
+  await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
+  await expect(page.getByRole('button',{name:'Fire',exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'Pause',exact:true}).tap();await page.getByRole('button',{name:'Return to menu',exact:true}).tap()
  }finally{await context.close()}
 })

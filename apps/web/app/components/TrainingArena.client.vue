@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { playerLabels } from '~/game/playerLabels'
+import type { Leaderboard } from '@crossline/shared'
+import { takeEntry } from '~/game/entry'
 import type { Engine } from '@babylonjs/core/Engines/engine'
 import { Client, type Room } from '@colyseus/sdk'
 import { SOLO, stanceEye, type HealthPickup, ROOM_NAME, TICK_MS, readStick, TRAINING_WORLD, COMBAT_WORLD, COMBAT_DISTRICTS, COMBAT_BOT_COUNT } from '@crossline/shared'
 import {
-  RIFLE,
+  RIFLE, QUICK_MATCH_MS,
   aimedTarget,
   direction,
   type Combatant,
@@ -17,8 +20,12 @@ import { loadTrainingAssets } from '~/game/trainingAssets'
 import { combatPresentation, trainingAudio } from '~/game/combatPresentation'
 import { rotateLook, MOUSE_SENSITIVITY } from '~/game/look'
 import { selectController, controllerActivity, controllerButtons, controllerFire, loadFireBinding, DEFAULT_FIRE_BINDING, type FireBinding } from '~/game/controller'
+const entry=takeEntry()
+let pendingLaunch=Boolean(entry), recordedRound=''
+const personalBest=ref(0), newBest=ref(false)
 const props = withDefaults(defineProps<{ mode?: GameMode }>(), { mode: 'training' })
 const isOnline = computed(() => props.mode === 'online')
+const leaders=ref<Leaderboard>(),leadersUnavailable=ref(false),joinError=ref(''),showLeaders=ref(false)
 const onlineEntered = ref(false), onlinePaused = ref(false), onlineCapacity = ref(8), roomCode = ref('')
 const isSolo = computed(() => props.mode === 'solo')
 const world = computed(() => props.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD)
@@ -86,7 +93,7 @@ const hitUntil = ref(0),
   menuIndex = ref(0)
 const look = { yaw: 0, pitch: 0 },
   keys = new Set<string>(),
-  audio = trainingAudio(),
+  audio = trainingAudio(entry?.audio),
   config = useRuntimeConfig()
 let engine: Engine | undefined,
   room: Room<ArenaState> | undefined,
@@ -116,9 +123,9 @@ const accuracy = computed(() =>
 )
 const reloadLeft = computed(() => Math.max(0, (self.value?.reloadUntil ?? 0) - elapsed.value))
 const menuItems = computed(() =>
-  isOnline.value ? [onlineEntered.value ? 'Resume match' : 'Enter arena', 'Return to menu'] :
   phase.value === 'finished'
-    ? ['Run it again', 'Return to menu']
+    ? ['Play again', 'Return to menu']
+    : isOnline.value ? [onlineEntered.value ? 'Resume match' : 'Enter arena', 'Return to menu']
     : phase.value === 'paused'
       ? [`Resume ${sessionWord.value}`, `Restart ${sessionWord.value}`, 'Finish session', 'Return to menu']
       : [`Start ${sessionWord.value}`, 'Return to menu'],
@@ -141,7 +148,7 @@ function release() {
   clearInput()
   padActive.value = false
   touchActive.value=false
-  if (document.pointerLockElement === canvas.value) document.exitPointerLock()
+  if (document.pointerLockElement) document.exitPointerLock()
 }
 function pause() {
   audio.stop()
@@ -179,8 +186,9 @@ async function start(usePad = false) {
     return
   }
   try {
-    await canvas.value?.requestPointerLock()
-    if (document.pointerLockElement === canvas.value) {
+    if(!document.pointerLockElement)await canvas.value?.requestPointerLock()
+    if (document.pointerLockElement === canvas.value || document.pointerLockElement === document.documentElement) {
+      captured.value=true
       padActive.value = false
       if(isOnline.value) { onlineEntered.value=true; onlinePaused.value=false; phase.value='playing' }
       action('start')
@@ -201,13 +209,19 @@ function choose(index: number, usePad = false) {
     release()
     return
   }
-  if (label === `Restart ${sessionWord.value}` || label === 'Run it again') {
+  if (label === `Restart ${sessionWord.value}` || label === 'Play again') {
     action('restart')
     Object.assign(look, { yaw: 0, pitch: 0 })
     menuIndex.value = 0
+    void start(usePad)
     return
   }
   void start(usePad)
+}
+async function openLeaders(){
+  pause();showLeaders.value=true
+  if(status.value==='Connected'){room?.send('leaderboard');return}
+  try{leaders.value=await $fetch<Leaderboard>('/api/leaderboard');leadersUnavailable.value=false}catch{leadersUnavailable.value=true}
 }
 function toggleAudio() {
   muted.value = !muted.value
@@ -219,8 +233,15 @@ function reload() {
   }
 }
 function keydown(event: KeyboardEvent) {
+  if (event.code === 'Tab' && isOnline.value) {
+    event.preventDefault()
+    if (!event.repeat) { if (showLeaders.value) showLeaders.value=false; else void openLeaders() }
+    return
+  }
+  if (showLeaders.value && event.code !== 'Escape') return
   if (event.code === 'Escape') {
     event.preventDefault()
+    if(showLeaders.value){showLeaders.value=false;return}
     if (showControls.value) { showControls.value = false; bindingFire.value = false; return }
     pause()
     return
@@ -260,13 +281,14 @@ function mouseUp(event: MouseEvent) {
   if (event.button === 2) mouseAim = false
 }
 function pointerChange() {
-  captured.value = document.pointerLockElement === canvas.value
-  if (!captured.value && !padActive.value && phase.value === 'playing') pause()
+  captured.value = document.pointerLockElement === canvas.value || document.pointerLockElement === document.documentElement
+  if (!captured.value && !padActive.value && !touchActive.value && phase.value === 'playing') pause()
 }
 function hidden() {
   if (document.hidden) pause()
 }
-const resize = () => {portrait.value=window.innerHeight>window.innerWidth;if(touchDevice.value && portrait.value)pause();engine?.resize()}
+const resize = () => {portrait.value=window.innerHeight>window.innerWidth;if(touchDevice.value && portrait.value)pause();else if(pendingLaunch && self.value)launchEntry();engine?.resize()}
+function launchEntry(){if(!pendingLaunch || (touchDevice.value && portrait.value))return;pendingLaunch=false;void start(entry?.input==='pad')}
 function touchMode(){if(phase.value!=='playing')return;touchActive.value=true;padActive.value=false}
 function touchMove(x:number,z:number){touchMode();touchMovement={x,z}}
 function touchLook(x:number,y:number){if(!active.value)return;touchMode();Object.assign(look,rotateLook(look,x*.004,y*.004))}
@@ -306,6 +328,8 @@ function pollPad(dt: number) {
     return
   }
   if (document.hasFocus() && !document.hidden) {
+    if(showLeaders.value){if(edge(0)||edge(1)||edge(8))showLeaders.value=false;previousButtons=pressed;return}
+    if(isOnline.value && edge(8)){void openLeaders();previousButtons=pressed;return}
     if (phase.value === 'playing') {
       if (!pressed[0]) selectFireArmed = true
       if (!padActive.value && (controllerActivity(pad) || controllerFire(pad, fireBinding.value))) {
@@ -332,7 +356,8 @@ function pollPad(dt: number) {
     } else {
       selectFireArmed = false
       if (edge(1)) {
-        if (showControls.value) { showControls.value = false; bindingFire.value = false }
+        if(showLeaders.value){showLeaders.value=false;return}
+    if (showControls.value) { showControls.value = false; bindingFire.value = false }
         else if (phase.value === 'paused') void start(true)
         else void navigateTo('/')
         previousButtons = pressed
@@ -352,6 +377,8 @@ function pollPad(dt: number) {
   previousButtons = pressed
 }
 onMounted(async () => {
+  try{personalBest.value=Number(localStorage.getItem(`crossline.best.${props.mode}`))||0}catch{}
+  duration.value=props.mode==='training'?180000:QUICK_MATCH_MS
   touchDevice.value=matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints>0
   portrait.value=window.innerHeight>window.innerWidth
   await nextTick()
@@ -368,7 +395,8 @@ onMounted(async () => {
       return
     }
     arena.addVehicles(assets)
-    const supplies = isSolo.value ? healthPickups(scene) : undefined
+    const supplies = props.mode!=='training' ? healthPickups(scene) : undefined
+    const labels=isOnline.value?playerLabels(scene,camera,world.value):undefined
     const visuals = combatPresentation(scene, camera, assets, arena.shadows, props.mode)
     await scene.whenReadyAsync()
     if (stopped) return
@@ -408,6 +436,7 @@ onMounted(async () => {
         phase.value === 'playing' && (self.value?.health ?? 0) > 0,
         self.value?.reloadUntil ?? 0,
       )
+      labels?.frame()
       scene.render()
     })
     document.addEventListener('mousemove', mouseLook)
@@ -422,29 +451,49 @@ onMounted(async () => {
     window.addEventListener('resize', resize)
     resize()
     const client = new Client(String(config.public.matchUrl))
+    let name=''
+    try{name=localStorage.getItem('crossline.callsign') ?? ''}catch{}
     let joined: Room<ArenaState>
     if(isOnline.value) {
-      let token: string | null = null, name = ''
+      let token: string | null = null, guestToken=''
+      try{guestToken=localStorage.getItem('crossline.guest') ?? ''}catch{}
       try { token=sessionStorage.getItem('crossline.ffa.reconnect'); name=localStorage.getItem('crossline.callsign') ?? '' } catch {}
-      try { joined=token ? await client.reconnect<ArenaState>(token) : await client.joinOrCreate<ArenaState>('ffa',{name}) }
-      catch { joined=await client.joinOrCreate<ArenaState>('ffa',{name}) }
+      async function joinArena(){
+        const info=await $fetch('/api/arena')
+        if(info.full)throw Object.assign(new Error('Arena full'),{code:4213})
+        try{return info.roomId?await client.joinById<ArenaState>(info.roomId,{name,guestToken}):await client.joinOrCreate<ArenaState>('ffa',{name,guestToken})}
+        catch(error){
+          const current=await $fetch('/api/arena')
+          if(current.full)throw Object.assign(new Error('Arena full'),{code:4213})
+          if(!info.roomId && current.roomId)return client.joinById<ArenaState>(current.roomId,{name,guestToken})
+          throw error
+        }
+      }
+      try { joined=token ? await client.reconnect<ArenaState>(token) : await joinArena() }
+      catch { joined=await joinArena() }
       Object.assign(joined.reconnection,{enabled:true,minUptime:0,minDelay:300,maxDelay:2000,maxRetries:12})
       try { sessionStorage.setItem('crossline.ffa.reconnect',joined.reconnectionToken) } catch {}
       roomCode.value=joined.roomId
-    } else joined = await client.create<ArenaState>(isSolo.value ? 'solo' : ROOM_NAME)
+    } else joined = await client.create<ArenaState>(isSolo.value ? 'solo' : ROOM_NAME,{name})
     if (stopped) {
       await joined.leave()
       return
     }
     room = joined
     status.value = 'Connected'
+    if(isOnline.value){
+      room.onMessage('guest',(guest:{token:string})=>{if(/^[a-f0-9]{64}$/.test(guest.token))try{localStorage.setItem('crossline.guest',guest.token)}catch{}})
+      room.onMessage('leaderboard',(board:Leaderboard)=>{leaders.value=board;leadersUnavailable.value=false})
+      room.onMessage('leaderboard-status',()=>{leadersUnavailable.value=true})
+      room.send('profile');room.send('leaderboard')
+    }
     room.onStateChange((state) => {
       if (state.round !== round.value) {
         visuals.reset()
         audio.stop()
       }
       confirmedPhase.value = state.phase
-      const nextPhase = isOnline.value ? !onlineEntered.value ? 'ready' : onlinePaused.value ? 'paused' : state.phase : state.phase
+      const nextPhase = state.phase==='finished' ? 'finished' : isOnline.value ? !onlineEntered.value ? 'ready' : onlinePaused.value ? 'paused' : state.phase : state.phase
       if (phase.value !== nextPhase) menuIndex.value = 0
       phase.value = nextPhase
       onlineCapacity.value=state.capacity ?? 8
@@ -459,6 +508,14 @@ onMounted(async () => {
       state.actors.forEach((a) => values.push({ ...a }))
       actors.value = values
       self.value = values.find((a) => a.id === joined.sessionId)
+      if(self.value && pendingLaunch)launchEntry()
+      if(state.phase==='finished' && recordedRound!==`${joined.roomId}/${state.round}`){
+        recordedRound=`${joined.roomId}/${state.round}`
+        const score=self.value?.score ?? 0
+        newBest.value=score>personalBest.value
+        personalBest.value=Math.max(personalBest.value,score)
+        try{localStorage.setItem(`crossline.best.${props.mode}`,String(personalBest.value))}catch{}
+      }
       const player = self.value
       if (player) {
         cameraTarget.set(player.x, player.y + stanceEye(player), player.z)
@@ -478,6 +535,7 @@ onMounted(async () => {
         const district = props.mode !== 'training' ? [...COMBAT_DISTRICTS].sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0]?.name : 'MERCER STREET'
         area.value = building ? player.y>=(building.height ?? 4.1)-.2 ? 'ROOFTOPS' : `${building.name}${building.height ? ` / LEVEL ${Math.floor(player.y/3.2)+1}` : ''}` : player.y>3.8 ? 'UPPER WALKWAY' : district ?? 'MERCER STREET'
       }
+      labels?.sync(values.filter(a=>a.id!==joined.sessionId))
       visuals.sync(isOnline.value ? values.filter(a=>a.id !== joined.sessionId) : values)
       if (state.phase === 'finished' || state.phase === 'paused') release()
     })
@@ -557,7 +615,9 @@ onMounted(async () => {
       })
     }, TICK_MS)
   } catch (error) {
-    console.error('Training initialization failed', error)
+    const code=error && typeof error==='object' && 'code' in error ? error.code : undefined
+    joinError.value=code===4213?'Arena is full. Wait for a free seat, then retry.':code===4214?'Guest statistics are unavailable. Please retry shortly.':'The arena could not connect. Check the match server and retry.'
+    console.error('Arena initialization failed',typeof code==='number'?code:'unavailable')
     status.value = 'Arena unavailable'
     release()
   }
@@ -596,9 +656,13 @@ onBeforeUnmount(() => {
         {{ world.name }}<small>{{ area }}</small>
       </div>
       <div class="timer" data-testid="timer">
-        {{ time }}<small>{{ modeTitle.toUpperCase() }} / {{ isOnline ? 'CONTINUOUS' : `ROUND ${round}` }}</small>
+        {{ time }}<small>{{ modeTitle.toUpperCase() }} / {{ isOnline ? 'SHARED ARENA' : `ROUND ${round}` }}</small>
       </div>
     </header>
+    <button v-if="isOnline" class="leaderboard-launch" @click="openLeaders">LEADERBOARD <span v-if="!touchDevice">· TAB / VIEW / SHARE</span></button>
+    <section v-if="showLeaders" class="leaderboard-dialog" role="dialog" aria-modal="true" aria-label="Arena leaders">
+      <div><LeaderboardPanel :board="leaders" :unavailable="leadersUnavailable" /><button class="leaderboard-close" @click="showLeaders=false">BACK · ESC / B / ○</button></div>
+    </section>
     <aside class="radar-panel">
       <svg :viewBox="radarBox" :aria-label="`${modeTitle} radar`" class="radar">
         <rect :x="-world.limit-1" :y="-world.limit-1" :width="world.limit*2+2" :height="world.limit*2+2" fill="#1d2929" />
@@ -632,7 +696,7 @@ onBeforeUnmount(() => {
         </circle></svg
       ><small>{{ status }} · {{ isOnline ? `${actors.length} / ${onlineCapacity} PLAYERS` : isSolo ? `${COMBAT_BOT_COUNT} COMBAT BOTS` : '3 TARGETS · 2 PATROLS' }}</small>
     </aside>
-    <div v-if="isSolo && healUntil>now" class="health-feedback" role="status" data-testid="health-feedback">+{{ healAmount }} HP · SUPPLIES COLLECTED</div>
+    <div v-if="mode !== 'training' && healUntil>now" class="health-feedback" role="status" data-testid="health-feedback">+{{ healAmount }} HP · SUPPLIES COLLECTED</div>
     <div class="kill-feed">
       <p v-for="item in feed.filter((f) => f.until > now)" :key="item.until + item.text">
         {{ item.text }}
@@ -660,7 +724,7 @@ onBeforeUnmount(() => {
             ? 'SESSION COMPLETE'
             : phase === 'paused'
               ? 'TAKE A BREATHER'
-              : `${world.name} / ${isSolo ? 'SOLO MATCH' : 'LIVE PRACTICE'}`
+              : `${world.name} / ${isOnline ? 'SHARED ARENA' : isSolo ? 'SOLO MATCH' : 'LIVE PRACTICE'}`
         }}</span>
         <h1>
           {{
@@ -672,7 +736,7 @@ onBeforeUnmount(() => {
           }}
         </h1>
         <p v-if="phase === 'ready'">
-          {{ isOnline ? 'Human players only. Unlimited respawns. Continuous scoring until you leave. Open another client on this local server to play together.' : isSolo ? 'Twelve bots targeting you. Use cover and crouch. Walk over green supply cases for +35 HP; they return after 25 seconds. Health does not regenerate in Solo.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
+          {{ isOnline ? 'Human players only. One ongoing arena. Quick respawns. Join friends on the same match server.' : isSolo ? 'Five minutes. Twelve bots targeting you. Use cover and crouch. Walk over green supply cases for +35 HP; they return after 25 seconds. Health does not regenerate in Solo.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
         </p>
         <p v-if="phase === 'paused'">
           {{ isOnline ? 'Your controls are paused. The shared match continues and your character stays vulnerable.' : 'The whole session is paused. Your timer and opponents will wait.' }}
@@ -696,11 +760,13 @@ onBeforeUnmount(() => {
             >HEAD HITS
           </div>
         </div>
+        <p v-if="phase === 'finished'" data-testid="personal-best">{{ newBest ? 'NEW PERSONAL BEST' : 'PERSONAL BEST' }} · {{ personalBest }} POINTS <small>ON THIS DEVICE</small></p>
         <ol v-if="(isSolo && phase === 'finished') || isOnline" class="my-5 space-y-2 text-sm" aria-label="Match standings">
           <li v-for="(actor, index) in [...actors].sort((a,b) => b.score-a.score)" :key="actor.id" class="flex justify-between border-b border-white/10 py-1" :class="{ 'text-[#d9ff9c]': actor.id === self?.id }">
             <span>{{ index + 1 }} · {{ actor.name }}{{ actor.connected === false ? ' · RECONNECTING' : actor.participating === false ? ' · LOBBY' : '' }}</span><span>{{ actor.kills }} K / {{ actor.deaths }} D · {{ actor.score }}</span>
           </li>
         </ol>
+        <p v-if="joinError" role="alert">{{ joinError }}</p>
         <div class="menu-actions">
           <button
             v-for="(label, i) in menuItems"
@@ -729,7 +795,7 @@ onBeforeUnmount(() => {
         <p v-if="showControls && touchDevice" class="controls">Left stick moves · Swipe the right side to look · Hold FIRE · AIM toggles sights · RELOAD · CROUCH · Ⅱ pauses</p>
         <p v-if="showControls && !touchDevice" class="controls">
           WASD move · Mouse look · Left click fire · Right click aim<br />R reload · Esc pause ·
-          {{ isSolo ? 'Walk over green cases for +35 HP · C toggles crouch · Ctrl holds crouch' : 'Health regenerates after cover · C toggles crouch · Ctrl holds crouch' }}
+          {{ mode !== 'training' ? 'Walk over green cases for +35 HP · C toggles crouch · Ctrl holds crouch' : 'Practice health regenerates after cover · C toggles crouch · Ctrl holds crouch' }}
         </p>
         <p v-if="showControls && !touchDevice" class="controls">
           Controller: sticks move/look · A / × or RT / R2 fire · LT / L2 aim · X / □ reload<br />A / × select · Start
@@ -1087,6 +1153,9 @@ footer strong span {
     font-size: 20px;
   }
 }
+.reconnect{display:block;margin:16px 0 12px;padding:10px 14px;border:1px solid #ffb15c;background:#1c292c;color:#ffb15c}
+.leaderboard-launch{position:absolute;right:32px;top:100px;z-index:30;border:1px solid #ffffff45;background:#152126de;padding:9px 12px;font-size:10px;letter-spacing:.08em;color:#eef1ed;pointer-events:auto}
+.leaderboard-launch span{color:#a0aeac;font-size:8px}.leaderboard-dialog{position:absolute;inset:0;z-index:60;background:#071015e8;display:grid;place-items:center;padding:24px}.leaderboard-dialog>div{width:min(720px,96vw);max-height:90dvh;overflow-y:auto;background:#121f24;border-top:3px solid #ffb15c;padding:24px}.leaderboard-close{display:block;width:100%;padding:12px;background:#ffffff15;margin-top:18px;font-size:11px}.touch-layout .leaderboard-launch{top:56px;right:calc(12px + env(safe-area-inset-right));padding:8px;font-size:9px}.touch-layout .leaderboard-dialog{padding:10px}.touch-layout .leaderboard-dialog>div{padding:16px;max-height:94dvh}
 </style>
 
 <style scoped>

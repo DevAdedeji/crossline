@@ -25,7 +25,7 @@ test('Solo packs heal partial HP, cap at 100, leave full/dead players alone and 
  run(g,1100);assert.equal(human.health,100);assert.ok(human.protectedUntil-g.elapsed>2800)
  assert.equal(pack.availableAt<=g.elapsed,true,'death does not consume supplies')
  g.restart();assert.ok([...g.healthPacks.values()].every(p=>p.availableAt===0));assert.equal(g.elapsed,0)
- assert.equal(game('training').healthPacks.size,0);assert.equal(game('online').healthPacks.size,0)
+ assert.equal(game('training').healthPacks.size,0);assert.equal(game('online').healthPacks.size,SOLO_HEALTH_PACKS.length)
 })
 test('pickup collection requires same floor, radius, line of sight, life and one authoritative claim',()=>{
  const g=game(),human=g.actors.get('human')!,pack=g.healthPacks.get('supply-door')!
@@ -99,4 +99,15 @@ test('Solo incoming hits use lower bot damage, kill at zero, and permit time to 
  assert.equal(human.health,before-SOLO.botBodyDamage)
  for(let i=0;i<8&&human.health>0;i++){g.elapsed+=200;g.fire(bot,Math.PI,Math.atan2(.5,8),true)}
  assert.equal(human.health,0);assert.equal(human.deaths,1);assert.ok(human.respawnUntil>g.elapsed)
+})
+
+test('Online packs have one authoritative winner, reject protected/lobby claims and do not passively regenerate',()=>{
+ const g=game('online'),a=g.actors.get('human')!,pack=g.healthPacks.get('south-cover')!
+ g.addHuman('b','BRAVO');g.enterHuman('b');const b=g.actors.get('b')!
+ for(const actor of [a,b])Object.assign(actor,{x:pack.x,y:0,z:pack.z,health:40,protectedUntil:g.elapsed+100})
+ g.step();assert.equal(a.health,40);assert.equal(b.health,40)
+ a.protectedUntil=0;b.protectedUntil=0;g.step();assert.equal(a.health,75);assert.equal(b.health,40)
+ assert.equal(g.drainEvents().filter(e=>e.type==='heal').length,1)
+ g.acceptInput({...idle,health:100,pickupId:pack.id},b.id);run(g,6000);assert.equal(b.health,40)
+ pack.availableAt=0;a.participating=false;b.participating=false;g.step();assert.equal(pack.availableAt,0)
 })

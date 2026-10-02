@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { COMBAT_WORLD, COMBAT_DISTRICTS, COMBAT_SPAWNS, TRAINING_WORLD, move, isBlocked, TICK_MS } from '../packages/shared/src/index.js'
-import { worldHit } from '../packages/shared/src/combat.js'
+import { QUICK_MATCH_MS, worldHit } from '../packages/shared/src/combat.js'
 import { getNavigation } from '../apps/match/src/training/navigation.js'
 import { TrainingGame } from '../apps/match/src/training/TrainingGame.js'
 
@@ -33,10 +33,10 @@ test('large Solo simulations stay bounded and target only humans across full mat
  await getNavigation(COMBAT_WORLD).precompute()
  for(const initialSeed of [11,41,124]) {
   let seed=initialSeed
-  const game=new TrainingGame('human',180000,()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296},'solo')
+  const game=new TrainingGame('human',QUICK_MATCH_MS,()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296},'solo')
   assert.equal(game.actors.size,13);game.start()
   let shots=0,kills=0,maxStep=0
-  for(let i=0;i<5401;i++) {
+  for(let i=0;i<9001;i++) {
     const start=performance.now();game.step();maxStep=Math.max(maxStep,performance.now()-start)
     for(const event of game.drainEvents()) {
       if(event.type==='shot')shots++

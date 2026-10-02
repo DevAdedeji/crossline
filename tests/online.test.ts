@@ -41,7 +41,7 @@ test('Online mutual combat respects world cover, cadence, protection, death and 
  assert.ok(Math.hypot(b.x-old.x,b.z-old.z)>4);assert.equal(isBlocked(b,COMBAT_WORLD),false)
  const score=a.score;g.enterHuman('a');assert.equal(a.score,score);assert.equal(a.health,75)
 })
-test('Online late joins and removal preserve the continuous shared session and identities are bounded',()=>{
+test('Online late joins and removal preserve the shared round and identities are bounded',()=>{
  const g=game();g.elapsed=180000;g.step();assert.equal(g.phase,'playing')
  g.actors.get('a')!.score=40;g.addHuman('c','CHARLIE');g.enterHuman('c')
  assert.equal(g.actors.get('a')!.score,40);assert.ok(g.elapsed>180000)

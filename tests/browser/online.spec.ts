@@ -35,6 +35,8 @@ test('two browser players share FFA, pause locally, reconnect and leave using co
     await expect(page.locator('main.arena')).toHaveAttribute('data-server-phase','playing')
     await expect(page.getByTestId('online-session')).toContainText('ALPHA-')
     await expect(page.getByRole('list',{name:'Match standings'})).toContainText('BRAVO-')
+    await pulse(page,8);await expect(page.getByRole('dialog',{name:'Arena leaders'})).toBeVisible()
+    await pulse(page,1);await expect(page.getByRole('dialog',{name:'Arena leaders'})).toBeHidden()
     await button(page,0,true);await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
     await page.waitForTimeout(500);await expect(page.getByTestId('ammo')).toContainText('24 /')
     await button(page,0,false);await page.waitForTimeout(150);await button(page,0,true)

@@ -2,7 +2,7 @@ import type { Position } from '@crossline/shared'
 import { RIFLE } from '@crossline/shared/combat'
 
 /** Local CC0 field recordings. Reload playback follows authoritative simulation progress. */
-export function trainingAudio() {
+export function trainingAudio(preparedContext?: AudioContext) {
   let context: AudioContext | undefined,
     master: GainNode | undefined,
     muted = false
@@ -13,7 +13,7 @@ export function trainingAudio() {
     reloadKey = 0
   const voices = new Set<AudioBufferSourceNode>()
   async function prepare() {
-    context = new AudioContext()
+    context = preparedContext ?? new AudioContext()
     master = context.createGain()
     master.gain.value = 0.8
     const limiter = context.createDynamicsCompressor()

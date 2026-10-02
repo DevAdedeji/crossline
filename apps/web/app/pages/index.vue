@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { Leaderboard } from '@crossline/shared'
+import { prepareEntry } from '~/game/entry'
 import { readStick } from '@crossline/shared'
 import { selectController, controllerButtons } from '~/game/controller'
 
@@ -8,23 +10,23 @@ const modes = [
     number: '01',
     title: 'Solo vs Bots',
     subtitle: 'YOUR OWN BATTLEGROUND',
-    description: 'Twelve bots targeting you. Use cover, crouch, and collect health packs across nine districts.',
+    description: 'Five minutes. Twelve bots. One rifle. Use cover, crouch and health packs to beat your best score.',
     available: true,
-    players: '1 PLAYER + 12 BOTS · LARGE MAP',
+    players: '5 MIN · 1 PLAYER + 12 BOTS',
   },
   {
     id: 'online',
     number: '02',
     title: 'Online Free-for-All',
     subtitle: 'EVERY ANGLE IS YOURS',
-    description: 'Human-only combat on Mercer Districts. Continuous scores and unlimited respawns. Runs on your local match server.',
+    description: 'One shared human arena. Join anytime, collect health packs and climb the kill/death leaderboards.',
     available: true,
-    players: 'HUMAN PLAYERS · UP TO 8 PER ROOM',
+    players: 'SHARED ARENA · UP TO 8 PLAYERS',
   },
   {
     id: 'training',
     number: '03',
-    title: 'Training',
+    title: 'Practice',
     subtitle: 'ENTER THE PROVING GROUND',
     description:
       'Three-minute practice with stationary targets and slow patrols. Master the carbine, streets, interiors and rooftops.',
@@ -32,11 +34,13 @@ const modes = [
     players: '1 PLAYER + 5 BOTS',
   },
 ]
-const active = ref(2)
+const active = ref(0)
+let launching = false
 const selected = computed(() => modes[active.value]!)
 const message = ref('')
 const controller = ref('MOUSE / KEYBOARD')
-const showControls = ref(false)
+const showControls = ref(false),showLeaders=ref(false),leaders=ref<Leaderboard>(),leadersUnavailable=ref(false)
+async function loadLeaders(){showLeaders.value=true;try{leaders.value=await $fetch<Leaderboard>('/api/leaderboard');leadersUnavailable.value=false}catch{leadersUnavailable.value=true}}
 const callsign = ref('')
 watch(callsign, value => { if(import.meta.client)try { localStorage.setItem('crossline.callsign',value) } catch {} })
 let wasBackPressed = false, wasDetailsPressed = false
@@ -49,20 +53,21 @@ function setFocus(index: number) {
   active.value = index
   message.value = ''
 }
-function selectMode(index: number) {
-  active.value = index
-  if (modes[index]?.available) {
-    void navigateTo(modes[index]?.id === 'training' ? '/play' : `/play?mode=${modes[index]?.id}`)
-    return
-  }
-  message.value = `${modes[index]!.title} is in development. Training is playable now.`
+async function selectMode(index: number, usePad=false) {
+  if(launching)return
+  launching=true;active.value=index
+  const input=usePad?'pad':navigator.maxTouchPoints>0?'touch':'mouse'
+  await prepareEntry(input)
+  await navigateTo(modes[index]?.id === 'training' ? '/play' : `/play?mode=${modes[index]?.id}`)
 }
+
 function focusMode(index: number) {
   active.value = (index + modes.length) % modes.length
   message.value = ''
   document.getElementById(`mode-${modes[active.value]!.id}`)?.focus()
 }
 function keydown(event: KeyboardEvent) {
+  if (showLeaders.value) {if(event.key==='Escape')showLeaders.value=false;return}
   if (showControls.value) {
     if (event.key === 'Escape') showControls.value = false
     return
@@ -85,11 +90,12 @@ function pollGamepad(time: number) {
     const pressed = controllerButtons(pad)
     if (!pressed[0]) confirmArmed = true
     const back = Boolean(pressed[1]), details = Boolean(pressed[3])
-    const controlsWereOpen = showControls.value
+    const controlsWereOpen = showControls.value || showLeaders.value
+    if(showLeaders.value && ((back && !wasBackPressed) || (pressed[0] && !wasConfirmPressed)))showLeaders.value=false
     if ((back && !wasBackPressed) || (showControls.value && pressed[0] && !wasConfirmPressed)) showControls.value = false
     else if (details && !wasDetailsPressed) showControls.value = !showControls.value
     wasBackPressed = back; wasDetailsPressed = details
-    if (showControls.value || controlsWereOpen) {
+    if (showControls.value || showLeaders.value || controlsWereOpen) {
       wasConfirmPressed = Boolean(pressed[0])
       frame = requestAnimationFrame(pollGamepad)
       return
@@ -110,7 +116,7 @@ function pollGamepad(time: number) {
     }
     previousDirection = direction
     const confirm = Boolean(pressed[0])
-    if (confirmArmed && confirm && !wasConfirmPressed) selectMode(active.value)
+    if (confirmArmed && confirm && !wasConfirmPressed) void selectMode(active.value,true)
     wasConfirmPressed = confirm
   } else {
     wasConfirmPressed = false
@@ -144,12 +150,15 @@ onBeforeUnmount(() => {
     <section class="flex w-full flex-1 flex-col justify-center px-6 py-10 sm:px-12 lg:max-w-[720px] lg:px-16">
       <p class="mb-3 text-[11px] font-bold tracking-[.35em] text-[#ffb15c]">PLAY / MERCER BLOCK</p>
       <h1 class="display-type mb-8 text-5xl leading-none font-black uppercase tracking-[-.035em] sm:text-7xl">Choose your<br />battleground.</h1>
+      <label class="mb-5 block text-xs tracking-widest text-white/65">GUEST NICKNAME
+        <input v-model="callsign" data-ui-action maxlength="16" placeholder="OPERATOR" class="ml-3 border border-white/25 bg-black/40 px-3 py-2 text-white" aria-label="Nickname" />
+      </label>
       <nav aria-label="Game modes" class="space-y-1">
         <button v-for="(mode, index) in modes" :id="`mode-${mode.id}`" :key="mode.id"
           class="group relative flex w-full items-center gap-5 border-l-4 px-5 py-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[#ffb15c]"
-          :class="active === index ? 'border-[#ffb15c] bg-white/10' : 'border-transparent bg-black/10 hover:bg-white/5'"
+          :class="[active === index ? 'border-[#ffb15c] bg-white/10' : 'border-transparent bg-black/10 hover:bg-white/5', mode.id === 'training' ? 'practice-option' : '']"
           :aria-label="mode.available ? mode.title : `${mode.title} — in development`"
-          :aria-pressed="active === index" @mousemove="setFocus(index)" @focus="setFocus(index)" @click="setFocus(index)">
+          :aria-pressed="active === index" @mousemove="setFocus(index)" @focus="setFocus(index)" @click="selectMode(index)">
           <span class="text-xs tabular-nums text-white/35">{{ mode.number }}</span>
           <span class="flex-1"><strong class="display-type block text-2xl leading-none font-black uppercase tracking-wide sm:text-3xl">{{ mode.title }}</strong>
             <span class="mt-2 block text-[10px] tracking-[.2em] text-white/45">{{ mode.players }}</span></span>
@@ -159,13 +168,6 @@ onBeforeUnmount(() => {
       </nav>
       <div class="mt-6 min-h-[105px] border-t border-white/15 pt-5">
         <p class="mb-4 max-w-md text-sm leading-relaxed text-white/65">{{ selected.description }}</p>
-        <label v-if="selected.id === 'online'" class="mb-4 block text-xs text-white/65">CALLSIGN
-          <input v-model="callsign" data-ui-action maxlength="16" placeholder="OPERATOR" class="ml-3 border border-white/25 bg-black/40 px-3 py-2 text-white" aria-label="Callsign" />
-        </label>
-        <NuxtLink v-if="selected.available" :to="selected.id === 'training' ? '/play' : `/play?mode=${selected.id}`"
-          :aria-label="selected.id === 'online' ? 'Enter online free-for-all' : selected.id === 'solo' ? 'Enter solo vs bots' : 'Enter training'"
-          class="inline-flex min-w-48 items-center justify-between gap-10 bg-[#ffb15c] px-6 py-3 text-sm font-black tracking-[.15em] text-[#161a1b] transition hover:bg-[#ffc98f] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">DEPLOY <span>→</span></NuxtLink>
-        <button v-else data-ui-action class="border border-white/20 px-6 py-3 text-xs font-bold tracking-widest text-white/40" @click="selectMode(active)">MATCHMAKING IN DEVELOPMENT</button>
         <p v-if="message" role="status" class="mt-3 text-xs text-[#ffb15c]">{{ message }}</p>
       </div>
     </section>
@@ -175,14 +177,17 @@ onBeforeUnmount(() => {
       <div class="mt-3 ml-auto h-px w-28 bg-[#ffb15c]" />
     </div>
     <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-6 py-4 text-[10px] font-bold tracking-[.1em] text-white/50 sm:px-12">
-      <span>← → / D-PAD SELECT <span class="mx-3 text-white/20">|</span> ENTER / A / × DEPLOY</span>
-      <div class="flex gap-6"><span data-testid="menu-controller">{{ controller }}</span><NuxtLink to="/credits" class="hover:text-white">CREDITS</NuxtLink></div>
+      <span>← → / D-PAD SELECT <span class="mx-3 text-white/20">|</span> ENTER / A / × PLAY</span>
+      <div class="flex gap-6"><button data-ui-action @click="loadLeaders">LEADERBOARD</button><span data-testid="menu-controller">{{ controller }}</span><NuxtLink to="/credits" class="hover:text-white">CREDITS</NuxtLink></div>
     </footer>
+    <section v-if="showLeaders" role="dialog" aria-modal="true" aria-label="Arena leaders" class="absolute inset-0 z-20 grid place-items-center bg-black/85 p-6">
+      <div class="w-full max-w-2xl max-h-[90dvh] overflow-y-auto bg-[#131d22] p-6"><LeaderboardPanel :board="leaders" :unavailable="leadersUnavailable" /><button data-ui-action class="mt-6 w-full bg-white/10 p-3" @click="showLeaders=false">CLOSE</button></div>
+    </section>
     <section v-if="showControls" role="dialog" aria-modal="true" aria-label="Controls" class="absolute inset-0 z-20 grid place-items-center bg-black/80 p-6 backdrop-blur-sm">
       <div class="w-full max-w-lg border-t-2 border-[#ffb15c] bg-[#131d22] p-8 shadow-2xl">
         <p class="text-xs tracking-[.25em] text-[#ffb15c]">FIELD GUIDE</p><h2 class="display-type mt-2 mb-7 text-4xl font-black">STAY IN CONTROL.</h2>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm"><dt class="text-white/50">MOVE / LOOK</dt><dd>WASD + mouse / sticks</dd><dt class="text-white/50">FIRE</dt><dd>Left click / A / × / RT / R2</dd><dt class="text-white/50">AIM</dt><dd>Right click / LT / L2</dd><dt class="text-white/50">CROUCH</dt><dd>C toggle / Ctrl hold / R3 toggle</dd><dt class="text-white/50">RELOAD</dt><dd>R / Xbox X / PlayStation □</dd><dt class="text-white/50">SELECT / BACK</dt><dd>A / × · B / ○</dd><dt class="text-white/50">PAUSE</dt><dd>Esc / Start / B / ○</dd></dl>
-        <p class="mt-6 text-xs leading-relaxed text-white/50">On phones, turn to landscape for a movement stick, swipe look, and fire/aim/reload/crouch buttons. Release A / × after deploying, then press it to fire. For a generic controller, assign its trigger from the in-game Controls panel.</p>
+        <p class="mt-6 text-xs leading-relaxed text-white/50">On phones, turn to landscape for a movement stick, swipe look, and fire/aim/reload/crouch buttons. Release A / × after selecting a mode, then press it to fire. For a generic controller, assign its trigger from the in-game Controls panel.</p>
         <button data-ui-action class="mt-7 w-full bg-white/10 py-3 text-xs font-bold tracking-widest hover:bg-white/20" @click="showControls = false">CLOSE · ESC / B / ○</button>
       </div>
     </section>
@@ -190,5 +195,8 @@ onBeforeUnmount(() => {
 </template>
 <style scoped>
 .display-type, .brand-word { font-family: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; font-stretch: condensed; }
+.practice-option { margin-top: 1rem; padding-block: .8rem; opacity: .8; }
+.practice-option strong { font-size: 1.15rem; }
+@media(max-height:500px) and (orientation:landscape) { .lobby header,.lobby footer { padding-block:.55rem; } .lobby section { padding-block:1rem; } .lobby h1 { font-size:2rem; margin-bottom:.8rem; } .lobby nav button { padding-block:.65rem; } .lobby nav strong { font-size:1.2rem; } }
 .lobby-scene { background: linear-gradient(130deg, #162026, #303c3e 55%, #171e21); background-image: url('/images/mercer-menu.jpg'); background-position: center; background-size: cover; }
 </style>
