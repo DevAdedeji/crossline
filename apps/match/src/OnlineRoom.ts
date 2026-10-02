@@ -85,7 +85,7 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
   private canPlay(id:string){const account=this.accounts.get(id);return this.authorized.has(id)&&Boolean(account&&account.expiresAt>Date.now())}
   private revoke(client:Client){this.revoked.add(client.sessionId);this.authorized.delete(client.sessionId);this.game.stopHuman(client.sessionId);client.send('session-ended',{});client.leave(4001,'Sign in again')}
   private async checkSessions(){
-    if(this.checking)return;this.checking=true
+    if(this.checking||this.clients.length===0)return;this.checking=true
     try{const service=await accountService();for(const client of this.clients){const who=this.accounts.get(client.sessionId);if(!who||!(await service.valid(who)))this.revoke(client)}}
     catch{for(const client of this.clients)this.revoke(client)}finally{this.checking=false}
   }
@@ -103,7 +103,7 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
     void this.publishLeaders()
   }
   private async publishLeaders(){
-    if(this.leaderboardBusy)return
+    if(this.leaderboardBusy||this.clients.length===0)return
     this.leaderboardBusy=true
     try{this.broadcast('leaderboard',await (await accountService()).statistics.leaderboard())}
     catch{this.broadcast('leaderboard-status',{unavailable:true})}

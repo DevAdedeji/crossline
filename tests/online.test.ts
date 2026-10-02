@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { TrainingGame } from '../apps/match/src/training/TrainingGame.js'
-import { playerName } from '../apps/match/src/OnlineRoom.js'
+import { OnlineRoom, playerName } from '../apps/match/src/OnlineRoom.js'
 import { TICK_MS, isBlocked, COMBAT_WORLD, COMBAT_SPAWNS } from '../packages/shared/src/index.js'
 function game() {
   const g=new TrainingGame('',0,()=>.5,'online')
@@ -61,4 +61,13 @@ test('crowded respawn preserves the selected safe location with at most one visi
  assert.deepEqual({x:actor.x,y:actor.y,z:actor.z},{x:0,y:8,z:45})
  assert.ok(calls>0&&calls<=COMBAT_SPAWNS.length*15,`visibility calls: ${calls}`)
  assert.equal(isBlocked(actor,COMBAT_WORLD),false)
+})
+
+test('empty persistent arena performs no leaderboard or session database polling',async()=>{
+ const room=new OnlineRoom()
+ const forbidden=()=>{throw new Error('Idle arena attempted account work')}
+ Object.defineProperty(room,'leaderboardBusy',{get:()=>false,set:forbidden})
+ Object.defineProperty(room,'checking',{get:()=>false,set:forbidden})
+ await room['publishLeaders']()
+ await room['checkSessions']()
 })

@@ -1,14 +1,14 @@
-# Hosting preparation — not activated
+# Hosting configuration
 
-No Crossline hosting service, credentials, database or deployment has been provisioned. Inspect provider account access, plan eligibility, quotas and the existing Railway spending limit before provisioning. These files do not authorize deployment or paid upgrades.
+Crossline has a Vercel Hobby frontend at https://crossline-three.vercel.app, a dedicated Neon Free project (`lucky-wildflower-20999788`) in the separate Crossline organization, and a private Railway project (`53c80f78-e308-480f-bd26-6ea7d96cb3d7`). The Neon schema migrations have been applied with verified TLS. Hosting secret entry, the Railway endpoint, and end-to-end production verification are still pending; a successful frontend build alone does not establish working gameplay. Existing projects and the Railway spending cap remain unchanged.
 
-## Intended topology
+## Topology
 
 Vercel serves Nuxt (`apps/web` with shared workspace packages included). Railway runs one long-lived match process. PostgreSQL stores accounts and transactional score records. Keep one match replica: room budgets, admission counters, replay detection and the single 100-seat arena are process-local. Restarts reset live matches; committed account totals remain in PostgreSQL.
 
 The browser sends auth and matchmaking HTTP requests to the same-origin Nuxt gateway. Gameplay uses WSS directly. Nuxt signs each forwarded request using a server-only secret, binding method, path/query, body, cookie, verified client IP, timestamp and nonce. Railway rejects unsigned/tampered/expired/replayed requests before allocating rooms. The Vercel gateway trusts only the platform-overwritten `x-vercel-forwarded-for` header when `VERCEL=1`; arbitrary hosting proxies require a separately reviewed adapter. Do not manually set `VERCEL=1` on another host. Raw forwarding headers never decide the match server's auth rate-limit bucket.
 
-## Inactive configuration
+## Configuration
 
 Web service:
 
@@ -21,7 +21,7 @@ Match service:
 - `NODE_ENV=production`, `MATCH_HOST=0.0.0.0`, platform `PORT` (omit local `MATCH_PORT`).
 - `WEB_ORIGIN=https://<web-host>` exactly matching the web configuration. CORS and browser WebSocket origins are restricted to it.
 - `DATABASE_URL`. Remote TLS always verifies certificates using Node’s trusted CA store (including Neon). For providers with a private CA, set `DATABASE_CA_FILE` to a securely supplied certificate file. No insecure bypass is offered.
-- `BETTER_AUTH_SECRET` and a distinct `MATCH_PROXY_SECRET`, each at least 32 strong random characters. No actual secrets are included or generated here.
+- `BETTER_AUTH_SECRET` and a distinct `MATCH_PROXY_SECRET`, each at least 32 strong random characters. Actual values are excluded from source control and entered through the provider dashboards.
 - `DB_POOL_MAX=3` (allowed 1–5); `FFA_MAX_CLIENTS=100` (allowed 2–100).
 
 Signup requires username, email and password and establishes a session immediately. Login requires email/password. No email-provider login, domain verification, sender credentials, SMTP or Resend dependency remains. New addresses stay `emailVerified=false`; account access is not proof of email ownership. Password reset, account linking and email changes are deferred, and the verification/reset HTTP routes are not exposed.
@@ -36,6 +36,10 @@ Better Auth retains persisted per-endpoint rate limits, secure HttpOnly SameSite
 
 Online commits each elimination to an idempotent transactional ledger before publishing score state and kill events. A database failure pauses simulation and retries the same IDs; no confirmed score relies on an in-memory retry queue. This trades availability/latency for durable confirmation. A crash can lose an unconfirmed tick or post-commit notification, and there is no live match-state recovery. Measure hosted DB latency before launch. Earlier local capacity measurements predate this change and do not certify hosted throughput.
 
-`AUTH_DEV_LOCAL=1` is for nonproduction loopback only. It stores local accounts under ignored `.crossline-local/`; automated tests use synthetic addresses. Local and browser tests do not demonstrate Aiven TLS connectivity, Vercel header delivery, Railway WSS or physical-phone performance. Those integrations, account quotas, spending protection, monitoring and any credential/provisioning approvals remain outstanding. The configured 100-seat cap still requires staged load validation; previous measurements covered only 8/16/32 local clients before commit-before-confirmation changes.
+`AUTH_DEV_LOCAL=1` is for nonproduction loopback only. It stores local accounts under ignored `.crossline-local/`; automated tests use synthetic addresses. Local and browser tests do not demonstrate Vercel header delivery, Railway WSS or physical-phone performance. Verify these integrations against the hosted URLs before claiming a live launch. The configured 100-seat cap still requires staged load validation; previous measurements covered only 8/16/32 local clients before commit-before-confirmation changes.
 
 Sources: [Vercel request headers](https://vercel.com/docs/headers/request-headers), [Aiven TLS certificates](https://aiven.io/docs/platform/concepts/tls-ssl-certificates).
+
+## Neon idle behavior
+
+Neon Free includes 100 compute-unit hours per project each month and suspends idle compute after five minutes. The persistent arena skips leaderboard and session database polling when it has no clients. Health and arena status use memory; the PostgreSQL pool closes idle connections after 20 seconds. Pending score commits still retry until durable, even after players disconnect. Active players, explicit leaderboard requests and account operations legitimately wake the database. A connected player can keep it active; the free allowance is not a 24/7 database guarantee.
