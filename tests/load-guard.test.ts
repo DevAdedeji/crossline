@@ -1,7 +1,8 @@
+import { onlineCapacity } from '../apps/match/src/capacity.ts'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { loadCapacity } from '../apps/match/src/loadMetrics.ts'
-test('experimental capacity cannot enable a public listener, real database or 500 clients',()=>{
+test('experimental capacity cannot enable a public listener, real database or unbounded load clients',()=>{
  const keys=['NODE_ENV','CROSSLINE_LOCAL_LOAD','MATCH_HOST','AUTH_DEV_LOCAL','AUTH_LOCAL_PATH','DATABASE_URL','FFA_MAX_CLIENTS']
  const previous=Object.fromEntries(keys.map(key=>[key,process.env[key]]))
  try{
@@ -12,4 +13,11 @@ test('experimental capacity cannot enable a public listener, real database or 50
    const original=process.env[key!];process.env[key!]=value;assert.throws(()=>loadCapacity());process.env[key!]=original
   }
  }finally{for(const key of keys){if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key]}}
+})
+
+
+test('normal Online admission defaults to 100, accepts explicit smaller caps and rejects values outside 2–100',()=>{
+ assert.equal(onlineCapacity({}),100)
+ for(const n of [2,8,32,100])assert.equal(onlineCapacity({FFA_MAX_CLIENTS:String(n)}),n)
+ for(const value of ['1','101','500','NaN','Infinity','2.5',''])assert.throws(()=>onlineCapacity({FFA_MAX_CLIENTS:value}))
 })

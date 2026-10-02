@@ -86,6 +86,5 @@ export function readStick(x = 0, y = 0): { x: number; y: number } {
 export * from './leaderboard.ts'
 export * from './nameVisibility.ts'
 
-/** Requested scaling target, not the currently verified admission cap. */
-export const ONLINE_CAPACITY_TARGET = 500
-export const VERIFIED_ONLINE_CAPACITY = 8
+/** Configured admission ceiling; simultaneous-player performance requires load validation. */
+export const ONLINE_CAPACITY_TARGET = 100

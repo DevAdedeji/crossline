@@ -2,34 +2,20 @@
 import { authClient } from '~/game/account'
 import { prepareEntry, takeEntry } from '~/game/entry'
 const emit=defineEmits<{signedIn:[];close:[]}>()
-const panel=ref<HTMLElement>(),signup=ref(false),username=ref(''),email=ref(''),password=ref(''),busy=ref(false),error=ref(''),verify=ref(false),local=ref(false),available=ref(false)
+const panel=ref<HTMLElement>(),signup=ref(false),username=ref(''),email=ref(''),password=ref(''),busy=ref(false),error=ref(''),local=ref(false),available=ref(false)
 let frame=0,previous:boolean[]=[],usePad=false
 const input=()=>usePad?'pad':navigator.maxTouchPoints>0?'touch':'mouse'
 async function cleanup(){if(document.pointerLockElement)document.exitPointerLock();const entry=takeEntry();await entry?.audio.close()}
 async function submit(){
  if(busy.value)return;busy.value=true;error.value=''
  try{
-  if(!signup.value)await prepareEntry(input())
-  const result=signup.value?await authClient.signUp.email({username:username.value.trim().toLowerCase(),name:username.value.trim().toLowerCase(),email:email.value.trim(),password:password.value,callbackURL:'/play?mode=online'}):await authClient.signIn.email({email:email.value.trim(),password:password.value})
-  if(result.error?.status===403 && !signup.value){await cleanup();verify.value=true;return}
-  if(result.error)throw new Error(result.error.status===429?'Too many attempts. Wait a minute and retry.':'Unable to continue. Check your details and email verification.')
+  await prepareEntry(input())
+  const result=signup.value?await authClient.signUp.email({username:username.value.trim().toLowerCase(),name:username.value.trim().toLowerCase(),email:email.value.trim(),password:password.value}):await authClient.signIn.email({email:email.value.trim(),password:password.value})
+  if(result.error)throw new Error(result.error.status===429?'Too many attempts. Wait a minute and retry.':'Unable to continue. Check your email and password.')
   password.value=''
-  if(signup.value){verify.value=true;return}
   emit('signedIn')
  }catch(e){await cleanup();error.value=e instanceof Error?e.message:'Unable to sign in.'}
  finally{busy.value=false}
-}
-async function verifyLocal(){
- if(busy.value)return;busy.value=true;error.value=''
- try{
-  await prepareEntry(input())
-  const result=await $fetch<{url:string|null}>('/api/auth/dev-inbox',{query:{email:email.value.trim()}})
-  if(!result.url)throw new Error('No captured verification email yet. Try again shortly.')
-  const link=new URL(result.url);const response=await fetch(link.pathname+link.search,{credentials:'same-origin'})
-  if(!response.ok)throw new Error('Verification failed. Sign up or log in again.')
-  const session=await authClient.getSession();if(!session.data?.user.emailVerified)throw new Error('Verification failed.')
-  emit('signedIn')
- }catch(e){await cleanup();error.value=e instanceof Error?e.message:'Verification failed.'}finally{busy.value=false}
 }
 function focusTrap(event:KeyboardEvent){
  if(event.key!=='Tab')return
@@ -56,19 +42,14 @@ onBeforeUnmount(()=>cancelAnimationFrame(frame))
  <section class="account-gate" role="dialog" aria-modal="true" aria-label="Online account" @keydown="focusTrap" @keydown.esc.stop.prevent="!busy && emit('close')">
   <div ref="panel" class="account-panel">
    <div class="account-top"><strong>CROSSLINE / ONLINE</strong><button :disabled="busy" aria-label="Close account form" @click="emit('close')">✕</button></div>
-   <h1>{{ verify ? 'Check your email.' : signup ? 'Create your account.' : 'Welcome back.' }}</h1>
-   <p v-if="local" class="local-note">LOCAL TEST ACCOUNTS · Use an @example.test email. Emails are captured here, never sent.</p>
+   <h1>{{ signup ? 'Create your account.' : 'Welcome back.' }}</h1>
+   <p v-if="local" class="local-note">LOCAL DEVELOPMENT · Accounts stay on this computer.</p>
    <p v-if="error" role="alert">{{ error }}</p>
-   <template v-if="verify">
-    <p>Verify your email to enter Online. Your username is public; your email stays private.</p>
-    <button v-if="local" class="primary" :disabled="busy" @click="verifyLocal">{{ busy ? 'VERIFYING…' : 'VERIFY LOCAL TEST EMAIL & PLAY' }}</button>
-    <button :disabled="busy" @click="verify=false;signup=false">Back to login</button>
-   </template>
-   <form v-else @submit.prevent="submit">
+   <form @submit.prevent="submit">
     <label v-if="signup">Username<input v-model="username" name="username" aria-label="Username" autocomplete="username" minlength="3" maxlength="16" pattern="[A-Za-z0-9_]{3,16}" required :disabled="busy||!available" /><small>3–16 letters, numbers or underscores</small></label>
     <label>Email<input v-model="email" name="email" type="email" autocomplete="email" required maxlength="254" :disabled="busy||!available" /></label>
     <label>Password<input v-model="password" name="password" aria-label="Password" type="password" :autocomplete="signup?'new-password':'current-password'" minlength="10" maxlength="128" required :disabled="busy||!available" /><small v-if="signup">At least 10 characters</small></label>
-    <button class="primary" type="submit" :disabled="busy||!available">{{ busy ? 'PLEASE WAIT…' : signup ? 'CREATE ACCOUNT' : 'LOG IN & PLAY' }}</button>
+    <button class="primary" type="submit" :disabled="busy||!available">{{ busy ? 'PLEASE WAIT…' : signup ? 'CREATE ACCOUNT & PLAY' : 'LOG IN & PLAY' }}</button>
     <button type="button" :disabled="busy" @click="signup=!signup;error='';password=''">{{ signup ? 'Already have an account? Log in' : 'New here? Create an account' }}</button>
    </form>
   </div>

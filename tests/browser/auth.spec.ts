@@ -1,6 +1,6 @@
 import { test,expect } from '@playwright/test'
 import { createTestAccount, TEST_PASSWORD } from '../../scripts/test-account'
-test('compact signup verifies a captured email, launches Online, persists login and logs out without exposing email',async({page},info)=>{
+test('compact signup immediately launches Online, persists login and logs out without exposing email',async({page},info)=>{
  test.setTimeout(60000)
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
  await page.goto('/');await page.getByRole('button',{name:'Online Free-for-All',exact:true}).click()
@@ -9,9 +9,8 @@ test('compact signup verifies a captured email, launches Online, persists login 
  await page.getByRole('textbox',{name:'Username',exact:true}).fill('AuthPlayer')
  await page.getByRole('textbox',{name:'Email',exact:true}).fill('authplayer@example.test')
  await page.getByLabel('Password',{exact:true}).fill(TEST_PASSWORD)
- await page.getByRole('button',{name:'CREATE ACCOUNT',exact:true}).click()
- await expect(page.getByRole('heading',{name:'Check your email.'})).toBeVisible()
- await page.getByRole('button',{name:'VERIFY LOCAL TEST EMAIL & PLAY',exact:true}).click()
+ await page.getByRole('button',{name:'CREATE ACCOUNT & PLAY',exact:true}).click()
+ await expect(page.getByRole('heading',{name:'Check your email.'})).toHaveCount(0)
  await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing',{timeout:30000})
  const id=await page.locator('main.arena').getAttribute('data-player-id');await expect(page.locator(`[data-actor="${id}"] title`)).toHaveText('authplayer')
  expect(await page.locator('body').innerText()).not.toContain('authplayer@example.test')
@@ -35,7 +34,7 @@ test('landscape phone account form scrolls, accepts signup and launches with tou
   await page.goto('http://127.0.0.1:3001/play?mode=online');await page.getByRole('button',{name:'New here? Create an account'}).tap()
   await page.getByRole('textbox',{name:'Username',exact:true}).fill('phoneauth');await page.getByRole('textbox',{name:'Email',exact:true}).fill('phoneauth@example.test');await page.getByLabel('Password',{exact:true}).fill(TEST_PASSWORD)
   await page.screenshot({path:info.outputPath('phone-signup.png')})
-  await page.getByRole('button',{name:'CREATE ACCOUNT',exact:true}).tap();await page.getByRole('button',{name:'VERIFY LOCAL TEST EMAIL & PLAY',exact:true}).tap()
+  await page.getByRole('button',{name:'CREATE ACCOUNT & PLAY',exact:true}).tap()
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing',{timeout:30000});await expect(page.getByRole('button',{name:'Fire',exact:true})).toBeVisible()
   await page.getByRole('button',{name:'Pause',exact:true}).tap();await page.getByRole('button',{name:'Return to menu',exact:true}).tap();await expect(page).toHaveURL('http://127.0.0.1:3001/')
  }finally{await context.close()}

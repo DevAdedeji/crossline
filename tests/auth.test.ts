@@ -11,22 +11,21 @@ import * as schema from '../packages/db/src/schema.ts'
 const {eq}=createRequire(new URL('../packages/db/package.json',import.meta.url))('drizzle-orm')
 const base='http://127.0.0.1:3001',password='Synthetic-Test-Only-2026!'
 async function fixture(){
- const path=await mkdtemp(join(tmpdir(),'crossline-auth-')),mail=new Map<string,string>()
+ const path=await mkdtemp(join(tmpdir(),'crossline-auth-'))
  const database=await openAccountDatabase({localPath:path,migrations:resolve('packages/db/drizzle')})
- const service=createAccountService({database,baseURL:base,secret:'only-synthetic-local-auth-tests-no-production-use',local:true,sendVerification:async(email,url)=>{mail.set(email,url)}})
+ const service=createAccountService({database,baseURL:base,secret:'only-synthetic-local-auth-tests-no-production-use',local:true})
  async function request(path:string,body?:object,cookie='',ip='127.0.0.2',origin=base){return service.auth.handler(new Request(base+'/api/auth/'+path,{method:body?'POST':'GET',headers:{'content-type':'application/json',origin,'x-crossline-client-ip':ip,...(cookie?{cookie}:{})},...(body?{body:JSON.stringify(body)}:{})}))}
  async function signup(username:string){const response=await request('sign-up/email',{username,name:username,email:username.toLowerCase()+'@example.test',password});assert.equal(response.status,200);return response}
  const cookies=(response:Response)=>response.headers.getSetCookie().map(c=>c.split(';')[0]).join('; ')
- async function verify(username:string){const url=new URL(mail.get(username.toLowerCase()+'@example.test')!);const response=await request('verify-email'+url.search);assert.ok(response.status===200||response.status===302);return cookies(response)}
+ async function login(username:string){const response=await request('sign-in/email',{email:username.toLowerCase()+'@example.test',password});assert.equal(response.status,200);return cookies(response)}
  async function token(cookie:string){const response=await request('one-time-token/generate',undefined,cookie);assert.equal(response.status,200);return (await response.json() as {token:string}).token}
- return {path,database,service,mail,request,signup,verify,token,cookies,async close(){await service.close();await rm(path,{recursive:true,force:true})}}
+ return {path,database,service,request,signup,login,token,cookies,async close(){await service.close();await rm(path,{recursive:true,force:true})}}
 }
-test('verified account admission rejects guest tokens, replay, unverified users, spoofed identity and expired sessions',async t=>{
+test('signup establishes a session without claiming email ownership; admission rejects forged and expired credentials',async t=>{
  const f=await fixture();t.after(()=>f.close())
- const signup=await f.signup('Alpha');assert.equal(signup.headers.get('set-cookie'),null)
- const login=await f.request('sign-in/email',{email:'alpha@example.test',password});assert.equal(login.status,403)
+ const signup=await f.signup('Alpha');const cookie=f.cookies(signup);assert.ok(cookie.includes('session_token'));assert.equal((await f.database.db.select().from(schema.user))[0]!.emailVerified,false)
+ const login=await f.request('sign-in/email',{email:'alpha@example.test',password});assert.equal(login.status,200)
  await assert.rejects(()=>f.service.admit('a'.repeat(64)))
- const cookie=await f.verify('alpha');assert.ok(cookie.includes('session_token'))
  const ticket=await f.token(cookie),who=await f.service.admit(ticket)
  assert.equal(who.displayName,'alpha');assert.equal(await f.service.valid(who),true)
  await assert.rejects(()=>f.service.admit(ticket),'single-use ticket rejects replay')
@@ -46,12 +45,12 @@ test('username uniqueness, required normalization and validation are enforced by
   {name:'Missing',email:'missing@example.test',password},
   {username:'<script>',name:'bad',email:'invalid@example.test',password},
   {username:'short',name:'short',email:'short@example.test',password:'short'},
-  {username:'realmail',name:'realmail',email:'private@example.com',password},
+  {username:'badmail',name:'badmail',email:'not-an-email',password},
  ]){const response=await f.request('sign-up/email',body);assert.ok(response.status>=400)}
  const rows=await f.database.db.select().from(schema.user);assert.equal(rows.length,1);assert.equal(rows[0]!.username,'alpha')
 })
 test('logout revokes session and join tickets, cross-origin mutations fail, and login attempts are rate limited',async t=>{
- const f=await fixture();t.after(()=>f.close());await f.signup('bravo');const cookie=await f.verify('bravo')
+ const f=await fixture();t.after(()=>f.close());await f.signup('bravo');const cookie=await f.login('bravo')
  const who=await f.service.admit(await f.token(cookie)),unused=await f.token(cookie)
  const csrf=await f.request('sign-out',{},cookie,'127.0.0.2','https://attacker.example');assert.equal(csrf.status,403);assert.equal(await f.service.valid(who),true)
  const logout=await f.request('sign-out',{},cookie);assert.equal(logout.status,200);assert.equal(await f.service.valid(who),false);await assert.rejects(()=>f.service.admit(unused))
@@ -59,10 +58,10 @@ test('logout revokes session and join tickets, cross-origin mutations fail, and 
  for(let i=0;i<12;i++)last=(await f.request('sign-in/email',{email:'nobody@example.test',password},'','127.0.0.9')).status
  assert.equal(last,429)
 })
-test('account statistics use verified IDs, deduplicate atomic events, exclude private fields and survive reopen',async t=>{
+test('account statistics use authenticated IDs, deduplicate atomic events, exclude private fields and survive reopen',async t=>{
  const f=await fixture();let closed=false;t.after(async()=>{if(!closed)await f.close();else await rm(f.path,{recursive:true,force:true})})
  await f.signup('killer');await f.signup('victim')
- const a=await f.service.admit(await f.token(await f.verify('killer'))),b=await f.service.admit(await f.token(await f.verify('victim'))),event=randomUUID()
+ const a=await f.service.admit(await f.token(await f.login('killer'))),b=await f.service.admit(await f.token(await f.login('victim'))),event=randomUUID()
  assert.equal(await f.service.statistics.record(event,a.id,b.id),true);assert.equal(await f.service.statistics.record(event,a.id,b.id),false)
  assert.equal(await f.service.statistics.record(randomUUID(),a.id,a.id),false)
  await assert.rejects(()=>f.service.statistics.record(randomUUID(),a.id,'forged-account'))
@@ -73,11 +72,11 @@ test('account statistics use verified IDs, deduplicate atomic events, exclude pr
  try{const users=await reopened.db.select().from(schema.user);assert.equal(users.length,2);const stats=await reopened.db.select().from(schema.accountStats);assert.equal(stats.find(s=>s.userId===a.id)!.kills,1)}finally{await reopened.close()}
 })
 test('expired join tickets fail and public-cookie settings require Secure, HttpOnly and SameSite',async t=>{
- const f=await fixture();t.after(()=>f.close());await f.signup('cookiecheck');const cookie=await f.verify('cookiecheck')
+ const f=await fixture();t.after(()=>f.close());await f.signup('cookiecheck');const cookie=await f.login('cookiecheck')
  const ticket=await f.token(cookie)
  await f.database.db.update(schema.verification).set({expiresAt:new Date(Date.now()-1000)})
  await assert.rejects(()=>f.service.admit(ticket))
- const secure=createAccountService({database:f.database,baseURL:'https://crossline.example',secret:'synthetic-production-cookie-policy-test-fixture-only',local:false,sendVerification:async()=>{}})
+ const secure=createAccountService({database:f.database,baseURL:'https://crossline.example',secret:'synthetic-production-cookie-policy-test-fixture-only',local:false})
  const response=await secure.auth.handler(new Request('https://crossline.example/api/auth/sign-in/email',{method:'POST',headers:{'content-type':'application/json',origin:'https://crossline.example','x-crossline-client-ip':'127.0.0.10'},body:JSON.stringify({email:'cookiecheck@example.test',password})}))
  assert.equal(response.status,200)
  const values=response.headers.getSetCookie().join('; ')
@@ -91,4 +90,14 @@ test('first-run local auth creates nested private storage without an existing da
   try { assert.equal((await database.db.select().from(schema.user)).length, 0) }
   finally { await database.close() }
  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+
+test('ordinary email signup signs in immediately while client-supplied email ownership stays unverified',async t=>{
+ const f=await fixture();t.after(()=>f.close())
+ const response=await f.request('sign-up/email',{username:'ordinary',name:'ordinary',email:'player@example.com',password,emailVerified:true})
+ assert.equal(response.status,200)
+ const cookie=f.cookies(response),who=await f.service.admit(await f.token(cookie))
+ assert.equal(who.displayName,'ordinary')
+ assert.equal((await f.database.db.select().from(schema.user))[0]!.emailVerified,false)
 })

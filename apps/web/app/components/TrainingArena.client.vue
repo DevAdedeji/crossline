@@ -5,7 +5,7 @@ import type { Leaderboard } from '@crossline/shared'
 import { takeEntry } from '~/game/entry'
 import type { Engine } from '@babylonjs/core/Engines/engine'
 import { Client, type Room } from '@colyseus/sdk'
-import { SOLO, stanceEye, type HealthPickup, ROOM_NAME, TICK_MS, readStick, TRAINING_WORLD, COMBAT_WORLD, COMBAT_DISTRICTS, COMBAT_BOT_COUNT } from '@crossline/shared'
+import { ONLINE_CAPACITY_TARGET, SOLO, stanceEye, type HealthPickup, ROOM_NAME, TICK_MS, readStick, TRAINING_WORLD, COMBAT_WORLD, COMBAT_DISTRICTS, COMBAT_BOT_COUNT } from '@crossline/shared'
 import {
   RIFLE, QUICK_MATCH_MS,
   aimedTarget,
@@ -27,7 +27,7 @@ const personalBest=ref(0), newBest=ref(false)
 const props = withDefaults(defineProps<{ mode?: GameMode }>(), { mode: 'training' })
 const isOnline = computed(() => props.mode === 'online')
 const leaders=ref<Leaderboard>(),leadersUnavailable=ref(false),joinError=ref(''),showLeaders=ref(false)
-const onlineEntered = ref(false), onlinePaused = ref(false), onlineCapacity = ref(8), roomCode = ref('')
+const onlineEntered = ref(false), onlinePaused = ref(false), onlineCapacity = ref(ONLINE_CAPACITY_TARGET), roomCode = ref('')
 const isSolo = computed(() => props.mode === 'solo')
 const world = computed(() => props.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD)
 const radarBox = computed(() => { const r=world.value.limit+2; return `${-r} ${-r} ${r*2} ${r*2}` })
@@ -459,12 +459,12 @@ onMounted(async () => {
       let token: string | null = null
       try { token=sessionStorage.getItem('crossline.ffa.reconnect'); name=localStorage.getItem('crossline.callsign') ?? '' } catch {}
       async function joinArena(){
-        const info=await $fetch('/api/arena')
+        const info=await $fetch<{roomId:string|null;full:boolean;capacity:number;seats:number}>('/api/arena')
         if(info.full)throw Object.assign(new Error('Arena full'),{code:4213})
         const joinToken=await onlineJoinToken()
         try{return info.roomId?await client.joinById<ArenaState>(info.roomId,{joinToken}):await client.joinOrCreate<ArenaState>('ffa',{joinToken})}
         catch(error){
-          const current=await $fetch('/api/arena')
+          const current=await $fetch<{roomId:string|null;full:boolean;capacity:number;seats:number}>('/api/arena')
           if(current.full)throw Object.assign(new Error('Arena full'),{code:4213})
           if(!info.roomId && current.roomId)return client.joinById<ArenaState>(current.roomId,{joinToken:await onlineJoinToken()})
           throw error
@@ -498,7 +498,7 @@ onMounted(async () => {
       const nextPhase = state.phase==='finished' ? 'finished' : isOnline.value ? !onlineEntered.value ? 'ready' : onlinePaused.value ? 'paused' : state.phase : state.phase
       if (phase.value !== nextPhase) menuIndex.value = 0
       phase.value = nextPhase
-      onlineCapacity.value=state.capacity ?? 8
+      onlineCapacity.value=state.capacity ?? ONLINE_CAPACITY_TARGET
       const availablePacks:HealthPickup[]=[]
       state.healthPacks?.forEach(pack=>availablePacks.push({...pack}))
       packs.value=availablePacks
@@ -619,7 +619,7 @@ onMounted(async () => {
     }, TICK_MS)
   } catch (error) {
     const code=error && typeof error==='object' && 'code' in error ? error.code : undefined
-    joinError.value=code===4213?'Arena is full. Wait for a free seat, then retry.':code===4214?'Sign in with a verified account to enter Online.':code===4215?'This account is already in the arena. Leave its other session or reconnect.':'The arena could not connect. Check the match server and retry.'
+    joinError.value=(code===4213||code===409)?'Arena is full. Wait for a free seat, then retry.':code===4214?'Sign in with your account to enter Online.':code===4215?'This account is already in the arena. Leave its other session or reconnect.':'The arena could not connect. Check the match server and retry.'
     console.error('Arena initialization failed',typeof code==='number'?code:'unavailable')
     status.value = 'Arena unavailable'
     release()

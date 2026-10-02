@@ -1,16 +1,17 @@
+import { onlineCapacity } from './capacity.js'
 import { CommitGate } from './commitGate.js'
-import { loadCapacity, createLoadMetrics } from './loadMetrics.js'
+import { createLoadMetrics } from './loadMetrics.js'
 import { randomUUID } from 'node:crypto'
 import { accountService, type OnlineIdentity } from './auth/service.js'
 import { Room, ServerError, type Client } from '@colyseus/core'
-import { TICK_MS, INPUT_TIMEOUT_MS, ONLINE_CAPACITY_TARGET, VERIFIED_ONLINE_CAPACITY } from '@crossline/shared'
+import { TICK_MS, INPUT_TIMEOUT_MS, ONLINE_CAPACITY_TARGET } from '@crossline/shared'
 import { Actor, HealthPack, TrainingState } from './TrainingRoom.js'
 import { TrainingGame } from './training/TrainingGame.js'
 
 export { playerName } from './playerName.js'
 
 let activeArenaId:string|undefined,activeArenaInfo:(()=>{full:boolean;capacity:number;seats:number})|undefined
-export function arenaStatus(){return {roomId:activeArenaId ?? null,...(activeArenaInfo?.() ?? {full:false,capacity:VERIFIED_ONLINE_CAPACITY,seats:0}),target:ONLINE_CAPACITY_TARGET}}
+export function arenaStatus(){return {roomId:activeArenaId ?? null,...(activeArenaInfo?.() ?? {full:false,capacity:onlineCapacity(),seats:0}),target:ONLINE_CAPACITY_TARGET}}
 /** Continuous human-only arena. A local menu never pauses the shared simulation. */
 export class OnlineRoom extends Room<{state: TrainingState}> {
   maxMessagesPerSecond=120
@@ -27,10 +28,9 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
   private game = new TrainingGame('',0,Math.random,'online')
   private lastInput=new Map<string,number>()
   onCreate() {
-    if(activeArenaId && activeArenaId!==this.roomId)throw new ServerError(4213,'Arena is full. Wait for a free seat and try again.')
+    if(activeArenaId && activeArenaId!==this.roomId)throw new ServerError(409,'Arena is full. Wait for a free seat and try again.')
     activeArenaId=this.roomId;activeArenaInfo=()=>({full:this.locked,capacity:this.maxClients,seats:this.state.actors.size})
-    const capacity=Number(process.env.FFA_MAX_CLIENTS ?? VERIFIED_ONLINE_CAPACITY)
-    if(!Number.isInteger(capacity)||capacity<2||capacity>(loadCapacity() ?? VERIFIED_ONLINE_CAPACITY)) throw new Error('FFA_MAX_CLIENTS must be 2–8; the requested 500-player target is not load-verified')
+    const capacity=onlineCapacity()
     this.maxClients=capacity
     this.setState(new TrainingState())
     this.state.capacity=capacity; this.state.duration=this.game.durationMs; this.state.phase='playing'
@@ -92,7 +92,7 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
   async onAuth(_client:Client,options:unknown) {
     const value=options && typeof options==='object'?options as {joinToken?:unknown}:{}
     try{return await (await accountService()).admit(value.joinToken)}
-    catch{throw new ServerError(4214,'Sign in with a verified account to enter Online.')}
+    catch{throw new ServerError(4214,'Sign in with your account to enter Online.')}
   }
   onJoin(client:Client,_options:unknown,account:OnlineIdentity) {
     this.loadMetrics?.client(client)

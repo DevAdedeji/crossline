@@ -1,6 +1,6 @@
 # Local single-arena capacity assessment
 
-The 500-player target is **not verified**. Normal Online admission remains eight players in one shared room. The experimental limit cannot exceed 32 and requires `NODE_ENV=test`, an explicit load flag, a loopback listener, synthetic local auth and an in-memory database. Public deployment remains blocked.
+The user-selected 100-player limit is now the normal configured admission ceiling in one shared room, but **100 simultaneous players are not performance-verified**. The measurements below were taken before the immediate-signup and durable-confirmation changes. The experimental limit cannot exceed 32 and requires `NODE_ENV=test`, an explicit load flag, a loopback listener, synthetic local auth and an in-memory database. No public deployment or hosted load test has been performed.
 
 ## Measured results (2026-10-02)
 
@@ -17,7 +17,7 @@ The tick and loop p95 columns report the **worst one-second p95** within the win
 | 32 | idle-connected | 0.43 | 0.50 | 11.67 | 998 | 5.0% | 33.1 | 42.9 |
 | 32 | movement-and-fire | 14.72 | 15.22 | 11.58 | 675 | 8.2% | 1299.7 | 57.8 |
 
-Raw one-second samples: [capacity-results.json](capacity-results.json). This verifies only the bounded workloads above; normal admission remains eight and 500 remains untested. During movement/fire, aggregate payload rose from 333.8 KiB/s at 16 clients to 1,299.7 KiB/s at 32. Full-state fan-out and all-player event broadcasts still grow with audience size, so these samples do not establish a safe larger public cap.
+Raw one-second samples: [capacity-results.json](capacity-results.json). This verifies only the bounded workloads above; normal admission now defaults to 100, and 100 remains untested. During movement/fire, aggregate payload rose from 333.8 KiB/s at 16 clients to 1,299.7 KiB/s at 32. Full-state fan-out and all-player event broadcasts still grow with audience size, so these samples do not establish a safe larger public cap.
 
 ## Optimization and preserved stop evidence
 
@@ -33,7 +33,7 @@ Run from the repository root, after `pnpm build`:
 pnpm test:capacity /tmp/crossline-capacity.json
 ```
 
-The harness starts its own match server on 127.0.0.1:2574, tests 8, 16 and 32 distinct verified synthetic accounts through the normal HTTP auth and Colyseus admission paths, and checks that every client remains in the same arena. It never targets the live preview or an external server. It respects the normal auth rate limits, including a 61-second pause when preparing 32 accounts. Account creation is excluded from the measured windows.
+The harness starts its own match server on 127.0.0.1:2574, tests 8, 16 and 32 distinct synthetic accounts through the normal HTTP auth and Colyseus admission paths, and checks that every client remains in the same arena. It never targets the live preview or an external server. It respects the normal auth rate limits, including a 61-second pause when preparing 32 accounts. Account creation is excluded from the measured windows.
 
 Each level has two 25-second measurement windows, each preceded by five seconds of warm-up: connected stationary players and players moving, aiming, firing and reloading at 25 input messages per second. Spawns and damage use normal server rules. The clients are SDK clients without rendering; movement is synthetic and does not represent a coordinated dense firefight. This is a short capacity sample, not a soak test or an internet latency test.
 
@@ -53,11 +53,11 @@ This samples three static city views for four seconds each in desktop Chrome (14
 
 The six map-only views averaged 60.2–60.3 FPS, with p95 frame intervals of 16.7–16.8 ms. There were 0 frames over 50 ms and no page errors. 6/6 stationary screenshot pairs were identical. Raw measurements and renderer strings: [render-results.json](render-results.json).
 
-## Remaining work before 500
+## Remaining work before claiming 100-player performance
 
 - Add and measure spatial interest management for state and combat events while retaining one authoritative arena. All actors currently replicate to all clients.
 - Profile patch serialization, actor visibility/labels and concurrent account checks at higher controlled loads.
 - Test dense firefights, reconnect/admission bursts, slower devices, real latency/loss, long sessions and a separately approved hosted PostgreSQL environment.
 - Establish memory, bandwidth, abuse/admission and deployment budgets before raising normal admission.
 
-A short 32-client sample cannot be extrapolated into a 500-player readiness claim. No room splitting, deployment, production credentials, services or spending changes are part of this work.
+A short 32-client sample cannot be extrapolated into a 100-player readiness claim. No room splitting, deployment, production credentials, services or spending changes are part of this work.

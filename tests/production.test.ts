@@ -6,7 +6,6 @@ import { join } from 'node:path'
 import { signProxy,ProxyVerifier,boundedBody,clientIP } from '../packages/shared/src/proxy.ts'
 import { requestGuard,AdmissionLimit,GuestBudget } from '../apps/match/src/admission.ts'
 import { matchConfig } from '../apps/match/src/config.ts'
-import { verificationSender } from '../apps/match/src/auth/email.ts'
 import { databaseOptions } from '../packages/db/src/connection.ts'
 import { CommitGate } from '../apps/match/src/commitGate.ts'
 const secret='synthetic-proxy-unit-test-secret-2026-only',origin='https://crossline.example',path='/api/auth/sign-in/email',body='{"email":"player@example.test"}'
@@ -43,17 +42,10 @@ test('guest budgets bound total rooms and sessions per client and reclaim reserv
  budget.attach('b','ip2');budget.release('a');budget.release('a');assert.equal(budget.size,1)
  budget.reserve('c');budget.attach('c','ip1');budget.release('b');budget.release('c');assert.equal(budget.size,0)
 })
-const production={NODE_ENV:'production',MATCH_HOST:'0.0.0.0',WEB_ORIGIN:origin,DATABASE_URL:'postgresql://database.example/crossline',DATABASE_CA_FILE:'/placeholder/ca.pem',BETTER_AUTH_SECRET:'synthetic-auth-unit-test-secret-2026-only',MATCH_PROXY_SECRET:secret,AUTH_EMAIL_ENABLED:'1',AUTH_EMAIL_PROVIDER:'resend',AUTH_EMAIL_FROM:'test@example.test',RESEND_API_KEY:'synthetic-placeholder-key'}
+const production={NODE_ENV:'production',MATCH_HOST:'0.0.0.0',WEB_ORIGIN:origin,DATABASE_URL:'postgresql://database.example/crossline',DATABASE_CA_FILE:'/placeholder/ca.pem',BETTER_AUTH_SECRET:'synthetic-auth-unit-test-secret-2026-only',MATCH_PROXY_SECRET:secret}
 test('production configuration fails closed on missing secrets, local fixtures and insecure origins',()=>{
  assert.equal(matchConfig(production).production,true)
- for(const overrides of [{MATCH_PROXY_SECRET:''},{MATCH_PROXY_SECRET:production.BETTER_AUTH_SECRET},{WEB_ORIGIN:'http://crossline.example'},{WEB_ORIGIN:origin+'/'},{AUTH_DEV_LOCAL:'1'},{CROSSLINE_LOCAL_LOAD:'1'},{DATABASE_CA_FILE:''},{AUTH_EMAIL_ENABLED:'0'}])assert.throws(()=>matchConfig({...production,...overrides}))
-})
-test('Resend adapter uses bounded HTTPS, no redirects, and redacts provider failures without sending real mail',async()=>{
- let calls=0
- const sender=verificationSender(production,async(url,options)=>{calls++;assert.equal(url,'https://api.resend.com/emails');assert.equal(options?.redirect,'error');assert.ok(options?.signal);const data=JSON.parse(String(options?.body));assert.deepEqual(data.to,['player@example.test']);assert.match(data.text,/verification-placeholder/);return new Response('{}',{status:200})})
- assert.equal(calls,0);await sender('player@example.test','https://crossline.example/verification-placeholder');assert.equal(calls,1)
- const failed=verificationSender(production,async()=>{throw new Error('private-provider-secret')})
- await assert.rejects(()=>failed('player@example.test','https://crossline.example/verify'),e=>e instanceof Error&&!e.message.includes('private-provider-secret'))
+ for(const overrides of [{MATCH_PROXY_SECRET:''},{MATCH_PROXY_SECRET:production.BETTER_AUTH_SECRET},{WEB_ORIGIN:'http://crossline.example'},{WEB_ORIGIN:origin+'/'},{AUTH_DEV_LOCAL:'1'},{CROSSLINE_LOCAL_LOAD:'1'},{DATABASE_CA_FILE:''}])assert.throws(()=>matchConfig({...production,...overrides}))
 })
 test('runtime and migration PostgreSQL options verify a provider CA and enforce pool limits',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'crossline-ca-'))

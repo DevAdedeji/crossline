@@ -15,7 +15,7 @@ defineProps<{board?:Leaderboard;unavailable?:boolean}>()
      <p v-if="!column.rows.length">The arena is waiting for its first player.</p>
     </div>
    </div>
-   <p class="identity-note">Totals belong to your verified account. Only usernames and match statistics are public.</p>
+   <p class="identity-note">Totals belong to your account. Only usernames and match statistics are public.</p>
   </template>
   <p v-else>Loading leaders…</p>
  </section>

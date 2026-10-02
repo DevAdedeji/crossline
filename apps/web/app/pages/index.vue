@@ -2,10 +2,11 @@
 import { currentAccount, authClient } from '~/game/account'
 import type { Leaderboard } from '@crossline/shared'
 import { prepareEntry } from '~/game/entry'
-import { readStick } from '@crossline/shared'
+import { readStick, ONLINE_CAPACITY_TARGET } from '@crossline/shared'
 import { selectController, controllerButtons } from '~/game/controller'
 
-const modes = [
+const arenaCapacity=ref(ONLINE_CAPACITY_TARGET)
+const modes = reactive([
   {
     id: 'solo',
     number: '01',
@@ -22,7 +23,7 @@ const modes = [
     subtitle: 'EVERY ANGLE IS YOURS',
     description: 'One shared human arena. Join anytime, collect health packs and climb the kill/death leaderboards.',
     available: true,
-    players: 'SHARED ARENA · UP TO 8 PLAYERS',
+    get players(){return `SHARED ARENA · UP TO ${arenaCapacity.value} PLAYERS`},
   },
   {
     id: 'training',
@@ -34,7 +35,8 @@ const modes = [
     available: true,
     players: '1 PLAYER + 5 BOTS',
   },
-]
+])
+onMounted(async()=>{try{const arena=await $fetch<{capacity:number}>('/api/arena');arenaCapacity.value=arena.capacity}catch{/* Default capacity remains visible if the match server is unavailable. */}})
 const showAccount=ref(false),account=ref<Awaited<ReturnType<typeof currentAccount>>>(null)
 async function signedIn(){account.value=await currentAccount();showAccount.value=false;launching=true;await navigateTo('/play?mode=online')}
 async function logout(){await authClient.signOut();account.value=null;sessionStorage.removeItem('crossline.ffa.reconnect')}
