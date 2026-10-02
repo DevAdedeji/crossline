@@ -115,7 +115,7 @@ Implementation references: [Better Auth Nuxt integration](https://better-auth.co
 
 ## Current limits
 
-This remains a prototype with sparse interiors and a modular art kit, not finished photorealistic COD art. Physical-phone performance, Safari, hostile public traffic, player prediction/reconciliation, lag compensation and hosted database behavior under load remain unverified. Short local M4 Pro / Chrome measurements are not cross-device benchmarks. Dedicated long-range aimed-view blood-effect inspection is still pending; server hit range/occlusion is tested.
+This remains a prototype with sparse interiors and a modular art kit, not finished photorealistic COD art. Physical-phone performance, Safari, hostile public traffic, prediction under severe packet loss, lag compensation and hosted database behavior under load remain unverified. Short local M4 Pro / Chrome measurements are not cross-device benchmarks. Dedicated long-range aimed-view blood-effect inspection is still pending; server hit range/occlusion is tested.
 
 The configured 100-player shared-arena limit is not a 100-player performance certification. Online signup/login uses the configured production database and server-only secrets. Solo and Practice remain guest-accessible; password reset is deferred.
 
@@ -144,3 +144,9 @@ Validation: 75 unit/integration tests, lint, workspace typechecks, both builds, 
 - A clean Chrome browser passed live Practice rendering/movement over WSS, immediate signup into Online, email/password login, session persistence after reload, Secure/HttpOnly cookies and logout, with no page exceptions. Synthetic test accounts remain under reserved `example.test` addresses; no email was sent.
 - Both public health and the same-origin arena gateway returned HTTP 200. Direct unsigned auth and untrusted-origin gateway requests returned HTTP 403. Arena status reports the configured 100-seat cap; this is not a 100-player load result.
 - Railway's initial Docker registry manifest HTTP 502 cleared on one retry. The runtime listened successfully on its assigned port. Live checks used application commit `f4c9f94`.
+
+## Responsiveness and phone clarity
+
+Local movement prediction uses the authoritative collision/stance step and replays bounded unacknowledged inputs after server snapshots. Small corrections settle smoothly; death/respawn clears prediction. Health, ammo, hits and scores remain authoritative. Muzzle flash and firing audio respond locally with bounded cadence/ammo feedback; hit effects remain confirmed. The barrel effect uses two short directional sheets and a three-wisp smoke pool, attached to the imported barrel tip.
+
+Phone rendering now uses up to 1.5 render pixels per CSS pixel instead of inversely reducing resolution on high-density displays; Mac scaling is unchanged. A DPR-3 844×390 viewport changed from 351×162 to 1266×585. On the available Mac, the original live scene ran near 60 FPS but movement waited 296–352 ms for authority. A browser test with 300 ms delayed input measured local movement/muzzle response at 13.5 ms and authority at 379 ms. Emulation is not physical-phone performance certification; server latency and authoritative hit confirmation still depend on network distance.

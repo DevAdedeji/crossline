@@ -27,7 +27,7 @@ import { TRAINING_WORLD, COMBAT_DISTRICTS, type WorldGeometry, RAMP, ROOF_HEIGHT
 export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry = TRAINING_WORLD, options: {mobile?:boolean} = {}) {
   const BUILDINGS = world.buildings, MAP_SOLIDS = world.solids, PARKED_CARS = world.cars
   const engine = new Engine(canvas, true, { stencil: true })
-  engine.setHardwareScalingLevel(options.mobile ? Math.max(1.25,window.devicePixelRatio/1.25) : Math.max(1, window.devicePixelRatio / 1.5))
+  engine.setHardwareScalingLevel(options.mobile ? 1 / Math.min(window.devicePixelRatio || 1, 1.5) : Math.max(1, window.devicePixelRatio / 1.5))
   const scene = new Scene(engine)
   scene.skipPointerMovePicking=true
   scene.clearColor = new Color4(0.52, 0.61, 0.67, 1)

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MovementPrediction } from '~/game/prediction'
+import { WeaponFeedback } from '~/game/weaponFeedback'
 import { onlineJoinToken } from '~/game/account'
 import { playerLabels } from '~/game/playerLabels'
 import type { Leaderboard } from '@crossline/shared'
@@ -10,6 +12,7 @@ import {
   RIFLE, QUICK_MATCH_MS,
   aimedTarget,
   direction,
+  type CombatInput,
   type Combatant,
   type GameEvent,
   type Phase,
@@ -85,6 +88,8 @@ const position = ref('0.0 / -21.0'),
   pitch = ref(0),
   captureError = ref(''),
   muted = ref(false)
+const clientPosition=ref(''),feedbackShots=ref(0)
+const weaponFeedback=new WeaponFeedback()
 const targetId = ref<string>()
 const hitUntil = ref(0),
   hitKill = ref(false),
@@ -131,8 +136,33 @@ const menuItems = computed(() =>
       ? [`Resume ${sessionWord.value}`, `Restart ${sessionWord.value}`, 'Finish session', 'Return to menu']
       : [`Start ${sessionWord.value}`, 'Return to menu'],
 )
+let locallyPaused=false
 function action(value: string) {
+  if(value==='pause')locallyPaused=true
+  else if(value==='start'||value==='restart'||value==='finish')locallyPaused=false
   if(status.value === 'Connected')room?.send('action', value)
+}
+function readInput():CombatInput {
+      const enabled = active.value,
+        forward = enabled
+          ? touchActive.value ? touchMovement.z : padActive.value
+            ? -padMovement.y
+            : Number(keys.has('KeyW')) - Number(keys.has('KeyS'))
+          : 0,
+        right = enabled
+          ? touchActive.value ? touchMovement.x : padActive.value
+            ? padMovement.x
+            : Number(keys.has('KeyD')) - Number(keys.has('KeyA'))
+          : 0,
+        length = Math.max(1, Math.hypot(forward, right))
+      return {
+        x: (Math.sin(look.yaw) * forward + Math.cos(look.yaw) * right) / length,
+        z: (Math.cos(look.yaw) * forward - Math.sin(look.yaw) * right) / length,
+        ...look,
+        fire: enabled && (touchActive.value ? touchFiring : padActive.value ? padFire : mouseFire),
+        aim: enabled && (touchActive.value ? touchAiming : padActive.value ? padAim : mouseAim),
+        crouch: enabled ? crouchToggle.value || keys.has('ControlLeft') || keys.has('ControlRight') : (self.value?.crouch ?? 0)>0,
+      }
 }
 function clearInput() {
   keys.clear()
@@ -389,6 +419,8 @@ onMounted(async () => {
     engine = arena.engine
     const { scene, camera } = arena
     const cameraTarget = camera.position.clone()
+    const prediction=new MovementPrediction(world.value)
+    let inputSequence=0,lastInputFrame=performance.now()
     status.value = 'Loading models'
     const [assets] = await Promise.all([loadTrainingAssets(scene), audio.prepare()])
     if (stopped) {
@@ -405,9 +437,17 @@ onMounted(async () => {
       const dt = Math.min(engine!.getDeltaTime(), 50) / 1000
       now.value = performance.now()
       pollPad(dt)
-      for (const axis of ['x', 'y', 'z'] as const)
-        camera.position[axis] +=
-          (cameraTarget[axis] - camera.position[axis]) * (1 - Math.exp(-dt * 35))
+      const input=readInput()
+      const predicted=prediction.view(input,active.value ? Math.min(TICK_MS,performance.now()-lastInputFrame) : 0,dt)
+      if(predicted && self.value?.health && active.value){
+        camera.position.set(predicted.x,predicted.y+stanceEye(predicted),predicted.z)
+        clientPosition.value=`${predicted.x.toFixed(3)} / ${predicted.z.toFixed(3)}`
+      }else camera.position.copyFrom(cameraTarget)
+      const actor=self.value
+      if(actor && weaponFeedback.fire(performance.now(),input.fire && active.value,actor,elapsed.value,props.mode)){
+        visuals.fire();audio.sound('shot',true,actor,actor,look.yaw)
+        feedbackShots.value++
+      }
       camera.rotation.set(look.pitch, look.yaw, 0)
       heading.value = ((((look.yaw * 180) / Math.PI) % 360) + 360) % 360
       pitch.value = look.pitch
@@ -495,7 +535,7 @@ onMounted(async () => {
         audio.stop()
       }
       confirmedPhase.value = state.phase
-      const nextPhase = state.phase==='finished' ? 'finished' : isOnline.value ? !onlineEntered.value ? 'ready' : onlinePaused.value ? 'paused' : state.phase : state.phase
+      const nextPhase = state.phase==='finished' ? 'finished' : isOnline.value ? !onlineEntered.value ? 'ready' : onlinePaused.value ? 'paused' : state.phase : locallyPaused ? 'paused' : state.phase
       if (phase.value !== nextPhase) menuIndex.value = 0
       phase.value = nextPhase
       onlineCapacity.value=state.capacity ?? ONLINE_CAPACITY_TARGET
@@ -520,6 +560,8 @@ onMounted(async () => {
       }
       const player = self.value
       if (player) {
+        weaponFeedback.sync(player)
+        prediction.reconcile(player,state.round,active.value)
         cameraTarget.set(player.x, player.y + stanceEye(player), player.z)
         if (
           Math.hypot(
@@ -544,10 +586,9 @@ onMounted(async () => {
     room.onMessage('event', (event: GameEvent) => {
       if (event.type === 'shot') {
         const own = event.shooterId === joined.sessionId
-        visuals.shot(event, own)
-        audio.sound('shot', own, event.start, self.value, look.yaw)
+        visuals.shot(event, own, !own)
+        if(!own)audio.sound('shot', false, event.start, self.value, look.yaw)
         if (own) {
-          Object.assign(look, rotateLook(look, 0, -0.012))
           if (event.damage) {
             hitUntil.value = performance.now() + 180
             hitKill.value = event.eliminated
@@ -561,6 +602,7 @@ onMounted(async () => {
         healAmount.value=event.amount;healUntil.value=performance.now()+2200;audio.sound('heal')
       } else if (event.type === 'spawn' && event.actorId === joined.sessionId) {
         crouchToggle.value=false
+        prediction.reset();weaponFeedback.reset()
         Object.assign(look, { yaw: event.yaw, pitch: 0 })
         clearInput()
       } else if (event.type === 'kill') {
@@ -596,26 +638,11 @@ onMounted(async () => {
     })
     timer = setInterval(() => {
       if(status.value !== 'Connected')return
-      const enabled = active.value,
-        forward = enabled
-          ? touchActive.value ? touchMovement.z : padActive.value
-            ? -padMovement.y
-            : Number(keys.has('KeyW')) - Number(keys.has('KeyS'))
-          : 0,
-        right = enabled
-          ? touchActive.value ? touchMovement.x : padActive.value
-            ? padMovement.x
-            : Number(keys.has('KeyD')) - Number(keys.has('KeyA'))
-          : 0,
-        length = Math.max(1, Math.hypot(forward, right))
-      joined.send('input', {
-        x: (Math.sin(look.yaw) * forward + Math.cos(look.yaw) * right) / length,
-        z: (Math.cos(look.yaw) * forward - Math.sin(look.yaw) * right) / length,
-        ...look,
-        fire: enabled && (touchActive.value ? touchFiring : padActive.value ? padFire : mouseFire),
-        aim: enabled && (touchActive.value ? touchAiming : padActive.value ? padAim : mouseAim),
-        crouch: enabled ? crouchToggle.value || keys.has('ControlLeft') || keys.has('ControlRight') : (self.value?.crouch ?? 0)>0,
-      })
+      const input=readInput()
+      lastInputFrame=performance.now()
+      const seq=++inputSequence
+      joined.send('input',{...input,seq})
+      if(active.value && self.value && self.value.health>0)prediction.command(seq,input)
     }, TICK_MS)
   } catch (error) {
     const code=error && typeof error==='object' && 'code' in error ? error.code : undefined
@@ -647,7 +674,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="arena" :class="{ 'touch-layout': touchDevice }" :data-phase="phase" :data-server-phase="confirmedPhase" :data-mode="mode" :data-room-id="roomCode" :data-player-id="self?.id" :data-crouch="self?.crouch ?? 0" :data-eye-height="self ? stanceEye(self) : 1.6">
+  <main :data-client-position="clientPosition" :data-feedback-shots="feedbackShots" class="arena" :class="{ 'touch-layout': touchDevice }" :data-phase="phase" :data-server-phase="confirmedPhase" :data-mode="mode" :data-room-id="roomCode" :data-player-id="self?.id" :data-crouch="self?.crouch ?? 0" :data-eye-height="self ? stanceEye(self) : 1.6">
     <canvas ref="canvas" :aria-label="`Crossline ${modeTitle} arena`" @contextmenu.prevent />
     <div v-if="touchDevice && portrait" class="rotate-phone" role="dialog" aria-modal="true" aria-label="Rotate phone">
       <div><span class="rotate-icon" aria-hidden="true">↻</span><h1>Turn your phone sideways.</h1><p>Crossline uses landscape controls. Rotate your device to continue.</p><NuxtLink to="/">Return to menu</NuxtLink></div>

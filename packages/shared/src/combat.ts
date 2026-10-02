@@ -23,6 +23,7 @@ export const EYE_HEIGHT = 1.6
 export type GameMode = 'training' | 'solo' | 'online'
 export type Phase = 'ready' | 'playing' | 'paused' | 'finished'
 export interface CombatInput extends MoveInput {
+  seq?: number
   crouch?: boolean
   yaw: number
   pitch: number
@@ -42,6 +43,7 @@ export function parseCombatInput(value: unknown): CombatInput | null {
     !('aim' in value)
   )
     return null
+  if ('seq' in value && (!Number.isSafeInteger(value.seq) || (value.seq as number)<1)) return null
   if ('crouch' in value && typeof value.crouch !== 'boolean') return null
   const { yaw, pitch, fire, aim } = value
   if (
@@ -55,9 +57,10 @@ export function parseCombatInput(value: unknown): CombatInput | null {
     typeof aim !== 'boolean'
   )
     return null
-  return { ...movement, yaw: yaw % (Math.PI * 2), pitch, fire, aim, crouch: 'crouch' in value ? value.crouch as boolean : false }
+  return { ...('seq' in value ? {seq:value.seq as number} : {}), ...movement, yaw: yaw % (Math.PI * 2), pitch, fire, aim, crouch: 'crouch' in value ? value.crouch as boolean : false }
 }
 export interface Combatant extends Position {
+  inputSeq?: number
   crouch?: number
   connected?: boolean
   participating?: boolean

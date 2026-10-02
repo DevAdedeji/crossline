@@ -1,4 +1,4 @@
-import { SOLO, SOLO_HEALTH_PACKS, type HealthPickup, CROUCH, stanceAmount, stanceHeight, stanceEye, stanceAim, stanceHead, TICK_MS, move, isBlocked, COMBAT_WORLD, TRAINING_WORLD, COMBAT_SPAWNS, COMBAT_BOT_COUNT, type Position, type MoveInput } from '@crossline/shared'
+import { SOLO, SOLO_HEALTH_PACKS, type HealthPickup, moveHuman, stanceAmount, stanceHeight, stanceEye, stanceAim, stanceHead, TICK_MS, move, isBlocked, COMBAT_WORLD, TRAINING_WORLD, COMBAT_SPAWNS, COMBAT_BOT_COUNT, type Position, type MoveInput } from '@crossline/shared'
 import {
   TRAINING,
   RIFLE,
@@ -496,22 +496,10 @@ export class TrainingGame {
       if (actor.bot) this.botStep(actor, dt)
       else {
         const input = this.mode === 'online' ? this.humanInputs.get(actor.id) ?? IDLE_INPUT : this.input
-        const desired = input.crouch || isBlocked(actor,this.world) ? 1 : 0
-        actor.crouch = Math.max(0,Math.min(1,stanceAmount(actor) + Math.sign(desired-stanceAmount(actor))*dt/CROUCH.transitionMs))
-        const speed = 1 - (1-CROUCH.speed)*stanceAmount(actor)
         actor.yaw = input.yaw
         actor.pitch = input.pitch
-        Object.assign(
-          actor,
-          this.move(
-            actor,
-            {
-              x: input.x * (input.aim ? 0.65 : 1) * speed,
-              z: input.z * (input.aim ? 0.65 : 1) * speed,
-            },
-            dt,
-          ),
-        )
+        Object.assign(actor,moveHuman(actor,input,dt,this.world))
+        if(input.seq!==undefined)actor.inputSeq=input.seq
         if (input.fire) this.fire(actor, input.yaw, input.pitch, input.aim)
       }
     }

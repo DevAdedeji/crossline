@@ -1,3 +1,4 @@
+import { CROUCH, stanceAmount, stanceHeight } from './stance.ts'
 import { TRAINING_WORLD, nearbySolids, RAMP, rampHeight, type Solid, type WorldGeometry } from './urban-map.ts'
 export * from './urban-map.ts'
 export * from './combat-map.ts'
@@ -88,3 +89,12 @@ export * from './nameVisibility.ts'
 
 /** Configured admission ceiling; simultaneous-player performance requires load validation. */
 export const ONLINE_CAPACITY_TARGET = 100
+
+/** The same collision/stance step is used for authority and local movement prediction. */
+export function moveHuman(position: Position & {crouch?:number}, input: MoveInput & {aim?:boolean;crouch?:boolean}, dt:number, world:WorldGeometry=TRAINING_WORLD) {
+  const milliseconds=Math.max(0,Math.min(dt,TICK_MS))
+  const desired=input.crouch || isBlocked(position,world) ? 1 : 0
+  const crouch=Math.max(0,Math.min(1,stanceAmount(position)+Math.sign(desired-stanceAmount(position))*milliseconds/CROUCH.transitionMs))
+  const speed=(1-(1-CROUCH.speed)*crouch)*(input.aim ? .65 : 1)
+  return {...move(position,{x:input.x*speed,z:input.z*speed},milliseconds,world,stanceHeight({crouch})),crouch}
+}

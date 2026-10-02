@@ -8,6 +8,7 @@ import { TrainingGame } from './training/TrainingGame.js'
 
 export const Actor = schema(
   {
+    inputSeq: t.number().default(0),
     crouch: t.number().default(0),
     connected: t.boolean().default(true),
     participating: t.boolean().default(true),

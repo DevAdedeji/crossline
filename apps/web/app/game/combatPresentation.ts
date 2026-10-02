@@ -37,14 +37,43 @@ export function combatPresentation(
     mesh.renderingGroupId = 2
     mesh.isPickable = false
   }
-  const flash = MeshBuilder.CreateSphere('muzzle', { diameter: 0.1, segments: 6 }, scene)
-  flash.parent = weapon
-  flash.position.set(0, 0, 0.39)
-  flash.renderingGroupId = 2
-  const glow = material('muzzle glow', '#fff2a1')
-  glow.emissiveColor = Color3.FromHexString('#ffcd65')
-  flash.material = glow
+  // Find the barrel tip from the imported model rather than guessing an offset.
+  const localVertices:Vector3[]=[]
+  const inverseWeapon=Matrix.Invert(weapon.computeWorldMatrix(true))
+  for(const mesh of gun.getChildMeshes()){
+    const positions=mesh.getVerticesData('position');if(!positions)continue
+    const matrix=mesh.computeWorldMatrix(true).multiply(inverseWeapon)
+    for(let i=0;i<positions.length;i+=3)localVertices.push(Vector3.TransformCoordinates(new Vector3(positions[i],positions[i+1],positions[i+2]),matrix))
+  }
+  const tipZ=Math.max(...localVertices.map(p=>p.z))
+  const rim=localVertices.filter(p=>p.z>tipZ-.006)
+  const muzzlePoint=new Vector3((Math.min(...rim.map(p=>p.x))+Math.max(...rim.map(p=>p.x)))/2,(Math.min(...rim.map(p=>p.y))+Math.max(...rim.map(p=>p.y)))/2,tipZ+.003)
+  // Two narrow crossed flame sheets point down the barrel; no camera-facing yellow orb.
+  const flash = new TransformNode('directional muzzle flash',scene)
+  flash.parent=weapon;flash.position.copyFrom(muzzlePoint)
+  const flameTexture=new DynamicTexture('muzzle flame texture',{width:64,height:128},scene,false)
+  flameTexture.hasAlpha=true
+  const flameInk=flameTexture.getContext() as CanvasRenderingContext2D
+  flameInk.clearRect(0,0,64,128)
+  const flameGradient=flameInk.createLinearGradient(0,128,0,0)
+  flameGradient.addColorStop(0,'rgba(255,250,217,.9)');flameGradient.addColorStop(.3,'rgba(255,194,89,.8)');flameGradient.addColorStop(1,'rgba(245,105,35,0)')
+  flameInk.fillStyle=flameGradient;flameInk.beginPath()
+  flameInk.moveTo(24,128);flameInk.lineTo(10,79);flameInk.lineTo(24,93);flameInk.lineTo(29,4);flameInk.lineTo(39,68);flameInk.lineTo(53,37);flameInk.lineTo(43,106);flameInk.lineTo(39,128);flameInk.closePath();flameInk.fill();flameTexture.update()
+  const glow=material('muzzle flame','#ffffff')
+  glow.diffuseTexture=flameTexture;glow.useAlphaFromDiffuseTexture=true;glow.disableLighting=true;glow.emissiveColor=Color3.White();glow.backFaceCulling=false
+  for(const angle of [0,Math.PI/2]){
+    const turn=new TransformNode('flame orientation',scene);turn.parent=flash;turn.rotation.z=angle
+    const flame=MeshBuilder.CreatePlane('barrel flame',{width:.03,height:.10},scene)
+    flame.parent=turn;flame.rotation.x=Math.PI/2;flame.position.z=.045;flame.material=glow;flame.renderingGroupId=2;flame.isPickable=false
+  }
   flash.setEnabled(false)
+  const smokeTexture=new DynamicTexture('muzzle smoke texture',64,scene,false);smokeTexture.hasAlpha=true
+  const smokeInk=smokeTexture.getContext() as CanvasRenderingContext2D
+  smokeInk.clearRect(0,0,64,64)
+  const haze=smokeInk.createRadialGradient(30,35,2,32,32,30);haze.addColorStop(0,'rgba(192,198,200,.35)');haze.addColorStop(1,'rgba(192,198,200,0)');smokeInk.fillStyle=haze;smokeInk.fillRect(0,0,64,64);smokeTexture.update()
+  const smokeMaterial=material('muzzle smoke','#c0c6c8');smokeMaterial.diffuseTexture=smokeTexture;smokeMaterial.useAlphaFromDiffuseTexture=true;smokeMaterial.disableLighting=true;smokeMaterial.emissiveColor=Color3.White();smokeMaterial.backFaceCulling=false;smokeMaterial.disableDepthWrite=true
+  const smoke=Array.from({length:3},()=>{const mesh=MeshBuilder.CreatePlane('brief muzzle smoke',{size:.09},scene);mesh.material=smokeMaterial;mesh.billboardMode=Mesh.BILLBOARDMODE_ALL;mesh.isPickable=false;mesh.setEnabled(false);return {mesh,remaining:0}})
+  let smokeIndex=0
   scene.setRenderingAutoClearDepthStencil(2, true, true, true)
   const bots = new Map<
     string,
@@ -246,7 +275,13 @@ export function combatPresentation(
       }
     }
   }
-  function shot(event: ShotEvent, own: boolean) {
+  function fire(){
+    kick=1;flashTime=.025;flash.rotation.z=Math.random()*Math.PI;flash.setEnabled(true)
+    const puff=smoke[smokeIndex++%smoke.length]!;puff.remaining=.24
+    puff.mesh.position.copyFrom(Vector3.TransformCoordinates(muzzlePoint,weapon.computeWorldMatrix(true)))
+    puff.mesh.scaling.setAll(1);puff.mesh.visibility=.28;puff.mesh.setEnabled(true)
+  }
+  function shot(event: ShotEvent, own: boolean, feedback=true) {
     const shooter = bots.get(event.shooterId)
     if (shooter) shooter.shootUntil = clock + 0.65
     if (event.damage > 0 && event.hitId) {
@@ -303,23 +338,19 @@ export function combatPresentation(
       }
     }
 
-    if (own) {
-      kick = 1
-      flashTime = 0.055
-      flash.setEnabled(true)
-    }
+    if (own && feedback) fire()
     const line = MeshBuilder.CreateLines(
       'tracer',
       {
         points: [
-          new Vector3(event.start.x, event.start.y, event.start.z),
+          own ? Vector3.TransformCoordinates(muzzlePoint,weapon.computeWorldMatrix(true)) : new Vector3(event.start.x, event.start.y, event.start.z),
           new Vector3(event.end.x, event.end.y, event.end.z),
         ],
       },
       scene,
     )
-    line.color = own ? new Color3(1, 0.94, 0.55) : new Color3(1, 0.38, 0.15)
-    tracers.push({ mesh: line, remaining: 0.075 })
+    line.color = own ? new Color3(.85, 0.78, 0.6) : new Color3(1, 0.38, 0.15)
+    tracers.push({ mesh: line, remaining: 0.045 })
   }
   function frame(
     dt: number,
@@ -369,7 +400,13 @@ export function combatPresentation(
       }
     }
     kick = Math.max(0, kick - effectDt * 9)
-    flashTime -= effectDt
+    for(const puff of smoke){
+      if(puff.remaining<=0)continue
+      puff.remaining-=dt;puff.mesh.position.y+=dt*.12;puff.mesh.scaling.setAll(1+(.24-puff.remaining)*2)
+      puff.mesh.visibility=Math.max(0,puff.remaining/.24)*.28
+      if(puff.remaining<=0)puff.mesh.setEnabled(false)
+    }
+    flashTime -= dt
     if (flashTime <= 0) flash.setEnabled(false)
     weapon.setEnabled(alive)
     const reloading = reloadRemaining > 0
@@ -420,12 +457,13 @@ export function combatPresentation(
     flashTime = 0
     ads = 0
     flash.setEnabled(false)
+    for(const puff of smoke){puff.remaining=0;puff.mesh.setEnabled(false)}
     for (const impact of impacts) impact.mesh.dispose()
     for (const tracer of tracers) tracer.mesh.dispose()
     impacts.length = 0
     tracers.length = 0
   }
-  return { sync, shot, frame, reset }
+  return { sync, shot, fire, frame, reset }
 }
 
 export { trainingAudio } from './trainingAudio'
