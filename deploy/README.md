@@ -1,6 +1,6 @@
 # Hosting configuration
 
-Crossline has a Vercel Hobby frontend at https://crossline-three.vercel.app, a dedicated Neon Free project (`lucky-wildflower-20999788`) in the separate Crossline organization, and a private Railway project (`53c80f78-e308-480f-bd26-6ea7d96cb3d7`). The Neon schema migrations have been applied with verified TLS. Hosting secret entry, the Railway endpoint, and end-to-end production verification are still pending; a successful frontend build alone does not establish working gameplay. Existing projects and the Railway spending cap remain unchanged.
+Crossline has a Vercel Hobby frontend at https://crossline-three.vercel.app, a dedicated Neon Free project (`lucky-wildflower-20999788`) in the separate Crossline organization, and a private Railway project (`53c80f78-e308-480f-bd26-6ea7d96cb3d7`). The Neon schema migrations have been applied with verified TLS. The match endpoint is https://crosslinematch-production.up.railway.app, and production configuration is complete. Live Chrome checks passed Practice movement over WSS, immediate signup and Online admission, login, session persistence, secure cookies and logout. Public health and the Nuxt arena gateway returned HTTP 200; unsigned direct auth and untrusted-origin requests returned HTTP 403. Existing projects and the Railway spending cap remain unchanged.
 
 ## Topology
 
@@ -12,14 +12,14 @@ The browser sends auth and matchmaking HTTP requests to the same-origin Nuxt gat
 
 Web service:
 
-- `NUXT_PUBLIC_MATCH_URL=wss://<match-host>` (public, never a secret).
-- `NUXT_WEB_ORIGIN=https://<web-host>` (exact origin, no trailing slash).
+- `NUXT_PUBLIC_MATCH_URL=wss://crosslinematch-production.up.railway.app` (public, never a secret).
+- `NUXT_WEB_ORIGIN=https://crossline-three.vercel.app` (exact origin, no trailing slash).
 - `NUXT_MATCH_PROXY_SECRET` (server-only; same value as match secret below).
 
 Match service:
 
 - `NODE_ENV=production`, `MATCH_HOST=0.0.0.0`, platform `PORT` (omit local `MATCH_PORT`).
-- `WEB_ORIGIN=https://<web-host>` exactly matching the web configuration. CORS and browser WebSocket origins are restricted to it.
+- `WEB_ORIGIN=https://crossline-three.vercel.app` exactly matching the web configuration. CORS and browser WebSocket origins are restricted to it.
 - `DATABASE_URL`. Remote TLS always verifies certificates using Node’s trusted CA store (including Neon). For providers with a private CA, set `DATABASE_CA_FILE` to a securely supplied certificate file. No insecure bypass is offered.
 - `BETTER_AUTH_SECRET` and a distinct `MATCH_PROXY_SECRET`, each at least 32 strong random characters. Actual values are excluded from source control and entered through the provider dashboards.
 - `DB_POOL_MAX=3` (allowed 1–5); `FFA_MAX_CLIENTS=100` (allowed 2–100).
@@ -36,7 +36,7 @@ Better Auth retains persisted per-endpoint rate limits, secure HttpOnly SameSite
 
 Online commits each elimination to an idempotent transactional ledger before publishing score state and kill events. A database failure pauses simulation and retries the same IDs; no confirmed score relies on an in-memory retry queue. This trades availability/latency for durable confirmation. A crash can lose an unconfirmed tick or post-commit notification, and there is no live match-state recovery. Measure hosted DB latency before launch. Earlier local capacity measurements predate this change and do not certify hosted throughput.
 
-`AUTH_DEV_LOCAL=1` is for nonproduction loopback only. It stores local accounts under ignored `.crossline-local/`; automated tests use synthetic addresses. Local and browser tests do not demonstrate Vercel header delivery, Railway WSS or physical-phone performance. Verify these integrations against the hosted URLs before claiming a live launch. The configured 100-seat cap still requires staged load validation; previous measurements covered only 8/16/32 local clients before commit-before-confirmation changes.
+`AUTH_DEV_LOCAL=1` is for nonproduction loopback only. It stores local accounts under ignored `.crossline-local/`; automated tests use synthetic addresses. Local-only tests do not demonstrate hosted integration or physical-phone performance. The hosted Chrome smoke check now covers Vercel header delivery and Railway WSS; physical-phone performance and production reconnect/load behavior still need separate validation. The configured 100-seat cap still requires staged load validation; previous measurements covered only 8/16/32 local clients before commit-before-confirmation changes.
 
 Sources: [Vercel request headers](https://vercel.com/docs/headers/request-headers), [Aiven TLS certificates](https://aiven.io/docs/platform/concepts/tls-ssl-certificates).
 
