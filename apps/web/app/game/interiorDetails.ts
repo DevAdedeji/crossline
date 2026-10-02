@@ -27,6 +27,7 @@ export function interiorDetails(scene: Scene, shadows: ShadowGenerator, building
     mesh.position.set(x,y,z); mesh.material = material; groups.get(material)!.push(mesh)
   }
   for (const b of buildings) {
+    if(b.id.startsWith('city-'))continue
     if(b.height && b.height>4.5)continue
     for (const z of [b.z-2.5,b.z+2.5]) {
       box('ceiling fixture',b.x,3.72,z,2.3,.1,.5,steel)

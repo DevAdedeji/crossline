@@ -1,0 +1,68 @@
+[
+  {
+    "mobile": false,
+    "view": "city-street",
+    "fps": 60.240963855331934,
+    "p95": 16.700000000000728,
+    "over50": 0,
+    "meshes": 745,
+    "staticFramesIdentical": true
+  },
+  {
+    "mobile": false,
+    "view": "city-interior",
+    "fps": 60.19582375852762,
+    "p95": 16.799999999999272,
+    "over50": 0,
+    "meshes": 2119,
+    "staticFramesIdentical": true
+  },
+  {
+    "mobile": false,
+    "view": "city-roof",
+    "fps": 60.25146271620589,
+    "p95": 16.799999999999272,
+    "over50": 0,
+    "meshes": 2008,
+    "staticFramesIdentical": true
+  },
+  {
+    "mobile": false,
+    "errors": [],
+    "browser": "154.0.8037.93",
+    "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)"
+  },
+  {
+    "mobile": true,
+    "view": "city-street",
+    "fps": 60.25296285203729,
+    "p95": 16.700000000000728,
+    "over50": 0,
+    "meshes": 1073,
+    "staticFramesIdentical": true
+  },
+  {
+    "mobile": true,
+    "view": "city-interior",
+    "fps": 60.17928933503133,
+    "p95": 16.700000000000728,
+    "over50": 0,
+    "meshes": 2197,
+    "staticFramesIdentical": true
+  },
+  {
+    "mobile": true,
+    "view": "city-roof",
+    "fps": 60.19732733848914,
+    "p95": 16.700000000000728,
+    "over50": 0,
+    "meshes": 2349,
+    "staticFramesIdentical": true
+  },
+  {
+    "mobile": true,
+    "errors": [],
+    "browser": "154.0.8037.93",
+    "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)"
+  }
+]

@@ -16,7 +16,8 @@
     "db:generate": "pnpm --filter @crossline/db generate",
     "db:migrate": "pnpm --filter @crossline/db migrate",
     "test:online": "tsx scripts/online-smoke.ts",
-    "test:auth": "tsx scripts/auth-smoke.ts"
+    "test:auth": "tsx scripts/auth-smoke.ts",
+    "test:capacity": "tsx scripts/local-capacity.ts"
   },
   "devDependencies": {
     "@colyseus/sdk": "0.18.4",

@@ -40,6 +40,7 @@ export function addFacades(scene: Scene, assets: TrainingAssets, shadows: Shadow
     }
   }
   for (const building of world.buildings) {
+    if(building.id.startsWith('city-'))continue
     if(building.id==='ironworks') {
       for(const side of [-1,1]) {
         for(let offset=-15;offset<=15;offset+=3)for(const y of [.1,4.55]) {

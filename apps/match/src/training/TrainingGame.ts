@@ -191,7 +191,9 @@ export class TrainingGame {
       ) < Math.hypot(point.x - other.x, point.z - other.z) - 0.5).length * 6
       : 0)
     const nearby = this.mode !== 'training' ? pool.filter(p=>separation(p)>=12 && separation(p)<=45) : []
-    const ranked = [...(nearby.length ? nearby : pool)].sort((a, b) => safety(b) - safety(a))
+    // Score each candidate once; comparator raycasts multiplied respawn work by sort comparisons.
+    const ranked = (nearby.length ? nearby : pool).map(point=>({point,score:safety(point)}))
+      .sort((a,b)=>b.score-a.score).map(entry=>entry.point)
     const spawn = actor.bot
       ? (ranked[Math.floor(this.random() * Math.min(4, ranked.length))] ?? this.spawns[0]!)
       : (ranked[0] ?? this.spawns[0]!)

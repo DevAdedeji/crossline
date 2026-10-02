@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { TrainingGame } from '../apps/match/src/training/TrainingGame.js'
 import { playerName } from '../apps/match/src/OnlineRoom.js'
-import { TICK_MS, isBlocked, COMBAT_WORLD } from '../packages/shared/src/index.js'
+import { TICK_MS, isBlocked, COMBAT_WORLD, COMBAT_SPAWNS } from '../packages/shared/src/index.js'
 function game() {
   const g=new TrainingGame('',0,()=>.5,'online')
   g.addHuman('a','ALPHA');g.addHuman('b','BRAVO');g.enterHuman('a');g.enterHuman('b')
@@ -49,4 +49,16 @@ test('Online late joins and removal preserve the shared round and identities are
  g.removeHuman('b');assert.equal(g.actors.has('b'),false);g.step();assert.equal(g.phase,'playing')
  assert.equal(playerName('<script> </script>very-long-name','sessionABCD'),'script scriptver-ABCD')
  assert.equal(playerName({},'sessionABCD'),'OPERATOR-ABCD')
+})
+
+test('crowded respawn preserves the selected safe location with at most one visibility query per candidate/opponent',()=>{
+ const g=new TrainingGame('',0,()=>.5,'online')
+ for(let i=0;i<16;i++){g.addHuman(`p${i}`,`P${i}`);Object.assign(g.actors.get(`p${i}`)!,COMBAT_SPAWNS[i*5],{participating:true})}
+ let calls=0;const original=g['worldHit'].bind(g)
+ g['worldHit']=(origin,ray)=>{calls++;return original(origin,ray)}
+ const actor=g.actors.get('p0')!;g['respawn'](actor)
+ // Captured from the uncached ranking for this crowded fixture.
+ assert.deepEqual({x:actor.x,y:actor.y,z:actor.z},{x:0,y:8,z:45})
+ assert.ok(calls>0&&calls<=COMBAT_SPAWNS.length*15,`visibility calls: ${calls}`)
+ assert.equal(isBlocked(actor,COMBAT_WORLD),false)
 })

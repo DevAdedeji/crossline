@@ -106,6 +106,7 @@ for(let floor=0;floor<3;floor++) {
  const end=to+sign*.3
  box(`hospital-landing-${floor}`,-30,y+3.05,end,9,.3,3.8,'metal')
  LANDMARK_NAV.push({x:-30.5,y:y+3.2,z:end},{x:-27.5,y:y+3.2,z:end},{x:-34.5,y:y+3.2,z:ascending?-37:-59})
+ LANDMARK_NAV.push({x:-32.28,y:y+3.2,z:end},{x:-32.28,y:y+3.2,z:ascending?-37:-59})
  // Wide raised walkway joins the stair landing to each floor door.
  box(`hospital-doorway-landing-${floor}`,-33.5,y+3.05,ascending?-35.5:-60.5,3,.3,5,'metal')
 }

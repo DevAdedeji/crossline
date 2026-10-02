@@ -1,5 +1,5 @@
 import { stanceHeight } from './stance.ts'
-import { TRAINING_WORLD, RAMP, rampHeight, type WorldGeometry } from './urban-map.ts'
+import { TRAINING_WORLD, raySolids, RAMP, rampHeight, type WorldGeometry } from './urban-map.ts'
 import { parseInput, type MoveInput, type Position } from './index.ts'
 
 export const QUICK_MATCH_MS = 300_000
@@ -127,7 +127,7 @@ export function rayBox(
 }
 export function worldHit(origin: Position, ray: Position, range: number = RIFLE.range, world: WorldGeometry = TRAINING_WORLD): number {
   let distance = range
-  for (const box of world.colliders) {
+  for (const box of raySolids(world,origin,ray,range)) {
     const hit = rayBox(
       origin,
       ray,

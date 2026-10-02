@@ -5,10 +5,10 @@ import { QUICK_MATCH_MS, worldHit } from '../packages/shared/src/combat.js'
 import { getNavigation } from '../apps/match/src/training/navigation.js'
 import { TrainingGame } from '../apps/match/src/training/TrainingGame.js'
 
-test('combat map is nine times Training area, with distinct districts and safe distributed spawns', () => {
-  assert.equal(COMBAT_WORLD.limit*2,156)
-  assert.equal((COMBAT_WORLD.limit/TRAINING_WORLD.limit)**2,9)
-  assert.equal(COMBAT_DISTRICTS.length,9)
+test('combat map is 300m across, with distinct districts and safe distributed spawns', () => {
+  assert.equal(COMBAT_WORLD.limit*2,300)
+  assert.ok((COMBAT_WORLD.limit/TRAINING_WORLD.limit)**2>33)
+  assert.equal(COMBAT_DISTRICTS.length,25)
   assert.ok(COMBAT_WORLD.buildings.length>=12)
   assert.ok(COMBAT_SPAWNS.every(p=>!isBlocked(p,COMBAT_WORLD)))
   assert.ok(COMBAT_DISTRICTS.every(d=>COMBAT_SPAWNS.some(p=>Math.hypot(p.x-d.x,p.z-d.z)<25)))
@@ -49,7 +49,7 @@ test('large Solo simulations stay bounded and target only humans across full mat
     }
     for(const actor of game.actors.values()) {
       assert.ok([actor.x,actor.y,actor.z,actor.yaw].every(Number.isFinite))
-      assert.ok(Math.abs(actor.x)<=78&&Math.abs(actor.z)<=78)
+      assert.ok(Math.abs(actor.x)<=COMBAT_WORLD.limit&&Math.abs(actor.z)<=COMBAT_WORLD.limit)
       if(actor.bot){assert.equal(actor.health,100);assert.equal(actor.deaths,0)}
     }
   }

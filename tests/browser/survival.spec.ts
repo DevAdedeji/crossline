@@ -13,7 +13,7 @@ for(const controller of [false,true])test(`Solo health supplies and crouch work 
   Object.defineProperty(navigator,'getGamepads',{value:()=>[pad],configurable:true})
  })
  await page.goto('/play?mode=solo');await expect(page.locator('.radar-panel')).toContainText('Connected',{timeout:30000})
- await expect(page.locator('[data-pack]')).toHaveCount(11)
+ await expect(page.locator('[data-pack]')).toHaveCount(27)
  if(controller)await pulse(page,0);else await page.getByRole('button',{name:'Start match',exact:true}).click()
  await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
  if(controller)await pulse(page,11);else await page.keyboard.press('KeyC')

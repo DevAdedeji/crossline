@@ -47,8 +47,9 @@ Online drop/reload reconnect reserves the same session and vulnerable body for 2
 
 ## Map and presentation
 
-Solo and Online share **Mercer Districts, 156 × 156m (24,336m²)**, compared with **52 × 52m** Practice. Nine districts contain 13 enterable buildings, 14 cars, connected roads, cover and distributed supplies/spawns. The larger Solo expansion is pending.
+Solo and Online share **Mercer Districts, 300 × 300m (90,000m²)**, compared with **52 × 52m** Practice. Twenty-five districts contain 45 enterable buildings, 46 cars, connected roads, cover and 27 distributed supply pickups. This is 3.70 times the previous combat area; Practice and the five-minute Solo duration remain unchanged.
 
+- **Outer city:** 16 new districts, 32 halls/supply buildings, interior switchback stairs and accessible roofs. Civic Heights reaches six floors / 19.2m; Archive Quarter reaches four.
 - **North Ironworks:** 34 × 26m factory, 8m hall, loading bays, machinery, crane, mezzanine, roof stairs/opening and 16m chimney.
 - **Foundry Operations:** four accessible storeys and a 12.8m roof, connected by switchback stairs. Landing geometry supports slow analog movement as well as full-speed walking.
 - **Mercer General Hospital:** 30 × 26m, three storeys, connected central corridors/wards, beds/lockers, emergency canopy, external stairs and a 9.6m accessible roof.
@@ -103,10 +104,12 @@ Coverage includes five-minute deterministic Solo simulations, human-only bot tar
 
 ## Checkpoint verification (2026-10-02)
 
-- `pnpm verify`: passed lint, all TypeScript checks, 58 unit tests, web/match builds and three real-server network smoke checks. Final reconnect changes also receive match typecheck/build and both Online/auth smoke checks.
-- Full Chrome browser suite: 19 passed. Final affected account/reconnect checks: four passed again, covering desktop signup/login, landscape signup, controller login/fire release and two-client reconnect.
-- Hospital, tower and factory routes were traversed through normal browser movement with a second authenticated client observing replicated elevation. Embedded PostgreSQL tests cover account verification, hashing, normalization, unique usernames, CSRF, rate limits, expiry, concurrent ticket redemption, cookie flags, first-run creation and transaction/reopen behavior. No hosted database or real email service was contacted.
-- Short scene-only M4 Pro / Chrome samples at 1440×900 and emulated 844×390 touch viewports averaged about 60 FPS with 16.7–16.8ms p95 frame intervals and no browser errors. These exclude combat/network load and do not establish physical-phone or 500-player performance.
+- Verification passed lint, all TypeScript checks, 64 unit tests, web/match builds and three real-server network smoke checks. The final server-only respawn optimization was rechecked with all units and all three network checks.
+- Full Chrome browser suite: 20 passed, including six-floor Civic Heights, the corrected hospital stair/door approach, factory/tower routes, accounts, two-client reconnect, mobile controls, health supplies and crouch. Final affected Online and survival checks also passed (three tests) after the respawn optimization.
+- Civic Heights, hospital, tower and factory routes were traversed through normal browser movement with a second authenticated client observing replicated elevation. Embedded PostgreSQL tests cover account verification, hashing, normalization, unique usernames, CSRF, rate limits, expiry, concurrent ticket redemption, cookie flags, first-run creation and transaction/reopen behavior. No hosted database or real email service was contacted.
+- Short scene-only M4 Pro / Chrome samples at 1440×900 and emulated 844×390 touch viewports averaged about 60 FPS with 16.7–16.8ms p95 frame intervals and no browser errors. All six stationary screenshot pairs matched. These scene samples exclude combat/network load and do not establish physical-phone or 500-player performance.
+
+- Bounded single-arena load windows completed at 8, 16 and 32 authenticated clients after caching spawn-safety scores. At 32 during movement/fire, the worst one-second simulation p95 was 14.72ms, maximum tick 15.22ms and aggregate outbound payload about 1,300 KiB/s. Normal admission remains eight; [full measurements and limitations](docs/capacity-assessment.md).
 
 Implementation references: [Better Auth Nuxt integration](https://better-auth.com/docs/integrations/nuxt), [Drizzle adapter](https://better-auth.com/docs/adapters/drizzle), [one-time session tokens](https://better-auth.com/docs/plugins/one-time-token), and [Nodemailer SMTP](https://nodemailer.com/smtp).
 
@@ -114,8 +117,8 @@ Implementation references: [Better Auth Nuxt integration](https://better-auth.co
 
 This remains a prototype with sparse interiors and a modular art kit, not finished photorealistic COD art. Physical-phone performance, Safari, hostile public traffic, player prediction/reconciliation, lag compensation and hosted database integration remain unverified. Short local M4 Pro / Chrome measurements are not cross-device benchmarks. Dedicated long-range aimed-view blood-effect inspection is still pending; server hit range/occlusion is tested.
 
-The larger Solo map and 500-player shared-arena target remain pending. Online signup/login is implemented and requires separate approved production database, secret and email configuration. Solo and Practice remain guest-accessible; password reset is deferred.
+The 500-player shared-arena target remains unverified. Online signup/login is implemented and requires separate approved production database, secret and email configuration. Solo and Practice remain guest-accessible; password reset is deferred.
 
-The map and capacity expansions are also pending. They are not delivered by this checkpoint: the current map remains 156m square and admission remains the verified eight seats. Reaching 500 needs interest management, serialization/bandwidth work and staged real-client load tests.
+Normal admission remains eight seats. `pnpm test:capacity` starts isolated loopback-only, in-memory servers for bounded 8/16/32-client experiments; it does not connect to the live preview. It requires the match build first, creates synthetic verified accounts, respects auth limits, and stops on resource thresholds. See [capacity assessment](docs/capacity-assessment.md) for measurements and limitations. Reaching 500 needs interest management, serialization/bandwidth work and staged real-client load tests.
 
 There is no shop, progression, extra weapon catalog, bombs, squads or public deployment. The server deliberately refuses `NODE_ENV=production` until public admission/resource limits, secure origins, observability and deployment readiness are reviewed. The Vercel/Railway files are inactive preparation only; no service, credentials or spending limits were created or changed.

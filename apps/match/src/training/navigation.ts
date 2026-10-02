@@ -49,7 +49,7 @@ const cache = new WeakMap<WorldGeometry, ReturnType<typeof createNavigation>>()
 function createNavigation(world: WorldGeometry) {
   const candidates = [...NAV_POINTS,...(world.navigationPoints ?? [])]
   if (world !== TRAINING_WORLD) {
-    for (let x=-72;x<=72;x+=6) for(let z=-72;z<=72;z+=6) candidates.push({x,y:0,z})
+    for (let x=-world.limit+6;x<=world.limit-6;x+=6) for(let z=-world.limit+6;z<=world.limit-6;z+=6) candidates.push({x,y:0,z})
     for(const b of world.buildings) candidates.push({x:b.x,y:0,z:b.z},{x:b.x+b.width/2+1,y:0,z:b.z},{x:b.x,y:0,z:b.z+b.depth/2+1})
   }
   const points = [...new Map(candidates.map(p=>[`${p.x}/${p.y}/${p.z}`,p])).values()].filter(p=>!isBlocked(p,world))
@@ -65,6 +65,9 @@ function canWalk(from: Position, to: Position): boolean {
     const length = Math.hypot(dx, dz)
     if (length < 0.25) return Math.abs(position.y - to.y) < 0.3
     const next = move(position, { x: dx / length, z: dz / length }, TICK_MS, world)
+    // Reject edges that rely on sliding around a corner at one exact tick alignment.
+    // Real analog input can approach that same corner a few centimetres differently.
+    if (Math.abs(next.x-position.x-dx/length*.2)>.005 || Math.abs(next.z-position.z-dz/length*.2)>.005) return false
     if (Math.hypot(next.x - position.x, next.z - position.z) < 0.01) return false
     position = next
   }

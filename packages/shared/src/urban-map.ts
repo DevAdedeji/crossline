@@ -109,3 +109,20 @@ export function nearbySolids(world: WorldGeometry, x: number, z: number): readon
   }
   return cells.get(`${Math.floor(x/8)}/${Math.floor(z/8)}`) ?? []
 }
+
+/** Conservative grid traversal; exact ray/box clipping remains the narrow phase. */
+export function raySolids(world:WorldGeometry,origin:{x:number;z:number},ray:{x:number;z:number},range:number):readonly Solid[] {
+ const found=new Set<Solid>()
+ let cx=Math.floor(origin.x/8),cz=Math.floor(origin.z/8)
+ const sx=Math.sign(ray.x),sz=Math.sign(ray.z)
+ const dx=sx===0?Infinity:8/Math.abs(ray.x),dz=sz===0?Infinity:8/Math.abs(ray.z)
+ let tx=sx===0?Infinity:((cx+(sx>0?1:0))*8-origin.x)/ray.x
+ let tz=sz===0?Infinity:((cz+(sz>0?1:0))*8-origin.z)/ray.z
+ for(;;){
+  for(const solid of nearbySolids(world,cx*8+4,cz*8+4))found.add(solid)
+  const next=Math.min(tx,tz)
+  if(!Number.isFinite(next)||next>range)break
+  if(tx<=tz){cx+=sx;tx+=dx}else{cz+=sz;tz+=dz}
+ }
+ return [...found]
+}

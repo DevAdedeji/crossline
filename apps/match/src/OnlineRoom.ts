@@ -1,3 +1,4 @@
+import { loadCapacity, createLoadMetrics } from './loadMetrics.js'
 import { randomUUID } from 'node:crypto'
 import { accountService, type OnlineIdentity } from './auth/service.js'
 import { Room, ServerError, type Client } from '@colyseus/core'
@@ -13,6 +14,7 @@ export function arenaStatus(){return {roomId:activeArenaId ?? null,...(activeAre
 export class OnlineRoom extends Room<{state: TrainingState}> {
   maxMessagesPerSecond=120
   autoDispose=false
+  private loadMetrics=createLoadMetrics()
   private accounts=new Map<string,OnlineIdentity>()
   private authorized=new Set<string>()
   private checking=false
@@ -26,7 +28,7 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
     if(activeArenaId && activeArenaId!==this.roomId)throw new ServerError(4213,'Arena is full. Wait for a free seat and try again.')
     activeArenaId=this.roomId;activeArenaInfo=()=>({full:this.locked,capacity:this.maxClients,seats:this.state.actors.size})
     const capacity=Number(process.env.FFA_MAX_CLIENTS ?? VERIFIED_ONLINE_CAPACITY)
-    if(!Number.isInteger(capacity)||capacity<2||capacity>VERIFIED_ONLINE_CAPACITY) throw new Error('FFA_MAX_CLIENTS must be 2–8; the requested 500-player target is not load-verified')
+    if(!Number.isInteger(capacity)||capacity<2||capacity>(loadCapacity() ?? VERIFIED_ONLINE_CAPACITY)) throw new Error('FFA_MAX_CLIENTS must be 2–8; the requested 500-player target is not load-verified')
     this.maxClients=capacity
     this.setState(new TrainingState())
     this.state.capacity=capacity; this.state.duration=this.game.durationMs; this.state.phase='playing'
@@ -59,6 +61,7 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
     this.onMessage('*',()=>{})
     this.clock.setInterval(()=>{void accountService().then(s=>s.statistics.flush()).catch(()=>{});void this.publishLeaders();void this.checkSessions()},2000)
     this.setSimulationInterval(()=>{
+      const started=this.loadMetrics?performance.now():0
       for(const id of this.game.actors.keys())
         if(!this.canPlay(id)||this.clock.elapsedTime-(this.lastInput.get(id) ?? -Infinity)>INPUT_TIMEOUT_MS)this.game.stopHuman(id)
       this.game.step(TICK_MS);this.sync()
@@ -69,6 +72,7 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
         }
         this.broadcast('event',event)
       }
+      this.loadMetrics?.tick(performance.now()-started)
     },TICK_MS)
   }
   private canPlay(id:string){const account=this.accounts.get(id);return this.authorized.has(id)&&Boolean(account&&account.expiresAt>Date.now())}
@@ -84,6 +88,7 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
     catch{throw new ServerError(4214,'Sign in with a verified account to enter Online.')}
   }
   onJoin(client:Client,_options:unknown,account:OnlineIdentity) {
+    this.loadMetrics?.client(client)
     if([...this.accounts.values()].some(a=>a.id===account.id))throw new ServerError(4215,'This account is already in the arena. Reconnect or leave its other session.')
     this.accounts.set(client.sessionId,account);this.connectionGeneration.set(client.sessionId,0);this.authorized.add(client.sessionId)
     this.game.addHuman(client.sessionId,account.displayName)
@@ -97,7 +102,7 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
     catch{this.broadcast('leaderboard-status',{unavailable:true})}
     finally{this.leaderboardBusy=false}
   }
-  onDispose(){if(activeArenaId===this.roomId){activeArenaId=undefined;activeArenaInfo=undefined}}
+  onDispose(){this.loadMetrics?.close();if(activeArenaId===this.roomId){activeArenaId=undefined;activeArenaInfo=undefined}}
   onDrop(client: Client) {
     this.connectionGeneration.set(client.sessionId,(this.connectionGeneration.get(client.sessionId) ?? 0)+1)
     if(this.revoked.has(client.sessionId))return

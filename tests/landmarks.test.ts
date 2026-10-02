@@ -33,3 +33,20 @@ test('tower landing admits slow analog stair movement without a double-height li
   assert.ok(p.z<39,JSON.stringify({speed,p}));assert.ok(Math.abs(p.y-6.4)<.01)
  }
 })
+
+test('hospital upper entrance uses an aligned approach instead of a fragile diagonal corner slide',()=>{
+ const nav=getNavigation(COMBAT_WORLD)
+ assert.equal(nav.canWalk({x:-30.5,y:3.2,z:-32.7},{x:-34.5,y:3.2,z:-37}),false)
+ for(const speed of [.2,.4,1]){
+  let p={x:-32.28,y:3.2,z:-32.7}
+  for(const goal of [{x:-32.28,y:3.2,z:-37},{x:-34.5,y:3.2,z:-37}]){
+   for(let i=0;i<1000;i++){
+    const dx=goal.x-p.x,dz=goal.z-p.z,d=Math.hypot(dx,dz)
+    if(d<.1)break
+    p=move(p,{x:dx/d*speed,z:dz/d*speed},TICK_MS,COMBAT_WORLD)
+   }
+   assert.ok(Math.hypot(p.x-goal.x,p.z-goal.z)<.15)
+   assert.ok(Math.abs(p.y-goal.y)<.01)
+  }
+ }
+})

@@ -128,6 +128,9 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   hospitalTiles.diffuseTexture=surfaceTexture('interior-floor',scene);hospitalTiles.emissiveColor=new Color3(.13,.15,.14)
   hospitalLinen.emissiveColor=new Color3(.22,.24,.23)
   const hospitalLight=material('hospital-light','#e5f0e9');hospitalLight.emissiveColor=new Color3(.75,.85,.8)
+  const cityWall=material('city-plaster','#b5b7aa'),cityBrick=material('city-brick','#a29682'),cityConcrete=material('city-concrete','#9ba59e')
+  cityWall.diffuseTexture=surfaceTexture('plaster',scene);cityBrick.diffuseTexture=palette.brick.diffuseTexture;cityConcrete.diffuseTexture=palette.concrete.diffuseTexture
+  for(const m of [cityWall,cityBrick,cityConcrete])m.emissiveColor=new Color3(.12,.14,.13)
   const staticMeshes: Mesh[] = []
   function box(
     name: string,
@@ -190,7 +193,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
       solid.width,
       solid.height,
       solid.depth,
-      solid.id.startsWith('landmark-hospital') ? solid.id.includes('mattress') ? hospitalLinen : /hospital-(floor|roof$)/.test(solid.id) ? hospitalTiles : solid.material==='plaster' ? hospitalWall : /bedhead|locker|nurses/.test(solid.id) ? hospitalSteel : palette[solid.material] : palette[solid.material],
+      solid.id.startsWith('city-') ? solid.material==='plaster'?cityWall:solid.material==='brick'?cityBrick:['roof','concrete'].includes(solid.material)?cityConcrete:palette[solid.material] : solid.id.startsWith('landmark-hospital') ? solid.id.includes('mattress') ? hospitalLinen : /hospital-(floor|roof$)/.test(solid.id) ? hospitalTiles : solid.material==='plaster' ? hospitalWall : /bedhead|locker|nurses/.test(solid.id) ? hospitalSteel : palette[solid.material] : palette[solid.material],
     )
 
   // Solid sloped wedge uses exactly the authoritative ramp's extent and height.
@@ -267,7 +270,27 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
       for(const x of [57.5,60.5])box('stair rail post',x,y+.5,z+(floor%2===1?.9:-.9),.09,1,.09,palette.metal)
     }
   }
+  // City facades share a few materials and the existing 32m static render batches.
+  const cityGlass=material('city-glass','#405c64'),cityFrame=material('city-frame','#b9b8a6')
+  for(const b of BUILDINGS.filter(b=>b.id.startsWith('city-'))) {
+    const floors=Math.round((b.height ?? 3.2)/3.2)
+    for(let f=0;f<floors;f++)for(const side of [-1,1]) {
+      for(const dx of [-6,-3,3,6]) {
+        box('city window frame',b.x+dx,f*3.2+1.8,b.z+side*8.23,2.2,1.55,.08,cityFrame)
+        box('city window glass',b.x+dx,f*3.2+1.8,b.z+side*8.28,1.85,1.2,.04,cityGlass)
+      }
+      for(const dz of [-5,-1,3,6]) {
+        box('city side frame',b.x+side*9.23,f*3.2+1.8,b.z+dz,.08,1.55,2.2,cityFrame)
+        box('city side glass',b.x+side*9.28,f*3.2+1.8,b.z+dz,.04,1.2,1.85,cityGlass)
+      }
+      box('city cornice',b.x,f*3.2+3.08,b.z+side*8.25,18.5,.2,.3,cityFrame)
+    }
+    for(let f=0;f<floors;f++)box('city ceiling light',b.x+3.5,f*3.2+2.98,b.z,2.4,.06,.5,hospitalLight)
+    box('city entry floor',b.x,.015,b.z,17.5,.02,15.5,hospitalTiles)
+    sign(b.name,b.x,2.55,b.z-8.25,0,6,.45)
+  }
   for (const building of BUILDINGS) {
+    if(building.id.startsWith('city-'))continue
     if(building.height && building.height>4.5)continue
     const doorSide = building.doors[0] === 'east' ? 1 : -1
     sign(
