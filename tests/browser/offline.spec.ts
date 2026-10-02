@@ -57,6 +57,8 @@ for(const mobile of [false,true])test(`downloaded Practice and Solo survive offl
 })
 test('interrupted game downloads are not ready and resume without caching APIs',async({page,context})=>{
  test.setTimeout(90000)
+ // Vercel exposes prerendered HTML at its canonical route, not its build filename.
+ await context.route('**/offline-shell/index.html',route=>route.fulfill({status:404,body:'not found'}))
  await context.route('**/models/lamoot-ak47.glb',route=>route.abort())
  await page.goto('http://127.0.0.1:3001/');await page.getByRole('button',{name:'Download offline play',exact:true}).click()
  await expect(page.locator('.offline-download [role="alert"]')).toBeVisible({timeout:30000})

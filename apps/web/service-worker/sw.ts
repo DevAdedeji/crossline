@@ -54,7 +54,7 @@ async function download(port:MessagePort) {
    let response=await cache.match(url)
    if(!response){
     const timeout=setTimeout(()=>controller.abort(),45000)
-    try{response=await fetch(url,{credentials:'omit',cache:'no-store',signal:controller.signal})
+    try{response=await fetch(entry.url==='offline-shell/index.html'?'/offline-shell':url,{credentials:'omit',cache:'no-store',signal:controller.signal})
      if(!response.ok||response.redirected)throw new Error('A game file is unavailable. Retry when connected.')
      const body=await response.clone().arrayBuffer()
      if(body.byteLength>MAX_FILE||body.byteLength!==entry.bytes)throw new Error('Game files changed. Update the app before downloading.')
