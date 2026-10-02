@@ -1,6 +1,6 @@
 # Crossline
 
-A locally runnable first-person browser shooter built with Nuxt 4 / Vue / Nuxt UI, Babylon.js, an authoritative Colyseus Node.js server, and an optional PostgreSQL / Drizzle persistence layer. No account, database, API key or paid service is required for the local game.
+A locally runnable first-person browser shooter built with Nuxt 4 / Vue / Nuxt UI, Babylon.js, an authoritative Colyseus Node.js server, and an optional PostgreSQL / Drizzle persistence layer. Solo and Practice need no account, external database, API key or paid service. Online requires a verified account.
 
 ## Run
 
@@ -11,10 +11,10 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open **http://127.0.0.1:3000**. Enter an optional guest nickname and select a mode to launch directly. There is no Deploy step. The menu gesture prepares sound and mouse capture before assets load; browsers that decline capture offer a retry in the arena. Direct `/play` links still offer a Start button. Phones require landscape orientation. Stop both processes with Ctrl-C; separate commands are `pnpm dev:web` and `pnpm dev:match`.
+Open **http://127.0.0.1:3000**. Enter an optional Solo/Practice nickname and select a mode to launch directly. Online opens a compact login/signup form when signed out. There is no Deploy step. The menu gesture prepares sound and mouse capture before assets load; browsers that decline capture offer a retry in the arena. Direct `/play` links still offer a Start button. Phones require landscape orientation. Stop both processes with Ctrl-C; separate commands are `pnpm dev:web` and `pnpm dev:match`.
 
 - **Solo vs Bots:** five minutes against twelve bots, quick respawns, health packs, results with kills/deaths/accuracy and a personal-best score stored on this device. Play Again starts immediately. Bots target humans only; they never damage other bots. Patrols stay near the active player's district, but aiming/firing still requires real sight and cover checks.
-- **Online Free-for-All:** one continuous human-only arena, join/leave anytime, unlimited respawns, health packs and general top-kills/top-deaths leaderboards in a standalone button/view (also accessible from the main screen). The single process admits up to eight clients, including reserved reconnect seats. A full arena offers a waiting/retry message; it never intentionally creates a second public arena. The cap is integration-tested, not a claim of internet-scale capacity.
+- **Online Free-for-All:** one continuous verified-account, human-only arena, join/leave anytime, unlimited respawns, health packs and general top-kills/top-deaths leaderboards in a standalone button/view (also accessible from the main screen). The single process admits up to eight clients, including reserved reconnect seats. A full arena offers a waiting/retry message; it never intentionally creates a second public arena. The cap is integration-tested, not a claim of internet-scale capacity.
 - **Practice:** the smaller menu option opens a personal three-minute Training session with three stationary targets and two slow unarmed patrols. They never attack.
 
 The match server defaults to `127.0.0.1:2567`. `/health` reports liveness, `/arena` reports public seat availability, and `/leaderboard` exposes only public totals. The web origin is deliberately `127.0.0.1`, not `localhost`.
@@ -57,28 +57,36 @@ Collision, navigation and shot occlusion share authored geometry. Navigation use
 
 Online names are small billboards, limited to 32m and hidden behind authoritative cover or for dead/nonparticipating actors. The radar and server-confirmed combat feedback remain separate. Assets are local: see [model provenance](apps/web/public/models/ATTRIBUTION.md) and [audio provenance](apps/web/public/audio/ATTRIBUTION.md). First-person hands are intentionally omitted. Recorded shot/reload sounds follow authoritative timing and mute/pause state.
 
-## Guest identity and optional persistence
+## Accounts and statistics
 
-Nicknames are not identity. The server issues a random guest capability; the browser stores it locally and the database stores only its SHA-256 hash. A short stable suffix distinguishes duplicate nicknames. A forged/unknown capability creates a different guest; clients cannot choose a player ID or submit statistics. Clearing browser storage loses access to the old guest identity; recovery and accounts are not implemented.
+Signup asks for username, email and password; login asks for email and password. A successful login continues directly into Online. Sessions survive a page refresh, and the main menu provides logout. Password reset is intentionally deferred. Controller D-pad moves between fields/buttons, A / × activates buttons, and B / ○ closes the form; typing uses the device keyboard. Landscape forms scroll within the screen.
 
-Without `DATABASE_URL`, leaderboards are explicitly labeled **temporary server totals** and reset when the process restarts. With an approved PostgreSQL connection and migrations applied, server-confirmed elimination IDs update kill/death totals in one idempotent transaction. Reconnects and duplicate event retries do not add another kill. SQL migrations and persistence across reopen are tested with embedded PostgreSQL (PGlite); a hosted PostgreSQL/Aiven connection has not been exercised.
+Better Auth 1.7.7 uses its own password hashing, verification and session handling with the Drizzle PostgreSQL adapter. Usernames are required, normalized to lowercase, immutable and unique (3–16 letters/numbers/underscores). Email verification is required. Public names and leaderboards use only username/account ID/kill/death fields, never email, password hashes or session tokens. Existing anonymous guest tables are retained as historical data and are not silently merged into accounts.
 
-The server pool defaults to three connections (allowed 1–5), has bounded connection/query timeouts and verifies remote TLS. A bounded in-process retry queue shows delayed saving during failures; uncommitted events can be lost on a process crash. This is not a crash-proof event pipeline. Database failure never silently switches configured persistent totals to temporary totals.
+`pnpm dev` explicitly enables **local synthetic accounts**. Use an `@example.test` email; real email addresses are rejected in this mode. Verification messages are captured in a bounded local inbox, and the labeled “Verify local test email & play” button consumes the real verification link. Nothing is emailed and verification is not bypassed. Local account/session/stat data persists under ignored `.crossline-local/accounts` in the project root. Tests instead use disposable PostgreSQL databases. Local auth refuses production mode or a non-loopback host/origin.
 
-The match process reads exported environment variables. Migration tooling alone reads `packages/db/.env`. No real `.env` or credentials belong in Git. For an explicitly chosen local database:
+The browser retains an HttpOnly, SameSite=Lax session cookie. Secure cookies are required for nonlocal configuration. A short-lived, single-use Better Auth token authorizes a Colyseus join; it is not kept in localStorage. The server rejects client-chosen identities and duplicate active account seats. Reconnect must confirm the same account **and session** with a fresh token before input is accepted. Session expiry stops input, and database session checks revoke logged-out/invalid sessions within approximately two seconds. Failure to reauthorize a reconnect closes it after five seconds. Database errors fail closed.
+
+Authentication endpoints have persisted rate limits and bounded request bodies, trusted-origin checks and generic errors. The current undeployed single-process gateway conservatively uses one rate-limit bucket; trusted per-client proxy/IP handling is a deployment prerequisite. Password reset, account editing/linking and token-verification HTTP endpoints are not publicly routed. The match process consumes join tokens internally.
+
+Server-confirmed elimination IDs update account kill/death totals atomically and idempotently. The bounded in-process retry queue reports delayed saving; uncommitted events can still be lost on a crash. Embedded PostgreSQL tests cover restart, rollback, duplicates and ownership. Hosted PostgreSQL and real email delivery remain untested.
+
+For future approved hosting, the match service needs `DATABASE_URL`, `BETTER_AUTH_SECRET`, HTTPS `WEB_ORIGIN`, and an explicitly enabled, approved SMTP sender (`AUTH_EMAIL_ENABLED=1`, `AUTH_EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`). Nodemailer requires verified TLS on port 465 or STARTTLS on 587. Missing configuration blocks signup; no fake success is returned. No real service, database migration, auth secret or sender credentials have been provisioned. Public production startup remains deliberately blocked pending deployment readiness and approval.
+
+The match process accepts exported variables or its ignored `apps/match/.env`; exported variables take precedence. Migration tooling alone reads `packages/db/.env`. Never put real credentials in Git. For an explicitly approved database:
 
 ```sh
-pnpm db:generate  # offline migration generation after schema changes
-pnpm db:migrate   # applies migrations to the deliberately configured database
+pnpm db:generate  # offline generation after schema changes
+pnpm db:migrate   # explicitly applies migrations to the configured database
 ```
 
-No hosted database is provisioned or migrated by this setup. See [.env.example](.env.example) and [hosting preparation](deploy/README.md) for safe configuration boundaries.
+See [.env.example](.env.example) and [hosting preparation](deploy/README.md). The local development database automatically applies the checked-in migrations; hosted databases never do.
 
 ## Structure and verification
 
 ```text
-apps/web           Nuxt UI, client-only Babylon scene, read-only leaderboard/arena proxy
-apps/match         Long-running authoritative Colyseus server and guest stats service
+apps/web           Nuxt UI, client-only Babylon scene, same-origin auth/leaderboard gateway
+apps/match         Long-running Colyseus server, Better Auth and account statistics
 packages/shared    Movement/combat protocol, geometry, collision, name visibility
 packages/db        Drizzle schema, SQL migrations and bounded optional server repository
 scripts/           Real-server WebSocket smoke checks and offline asset conversion
@@ -89,23 +97,25 @@ pnpm verify
 PLAYWRIGHT_CHANNEL=chrome pnpm test:browser
 ```
 
-`verify` runs lint, all TypeScript checks, units, both builds and both genuine-client network checks. Browser tests use the production build on ports 3001/2569 and the installed Chrome renderer. `pnpm exec playwright install chromium` is an alternative one-time browser install. Tests explicitly disable external database configuration. The network checks use isolated ports 2568/2570 and terminate their own children.
+`verify` runs lint, all TypeScript checks, units, both builds and all three genuine-client network checks. Browser tests use the production build on ports 3001/2569 and the installed Chrome renderer. `pnpm exec playwright install chromium` is an alternative one-time browser install. Tests explicitly disable external database configuration. The network checks use isolated ports 2568/2570/2571 and terminate their own children.
 
-Coverage includes five-minute deterministic Solo simulations, human-only bot targeting, collision/stair routes, crouch clearance, pickup contention/protection, guest identity, transactional persistence/restart/deduplication, remote combat, reconnect reservations, singleton capacity, touch cancellation/orientation, mouse/controller fire/reload and real browser landmark walks with a second client's replicated elevation. Screenshots are saved under ignored `test-results/`.
+Coverage includes five-minute deterministic Solo simulations, human-only bot targeting, collision/stair routes, crouch clearance, pickup contention/protection, verified account identity, session revocation, transactional persistence/restart/deduplication, remote combat, reconnect reservations, singleton capacity, touch cancellation/orientation, mouse/controller fire/reload and real browser landmark walks with a second client's replicated elevation. Screenshots are saved under ignored `test-results/`.
 
 ## Checkpoint verification (2026-10-02)
 
-- `pnpm verify`: passed lint (one non-failing `no-this-alias` warning), all TypeScript checks, 52 unit tests, web/match builds and both real-server network smoke checks.
-- Full Chrome browser suite: 16 passed. After the final standalone leaderboard change, all five affected desktop/controller/mobile tests passed again, including Tab access during mouse capture and touch/controller Back.
-- Hospital, tower and factory routes were traversed through normal browser movement with a second client observing replicated elevation. Embedded PostgreSQL transaction/reopen tests passed; no hosted database was contacted.
+- `pnpm verify`: passed lint, all TypeScript checks, 58 unit tests, web/match builds and three real-server network smoke checks. Final reconnect changes also receive match typecheck/build and both Online/auth smoke checks.
+- Full Chrome browser suite: 19 passed. Final affected account/reconnect checks: four passed again, covering desktop signup/login, landscape signup, controller login/fire release and two-client reconnect.
+- Hospital, tower and factory routes were traversed through normal browser movement with a second authenticated client observing replicated elevation. Embedded PostgreSQL tests cover account verification, hashing, normalization, unique usernames, CSRF, rate limits, expiry, concurrent ticket redemption, cookie flags, first-run creation and transaction/reopen behavior. No hosted database or real email service was contacted.
 - Short scene-only M4 Pro / Chrome samples at 1440×900 and emulated 844×390 touch viewports averaged about 60 FPS with 16.7–16.8ms p95 frame intervals and no browser errors. These exclude combat/network load and do not establish physical-phone or 500-player performance.
+
+Implementation references: [Better Auth Nuxt integration](https://better-auth.com/docs/integrations/nuxt), [Drizzle adapter](https://better-auth.com/docs/adapters/drizzle), [one-time session tokens](https://better-auth.com/docs/plugins/one-time-token), and [Nodemailer SMTP](https://nodemailer.com/smtp).
 
 ## Current limits
 
 This remains a prototype with sparse interiors and a modular art kit, not finished photorealistic COD art. Physical-phone performance, Safari, hostile public traffic, player prediction/reconciliation, lag compensation and hosted database integration remain unverified. Short local M4 Pro / Chrome measurements are not cross-device benchmarks. Dedicated long-range aimed-view blood-effect inspection is still pending; server hit range/occlusion is tested.
 
-The latest requested follow-ups are a larger Solo map, a 500-player shared-arena target, and an Online account gate with compact username/email/password signup and email/password login. Solo and Practice will remain guest-accessible. Account authentication is not implemented in this checkpoint; password reset is deferred, and production database, auth and email configuration require separate setup.
+The larger Solo map and 500-player shared-arena target remain pending. Online signup/login is implemented and requires separate approved production database, secret and email configuration. Solo and Practice remain guest-accessible; password reset is deferred.
 
 The map and capacity expansions are also pending. They are not delivered by this checkpoint: the current map remains 156m square and admission remains the verified eight seats. Reaching 500 needs interest management, serialization/bandwidth work and staged real-client load tests.
 
-There is no shop, progression, extra weapon catalog, bombs, squads, mandatory signup or public deployment. The server deliberately refuses `NODE_ENV=production` until public admission/resource limits, secure origins, observability and deployment readiness are reviewed. The Vercel/Railway files are inactive preparation only; no service, credentials or spending limits were created or changed.
+There is no shop, progression, extra weapon catalog, bombs, squads or public deployment. The server deliberately refuses `NODE_ENV=production` until public admission/resource limits, secure origins, observability and deployment readiness are reviewed. The Vercel/Railway files are inactive preparation only; no service, credentials or spending limits were created or changed.

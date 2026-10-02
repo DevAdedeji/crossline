@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { currentAccount, authClient } from '~/game/account'
 import type { Leaderboard } from '@crossline/shared'
 import { prepareEntry } from '~/game/entry'
 import { readStick } from '@crossline/shared'
@@ -34,6 +35,9 @@ const modes = [
     players: '1 PLAYER + 5 BOTS',
   },
 ]
+const showAccount=ref(false),account=ref<Awaited<ReturnType<typeof currentAccount>>>(null)
+async function signedIn(){account.value=await currentAccount();showAccount.value=false;launching=true;await navigateTo('/play?mode=online')}
+async function logout(){await authClient.signOut();account.value=null;sessionStorage.removeItem('crossline.ffa.reconnect')}
 const active = ref(0)
 let launching = false
 const selected = computed(() => modes[active.value]!)
@@ -55,6 +59,7 @@ function setFocus(index: number) {
 }
 async function selectMode(index: number, usePad=false) {
   if(launching)return
+  if(modes[index]?.id==='online'&&!account.value){showAccount.value=true;return}
   launching=true;active.value=index
   const input=usePad?'pad':navigator.maxTouchPoints>0?'touch':'mouse'
   await prepareEntry(input)
@@ -67,6 +72,7 @@ function focusMode(index: number) {
   document.getElementById(`mode-${modes[active.value]!.id}`)?.focus()
 }
 function keydown(event: KeyboardEvent) {
+  if(showAccount.value)return
   if (showLeaders.value) {if(event.key==='Escape')showLeaders.value=false;return}
   if (showControls.value) {
     if (event.key === 'Escape') showControls.value = false
@@ -83,6 +89,7 @@ function keydown(event: KeyboardEvent) {
   }
 }
 function pollGamepad(time: number) {
+  if(showAccount.value){frame=requestAnimationFrame(pollGamepad);return}
   const pad = selectController(Array.from(navigator.getGamepads?.() ?? []))
   controller.value = pad ? 'GAMEPAD CONNECTED' : 'MOUSE / KEYBOARD'
   if (pad && document.hasFocus() && !document.hidden) {
@@ -126,6 +133,7 @@ function pollGamepad(time: number) {
   frame = requestAnimationFrame(pollGamepad)
 }
 onMounted(() => {
+  void currentAccount().then(value=>account.value=value).catch(()=>{})
   try { callsign.value=localStorage.getItem('crossline.callsign') ?? '' } catch {}
   window.addEventListener('keydown', keydown)
   frame = requestAnimationFrame(pollGamepad)
@@ -138,12 +146,14 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="lobby relative isolate flex min-h-dvh flex-col overflow-hidden bg-[#101619] text-[#edf1ef]">
+    <AccountGate v-if="showAccount" @signed-in="signedIn" @close="showAccount=false" />
     <div class="lobby-scene absolute inset-0 -z-20" aria-hidden="true" />
     <div class="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(8,13,16,.98)_0%,rgba(8,13,16,.86)_37%,rgba(8,13,16,.2)_75%),linear-gradient(0deg,rgba(8,13,16,.95),transparent_45%)]" aria-hidden="true" />
     <header class="flex items-center justify-between border-b border-white/10 px-6 py-5 sm:px-12">
       <a href="/" class="brand-word text-3xl font-black tracking-[-.06em]">CROSSLINE<span class="text-[#ffb15c]">+</span></a>
       <div class="flex items-center gap-5 text-[11px] font-bold tracking-[.2em] text-white/65">
-        <span class="hidden sm:block"><i class="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#bed496]" />LOCAL OPERATOR</span>
+        <button v-if="account" data-ui-action @click="logout">{{ account.username }} · LOG OUT</button>
+        <span v-else class="hidden sm:block"><i class="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#bed496]" />LOCAL OPERATOR</span>
         <button data-ui-action class="border border-white/25 px-3 py-2 transition hover:border-[#ffb15c] focus-visible:outline-2 focus-visible:outline-[#ffb15c]" @click="showControls = true">CONTROLS</button>
       </div>
     </header>

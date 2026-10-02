@@ -1,9 +1,11 @@
+import { browserAccount } from './accounts'
 import {test,expect} from '@playwright/test'
 for(const scenario of [{width:667,height:375,mode:'training'},{width:932,height:430,mode:'online'}])test(`landscape ${scenario.width}px touch controls support simultaneous movement look and fire`,async({browser},info)=>{
  test.setTimeout(60000)
  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:2}),page=await context.newPage(),errors:string[]=[]
  page.on('pageerror',e=>errors.push(e.message))
  try{
+  if(scenario.mode==='online')await browserAccount(page,'mobileonline')
   await page.addInitScript(()=>{const Original=window.AudioContext;const contexts:AudioContext[]=[];(window as unknown as {testAudio:AudioContext[]}).testAudio=contexts;window.AudioContext=class extends Original{constructor(options?:AudioContextOptions){super(options);contexts.push(this)}}})
   await page.goto(`http://127.0.0.1:3001/play${scenario.mode==='online'?'?mode=online':''}`)
   await expect(page.getByRole('dialog',{name:'Rotate phone'})).toBeVisible()

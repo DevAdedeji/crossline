@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./src/schema.ts",
-    "./server": "./src/server.ts"
+    "./server": "./src/server.ts",
+    "./auth": "./src/auth.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -12,6 +13,7 @@
     "migrate": "drizzle-kit migrate"
   },
   "dependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9"
   },

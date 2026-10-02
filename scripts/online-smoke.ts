@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createTestAccount } from './test-account.ts'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { Client, type Room } from '@colyseus/sdk'
@@ -7,9 +8,9 @@ import { COMBAT_WORLD, SOLO_HEALTH_PACKS } from '../packages/shared/src/index.ts
 import { direction, worldHit, type Combatant, type CombatInput, type GameEvent } from '../packages/shared/src/combat.ts'
 interface State { actors: {size:number;get(id:string):Combatant|undefined}; elapsed:number;phase:string;capacity:number;healthPacks:{get(id:string):{availableAt:number}|undefined} }
 const port=2570
-const child=spawn(process.execPath,['apps/match/dist/index.js'],{env:{...process.env,NODE_ENV:'test',DATABASE_URL:'',MATCH_PORT:String(port),FFA_MAX_CLIENTS:'8'},stdio:['ignore','pipe','pipe']})
+const child=spawn(process.execPath,['apps/match/dist/index.js'],{env:{...process.env,NODE_ENV:'test',DATABASE_URL:'',MATCH_PORT:String(port),FFA_MAX_CLIENTS:'8',AUTH_DEV_LOCAL:'1',AUTH_LOCAL_PATH:':memory:',WEB_ORIGIN:`http://127.0.0.1:${port}`},stdio:['ignore','pipe','pipe']})
 let logs='';child.stdout.on('data',d=>logs+=d);child.stderr.on('data',d=>logs+=d)
-const profiles=new Map<string,{id:string;token:string}>()
+const profiles=new Map<string,Awaited<ReturnType<typeof createTestAccount>>>()
 const rooms:Room<State>[]=[],inputs=new Map<Room<State>,CombatInput>()
 const delay=(ms:number)=>new Promise(r=>setTimeout(r,ms))
 async function until(check:()=>boolean|Promise<boolean>,label:string,timeout=10000){const end=Date.now()+timeout;while(Date.now()<end){if(await check())return;await delay(30)}throw Error(`${label}: ${logs}`)}
@@ -18,10 +19,11 @@ const pulse=setInterval(()=>{for(const [room,input] of inputs)if(!room.reconnect
 try {
  await until(async()=>{try{return(await fetch(`http://127.0.0.1:${port}/health`)).ok}catch{return false}},'server ready')
  const client=new Client(`ws://127.0.0.1:${port}`)
- async function join(name:string){const room=await client.joinOrCreate<State>('ffa',{name});rooms.push(room);room.onMessage('event',()=>{});room.onMessage('leaderboard',()=>{});room.onMessage('guest',g=>profiles.set(room.sessionId,g));room.send('profile');return room}
+ async function join(name:string){const account=await createTestAccount(`http://127.0.0.1:${port}`,name);const room=await client.joinOrCreate<State>('ffa',{joinToken:await account.token(),name:'FORGED'});rooms.push(room);room.onMessage('event',()=>{});room.onMessage('leaderboard',()=>{});room.onMessage('authenticated',()=>{});profiles.set(room.sessionId,account);return room}
+ await assert.rejects(()=>client.joinOrCreate('ffa',{name:'ANONYMOUS'}))
  const a=await join('ALPHA'),b=await join('BRAVO');assert.equal(a.roomId,b.roomId)
  await until(()=>a.state?.actors?.size===2&&b.state?.actors?.size===2,'two genuine clients')
- await until(()=>profiles.has(a.sessionId)&&profiles.has(b.sessionId),'private guest profiles received')
+ await until(()=>profiles.has(a.sessionId)&&profiles.has(b.sessionId),'verified account identities received')
  assert.equal(a.state.capacity,8);assert.equal(a.state.actors.get(a.sessionId)!.participating,false)
  a.send('action','start');await until(()=>a.state.actors.get(a.sessionId)!.participating===true,'alpha enters')
  b.send('action','start');await until(()=>b.state.actors.get(b.sessionId)!.participating===true,'bravo enters')
@@ -60,7 +62,7 @@ try {
  inputs.set(a,idle());const score=a.state.actors.get(a.sessionId)!.score
  assert.equal(b.state.actors.get(b.sessionId)!.health,0)
  assert.ok(events.some(e=>e.type==='shot'&&e.hitId===b.sessionId&&e.damage>0))
- await until(async()=>{const leaders=await (await fetch(`http://127.0.0.1:${port}/leaderboard`)).json() as {durable:boolean;topKills:{id:string;kills:number}[];topDeaths:{id:string;deaths:number}[]};return !leaders.durable && leaders.topKills.some(r=>r.id===profiles.get(a.sessionId)?.id&&r.kills===1)&&leaders.topDeaths.some(r=>r.id===profiles.get(b.sessionId)?.id&&r.deaths===1)},'server-confirmed public kill/death totals').catch(async error=>{console.error({profileIds:[profiles.get(a.sessionId)?.id,profiles.get(b.sessionId)?.id],leaders:await (await fetch(`http://127.0.0.1:${port}/leaderboard`)).json(),kills:events.filter(e=>e.type==='kill')});throw error})
+ await until(async()=>{const leaders=await (await fetch(`http://127.0.0.1:${port}/leaderboard`)).json() as {durable:boolean;topKills:{id:string;kills:number}[];topDeaths:{id:string;deaths:number}[]};return leaders.durable && leaders.topKills.some(r=>r.id===profiles.get(a.sessionId)?.id&&r.kills===1)&&leaders.topDeaths.some(r=>r.id===profiles.get(b.sessionId)?.id&&r.deaths===1)},'server-confirmed public kill/death totals').catch(async error=>{console.error({profileIds:[profiles.get(a.sessionId)?.id,profiles.get(b.sessionId)?.id],leaders:await (await fetch(`http://127.0.0.1:${port}/leaderboard`)).json(),kills:events.filter(e=>e.type==='kill')});throw error})
  const deadPosition={x:b.state.actors.get(b.sessionId)!.x,z:b.state.actors.get(b.sessionId)!.z}
  await until(()=>b.state.actors.get(b.sessionId)!.health===100,'unlimited respawn')
  const respawned=b.state.actors.get(b.sessionId)!
@@ -93,7 +95,7 @@ try {
  const token=a.reconnectionToken,id=a.sessionId,roomId=a.roomId,health=a.state.actors.get(a.sessionId)!.health
  inputs.delete(a);a.reconnection.enabled=false;a.connection.close()
  await until(()=>b.state.actors.get(id)?.connected===false,'drop visible to peer')
- const recovered=await client.reconnect<State>(token);rooms.push(recovered);recovered.onMessage('event',()=>{});recovered.onMessage('leaderboard',()=>{});inputs.set(recovered,idle())
+ const recovered=await client.reconnect<State>(token);rooms.push(recovered);recovered.onMessage('event',()=>{});recovered.onMessage('leaderboard',()=>{});recovered.onMessage('authenticated',()=>{});recovered.send('authenticate',await profiles.get(id)!.token());inputs.set(recovered,idle())
  await until(()=>recovered.state?.actors?.get(id)?.connected===true,'reconnection accepted')
  assert.equal(recovered.sessionId,id);assert.equal(recovered.roomId,roomId);assert.equal(recovered.state.actors.get(id)!.score,score)
  assert.equal(recovered.state.actors.get(id)!.health,health)

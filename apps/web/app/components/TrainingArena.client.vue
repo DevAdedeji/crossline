@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onlineJoinToken } from '~/game/account'
 import { playerLabels } from '~/game/playerLabels'
 import type { Leaderboard } from '@crossline/shared'
 import { takeEntry } from '~/game/entry'
@@ -455,17 +456,17 @@ onMounted(async () => {
     try{name=localStorage.getItem('crossline.callsign') ?? ''}catch{}
     let joined: Room<ArenaState>
     if(isOnline.value) {
-      let token: string | null = null, guestToken=''
-      try{guestToken=localStorage.getItem('crossline.guest') ?? ''}catch{}
+      let token: string | null = null
       try { token=sessionStorage.getItem('crossline.ffa.reconnect'); name=localStorage.getItem('crossline.callsign') ?? '' } catch {}
       async function joinArena(){
         const info=await $fetch('/api/arena')
         if(info.full)throw Object.assign(new Error('Arena full'),{code:4213})
-        try{return info.roomId?await client.joinById<ArenaState>(info.roomId,{name,guestToken}):await client.joinOrCreate<ArenaState>('ffa',{name,guestToken})}
+        const joinToken=await onlineJoinToken()
+        try{return info.roomId?await client.joinById<ArenaState>(info.roomId,{joinToken}):await client.joinOrCreate<ArenaState>('ffa',{joinToken})}
         catch(error){
           const current=await $fetch('/api/arena')
           if(current.full)throw Object.assign(new Error('Arena full'),{code:4213})
-          if(!info.roomId && current.roomId)return client.joinById<ArenaState>(current.roomId,{name,guestToken})
+          if(!info.roomId && current.roomId)return client.joinById<ArenaState>(current.roomId,{joinToken:await onlineJoinToken()})
           throw error
         }
       }
@@ -482,10 +483,11 @@ onMounted(async () => {
     room = joined
     status.value = 'Connected'
     if(isOnline.value){
-      room.onMessage('guest',(guest:{token:string})=>{if(/^[a-f0-9]{64}$/.test(guest.token))try{localStorage.setItem('crossline.guest',guest.token)}catch{}})
+      room.onMessage('authenticated',()=>{status.value='Connected'})
+      room.onMessage('session-ended',()=>{joinError.value='Your session ended. Return to the menu and sign in again.';release();onlinePaused.value=true;phase.value='paused'})
       room.onMessage('leaderboard',(board:Leaderboard)=>{leaders.value=board;leadersUnavailable.value=false})
       room.onMessage('leaderboard-status',()=>{leadersUnavailable.value=true})
-      room.send('profile');room.send('leaderboard')
+      room.send('leaderboard');void onlineJoinToken().then(token=>joined.send('authenticate',token)).catch(()=>{joinError.value='Sign in again to enter Online.';void joined.leave()})
     }
     room.onStateChange((state) => {
       if (state.round !== round.value) {
@@ -574,6 +576,7 @@ onMounted(async () => {
     })
     room.onReconnect(() => {
       if(stopped)return
+      if(isOnline.value)void onlineJoinToken().then(token=>joined.send('authenticate',token)).catch(()=>{joinError.value='Sign in again to reconnect.';void joined.leave()})
       status.value='Connected'; onlinePaused.value=true; phase.value=onlineEntered.value ? 'paused' : 'ready'
       // The SDK rotates its token immediately after invoking onReconnect.
       queueMicrotask(() => { try { sessionStorage.setItem('crossline.ffa.reconnect',joined.reconnectionToken) } catch {} })
@@ -616,7 +619,7 @@ onMounted(async () => {
     }, TICK_MS)
   } catch (error) {
     const code=error && typeof error==='object' && 'code' in error ? error.code : undefined
-    joinError.value=code===4213?'Arena is full. Wait for a free seat, then retry.':code===4214?'Guest statistics are unavailable. Please retry shortly.':'The arena could not connect. Check the match server and retry.'
+    joinError.value=code===4213?'Arena is full. Wait for a free seat, then retry.':code===4214?'Sign in with a verified account to enter Online.':code===4215?'This account is already in the arena. Leave its other session or reconnect.':'The arena could not connect. Check the match server and retry.'
     console.error('Arena initialization failed',typeof code==='number'?code:'unavailable')
     status.value = 'Arena unavailable'
     release()
@@ -772,7 +775,7 @@ onBeforeUnmount(() => {
             v-for="(label, i) in menuItems"
             :key="label"
             :class="{ selected: menuIndex === i }"
-            :disabled="status !== 'Connected' && label !== 'Return to menu'"
+            :disabled="(status !== 'Connected' || !self) && label !== 'Return to menu'"
             @mousemove="menuIndex = i"
             @click="choose(i)"
           >

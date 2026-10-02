@@ -1,5 +1,7 @@
+import { browserAccount } from './accounts'
 import { expect, test, type Page } from '@playwright/test'
 async function setup(page:Page,name:string) {
+  await browserAccount(page,name)
   await page.addInitScript(name=>{
     localStorage.setItem('crossline.callsign',name)
     const pad={id:'Online acceptance controller',index:0,connected:true,mapping:'standard',axes:[0,0,0,0],buttons:Array.from({length:17},()=>({pressed:false,value:0,touched:false}))}
@@ -33,8 +35,8 @@ test('two browser players share FFA, pause locally, reconnect and leave using co
     if(await page.locator('main.arena').getAttribute('data-phase') === 'playing')await pulse(page,9)
     await expect(page.getByRole('heading',{name:'Match continues.'})).toBeVisible()
     await expect(page.locator('main.arena')).toHaveAttribute('data-server-phase','playing')
-    await expect(page.getByTestId('online-session')).toContainText('ALPHA-')
-    await expect(page.getByRole('list',{name:'Match standings'})).toContainText('BRAVO-')
+    await expect(page.getByTestId('online-session')).toContainText('alpha')
+    await expect(page.getByRole('list',{name:'Match standings'})).toContainText('bravo')
     await pulse(page,8);await expect(page.getByRole('dialog',{name:'Arena leaders'})).toBeVisible()
     await pulse(page,1);await expect(page.getByRole('dialog',{name:'Arena leaders'})).toBeHidden()
     await button(page,0,true);await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')

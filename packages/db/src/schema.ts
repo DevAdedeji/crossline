@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { check, index, integer, pgEnum, pgTable, primaryKey, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+import { bigint, boolean, text, check, index, integer, pgEnum, pgTable, primaryKey, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
 
 // Future modes are persistence vocabulary, not playable implementations.
 export const matchMode = pgEnum('match_mode', ['training', 'solo_bots', 'free_for_all', 'squads'])
@@ -37,3 +37,35 @@ export const onlineEliminations = pgTable('online_eliminations', {
   victimId: uuid('victim_id').notNull().references(()=>onlineGuests.id),
   createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[check('online_distinct_players',sql`${t.killerId} <> ${t.victimId}`)])
+
+// Better Auth owns credentials and sessions. Public match data never joins email fields.
+export const user = pgTable('auth_user', {
+ id:text().primaryKey(), name:text().notNull(), email:text().notNull().unique(),
+ emailVerified:boolean('email_verified').notNull().default(false), image:text(),
+ username:varchar({length:16}).notNull().unique(), displayUsername:varchar('display_username',{length:16}),
+ createdAt:timestamp('created_at').notNull().defaultNow(), updatedAt:timestamp('updated_at').notNull().defaultNow(),
+},t=>[check('auth_username_format',sql`${t.username} ~ '^[a-z0-9_]{3,16}$'`)])
+export const session = pgTable('auth_session', {
+ id:text().primaryKey(),token:text().notNull().unique(),userId:text('user_id').notNull().references(()=>user.id,{onDelete:'cascade'}),
+ expiresAt:timestamp('expires_at').notNull(),ipAddress:text('ip_address'),userAgent:text('user_agent'),
+ createdAt:timestamp('created_at').notNull().defaultNow(),updatedAt:timestamp('updated_at').notNull().defaultNow(),
+},t=>[index('auth_session_user_idx').on(t.userId)])
+export const account = pgTable('auth_account', {
+ id:text().primaryKey(),accountId:text('account_id').notNull(),providerId:text('provider_id').notNull(),userId:text('user_id').notNull().references(()=>user.id,{onDelete:'cascade'}),
+ password:text(),accessToken:text('access_token'),refreshToken:text('refresh_token'),idToken:text('id_token'),scope:text(),
+ accessTokenExpiresAt:timestamp('access_token_expires_at'),refreshTokenExpiresAt:timestamp('refresh_token_expires_at'),
+ createdAt:timestamp('created_at').notNull().defaultNow(),updatedAt:timestamp('updated_at').notNull().defaultNow(),
+},t=>[index('auth_account_user_idx').on(t.userId)])
+export const verification = pgTable('auth_verification', {
+ id:text().primaryKey(),identifier:text().notNull(),value:text().notNull(),expiresAt:timestamp('expires_at').notNull(),
+ createdAt:timestamp('created_at').notNull().defaultNow(),updatedAt:timestamp('updated_at').notNull().defaultNow(),
+},t=>[index('auth_verification_identifier_idx').on(t.identifier)])
+export const rateLimit = pgTable('auth_rate_limit', {id:text().primaryKey(),key:text().notNull().unique(),count:integer().notNull(),lastRequest:bigint('last_request',{mode:'number'}).notNull()})
+export const accountStats = pgTable('account_stats', {
+ userId:text('user_id').primaryKey().references(()=>user.id,{onDelete:'cascade'}),
+ kills:integer().notNull().default(0),deaths:integer().notNull().default(0),
+},t=>[check('account_nonnegative_stats',sql`${t.kills} >= 0 and ${t.deaths} >= 0`),index('account_kills_idx').on(t.kills),index('account_deaths_idx').on(t.deaths)])
+export const accountEliminations = pgTable('account_eliminations', {
+ id:uuid().primaryKey(),killerId:text('killer_id').notNull().references(()=>user.id),victimId:text('victim_id').notNull().references(()=>user.id),
+ createdAt:timestamp('created_at').notNull().defaultNow(),
+},t=>[check('account_distinct_players',sql`${t.killerId} <> ${t.victimId}`)])

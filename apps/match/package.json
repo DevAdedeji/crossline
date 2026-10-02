@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "AUTH_DEV_LOCAL=1 tsx watch src/index.ts",
     "build": "tsup",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit"
@@ -12,10 +12,14 @@
     "@colyseus/core": "0.18.18",
     "@colyseus/schema": "5.0.35",
     "@colyseus/ws-transport": "0.18.4",
+    "@crossline/db": "workspace:*",
     "@crossline/shared": "workspace:*",
-    "@crossline/db": "workspace:*"
+    "@electric-sql/pglite": "0.5.8",
+    "better-auth": "1.7.7",
+    "nodemailer": "^10.0.13"
   },
   "devDependencies": {
+    "@types/nodemailer": "^8.0.2",
     "tsup": "latest",
     "tsx": "latest"
   }

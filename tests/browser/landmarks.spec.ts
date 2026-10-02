@@ -1,3 +1,5 @@
+import { browserAccount } from './accounts'
+import { createTestAccount } from '../../scripts/test-account'
 import {test,expect} from '@playwright/test'
 import {Client,type Room} from '@colyseus/sdk'
 import {getNavigation} from '../../apps/match/src/training/navigation.js'
@@ -6,11 +8,13 @@ import type {Combatant} from '../../packages/shared/src/combat.js'
 test('a real player walks the factory mezzanine/roof and all tower stairs with replicated elevation',async({page},info)=>{
  test.setTimeout(300000);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
  await page.addInitScript(()=>{const pad={id:'Landmark tour controller',index:0,connected:true,mapping:'standard',axes:[0,0,0,0],buttons:Array.from({length:17},()=>({pressed:false,value:0}))};Object.defineProperty(navigator,'getGamepads',{value:()=>[pad],configurable:true})})
+ await browserAccount(page,'tour')
  await page.goto('/play?mode=online');await page.bringToFront();await expect(page.locator('.radar-panel')).toContainText('Connected',{timeout:30000})
  await page.evaluate(()=>Object.defineProperty(navigator.getGamepads()[0]!.buttons[0],'pressed',{value:true,configurable:true}));await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
  await page.evaluate(()=>Object.defineProperty(navigator.getGamepads()[0]!.buttons[0],'pressed',{value:false,configurable:true}))
  const id=(await page.locator('main.arena').getAttribute('data-player-id'))!,roomId=(await page.locator('main.arena').getAttribute('data-room-id'))!
- const peer:Room<{actors:{get(id:string):Combatant|undefined}}>=await new Client('ws://127.0.0.1:2569').joinById(roomId)
+ const peerAccount=await createTestAccount('http://127.0.0.1:3001','tourpeer')
+ const peer:Room<{actors:{get(id:string):Combatant|undefined}}>=await new Client('ws://127.0.0.1:2569').joinById(roomId,{joinToken:await peerAccount.token()})
  peer.onMessage('event',()=>{});peer.onMessage('leaderboard',()=>{})
  const actor=page.locator(`[data-actor="${id}"]`),nav=getNavigation(COMBAT_WORLD);await nav.precompute()
  const position=async()=>({x:Number(await actor.getAttribute('data-x')),y:Number(await actor.getAttribute('data-y')),z:Number(await actor.getAttribute('data-z'))})
