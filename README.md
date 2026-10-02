@@ -179,3 +179,14 @@ PWA/offline browser checks cover manifest/icons, app-specific install eligibilit
 Practice and Solo never open a WebSocket. A worker runs their fixed-step simulation independently of rendering. Online predicts movement and muzzle feedback immediately, with server-confirmed hits, ammo, health and scores. Acknowledgment delay above 250ms or silence above 350ms shows a warning. After one second without acknowledgment (or an 8 KiB socket backlog), controls pause visibly; held inputs clear, prediction resets, and recovery requires Resume. Input history stays bounded. The server ignores new-client input based on a server timestamp more than 1.2 seconds old. Shared multiplayer cannot continue offline.
 
 A deterministic, stationary exposed-player fixture across twelve seeds measured median defeat time against one/two/four nearby bots at 13.1/13.2/8.7 seconds, versus 5.6/3.2/2.8 seconds before this Solo-only balance change. The player had no spawn protection and did not shoot or seek cover. This is a regression scenario, not a guarantee for every encounter; bots remain lethal when the player stays exposed.
+
+
+## Furnished interiors and viewport recovery
+
+The café, garage and supply store now have detailed counters, equipment, drawers and labelled stock. Existing office desks/cabinets, hospital furniture and factory controls receive small procedural details. Other district rooms intentionally stay empty. Furniture keeps its authoritative collision footprints and the stair/loading routes; these original procedural meshes and tiny generated textures add no external art downloads. Geometry is batched by material and spatial cell.
+
+Five map-only desktop and phone-emulated Chrome views on an Apple M4 Pro remained near 60 FPS after the detail pass, with no browser exceptions. Active meshes increased (desktop café: 353 to 446; phone café: 431 to 543), so physical-phone performance still needs checking. These short stationary samples exclude players and networking.
+
+Touch layout follows the visual viewport through rotation and foreground resume, including delayed mobile browser size updates. Portrait pauses play and clears held inputs; returning to landscape restores the canvas and controls without reloading, then requires Resume. The regression repeats three rotations with deliberately stale window dimensions and checks the same page/game survives. Physical iPhone standalone behavior remains unverified.
+
+Hosted offline verification on release `3a00043`: clean desktop and DPR-3 phone-emulated Chrome profiles downloaded the production pack, disabled networking and the ordinary HTTP cache, reloaded both local modes, moved/fired, then reconnected successfully. No game sockets or page exceptions occurred. Offline startup was 1.0–1.8 seconds in these short samples. The automation browser needed a temporary resolver mapping to the hosting IP after DNS/navigation stalls; no device or application DNS settings were changed.

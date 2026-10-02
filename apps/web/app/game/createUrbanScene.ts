@@ -1,4 +1,4 @@
-import { interiorDetails } from './interiorDetails'
+import { interiorDetails, detailedFurniture } from './interiorDetails'
 import { addFacades } from './urbanFacades'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { ReflectionProbe } from '@babylonjs/core/Probes/reflectionProbe'
@@ -184,7 +184,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   for (const x of world.roadCenters) for(const z of world.roadCenters)
     for(let stripe=-3.6;stripe<=3.7;stripe+=1.2)for(const side of [-5.1,5.1])
       box('crosswalk',x+stripe,.025,z+side,.65,.015,1.5,paint)
-  for (const solid of MAP_SOLIDS.filter(s=>!['landmark-factory-crane','landmark-factory-hoist'].includes(s.id) && !s.id.startsWith('street-bench-') && !/hospital-bed-\d/.test(s.id)))
+  for (const solid of MAP_SOLIDS.filter(s=>!detailedFurniture(s) && !['landmark-factory-crane','landmark-factory-hoist'].includes(s.id) && !s.id.startsWith('street-bench-') && !/hospital-bed-\d/.test(s.id)))
     box(
       solid.id,
       solid.x,
@@ -316,7 +316,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   // Cars are game-ready meshes, fitted to the existing conservative authoritative colliders.
   function addVehicles(assets: TrainingAssets) {
     addFacades(scene, assets, shadows, world)
-    interiorDetails(scene, shadows, world.buildings)
+    interiorDetails(scene, shadows, world)
     for (const solid of MAP_SOLIDS.filter(s => s.id.startsWith('planter') || s.id.startsWith('street-bench-'))) {
       const tree = solid.id.startsWith('planter')
       const instance = (tree ? assets.tree : assets.bench).instantiateModelsToScene(n => `${solid.id}:${n}`, false)
