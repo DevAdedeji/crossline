@@ -36,7 +36,7 @@ test('install manifest, bounded static cache, offline fallback and API exclusion
  await context.setOffline(true)
  await page.goto('/play?mode=online')
  await expect(page.getByRole('heading',{name:'You’re offline.'})).toBeVisible()
- await expect(page.getByText(/all use the match server and need internet/)).toBeVisible()
+ await expect(page.getByText(/Offline game files are not ready/)).toBeVisible()
  expect(await page.evaluate(async()=>{try{await fetch('/api/auth/get-session');return 'cached'}catch{return 'network-only'}})).toBe('network-only')
  await context.setOffline(false);await page.getByRole('link',{name:'Try again'}).click()
  await expect(page.getByRole('button',{name:'Practice',exact:true})).toBeVisible()

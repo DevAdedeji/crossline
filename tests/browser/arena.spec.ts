@@ -67,6 +67,7 @@ test('real mouse target practice, reload, pause, results, replay and exit', asyn
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   await page.goto('/')
+  await expect(page.locator('main.lobby')).toHaveAttribute('data-ready','true')
   await page.keyboard.press('ArrowRight')
   await expect(
     page.getByRole('button', { name: 'Online Free-for-All' }),

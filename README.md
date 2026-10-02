@@ -1,6 +1,6 @@
 # Crossline
 
-A locally runnable first-person browser shooter built with Nuxt 4 / Vue / Nuxt UI, Babylon.js, an authoritative Colyseus Node.js server, and an optional PostgreSQL / Drizzle persistence layer. Solo and Practice need no account, external database, API key or paid service. Online requires an account.
+A locally runnable first-person browser shooter built with Nuxt 4 / Vue / Nuxt UI, Babylon.js, an authoritative Colyseus Node.js server, and an optional PostgreSQL / Drizzle persistence layer. Solo and Practice run entirely in a device-local worker and need no match server, account, external database, API key or paid service. Online requires an account.
 
 ## Run
 
@@ -37,11 +37,11 @@ Touch movement, look and fire support simultaneous fingers. Pointer cancellation
 
 ## Combat and recovery
 
-One CL-24 rifle is implemented: 24 rounds, unlimited reserve, 140ms shot interval, 1.6-second reload, 80m range, 25 body / 50 head damage. Movement, stance, ray hits, cover, ammunition, health, elimination and respawn belong to the server. Clients cannot submit damage, health, score or target IDs. Crouch changes speed, camera height, pose, shot origin and hit region; blocked headroom prevents standing into a ceiling.
+One CL-24 rifle is implemented: 24 rounds, unlimited reserve, 140ms shot interval, 1.6-second reload, 80m range, 25 body / 50 head damage. Online movement, stance, ray hits, cover, ammunition, health, elimination and respawn belong to the server. Practice and Solo use the same deterministic simulation locally; their scores remain device-only and are never submitted as competitive results. Clients cannot submit damage, health, score or target IDs. Crouch changes speed, camera height, pose, shot origin and hit region; blocked headroom prevents standing into a ceiling.
 
 Solo and Online start at 100 HP, use a visible health bar and have no passive human regeneration. Eleven ground supply cases heal up to 35 HP within 1.15m on the same floor, capped at 100, then cool down for 25 seconds of simulation time. Collection checks life, participation, spawn protection and line of sight; simultaneous claims have one winner. A short chime and `+N HP` cue report the actual gain. Practice retains regeneration and no packs.
 
-Solo bots deal 16 body / 24 head damage, react after 900–1250ms, fire short bursts at 420ms spacing and rest between bursts. At most two bots sustain fire on one human simultaneously. Solo human protection lasts four seconds on entry/respawn. Zero HP causes a three-second respawn. This is an initial playtested balance, not a fixed survival guarantee.
+Solo bots deal 10 body / 15 head damage, react after 1400–1900ms, fire two-shot bursts at 600ms spacing and rest 1800–2400ms between bursts. A 450ms damage grace period prevents overlapping bot hits from draining health instantly. At most two bots sustain fire on one human simultaneously. Solo human protection lasts four seconds on entry/respawn. Zero HP causes a three-second respawn. This is an initial playtested balance, not a fixed survival guarantee.
 
 Online drop/reload reconnect reserves the same session and vulnerable body for 20 seconds. Intentional departure removes the actor. Reconnect does not heal or reset the session score. Expired reservations free their seat; the ongoing room remains alive when empty until the process restarts.
 
@@ -165,10 +165,17 @@ A map-only Chrome profile on an Apple M4 Pro reduced active meshes from 745/2119
 
 Open https://crossline-three.vercel.app and choose **Install app**, or use your browser's install menu. On iPhone/iPad, open the site in Safari and choose **Share → Add to Home Screen**. The installed app uses a standalone window, its own icon and the existing landscape controls/safe-area layout. Desktop and mobile browser support varies; an OS-level installation on a physical phone has not been verified.
 
-All three modes still require internet and the authoritative match server. When a page cannot load offline, a small reconnect screen provides **Try again**; gameplay is not simulated offline.
+**Download offline play** on the menu saves a versioned game pack with visible size/progress. When **Offline play ready** appears, Practice and Solo can reload, move, aim, shoot and simulate bots with networking disabled. Online always requires internet and an account. An interrupted download is not marked ready; retry reuses verified files. **Remove offline files** frees the pack when no match/download is open. Browsers may evict local storage; check readiness before leaving connectivity.
 
-The service worker precaches only the offline page, manifest and install icons. Runtime caching covers same-origin hashed Nuxt JS/CSS only: at most 32 responses, 3 MiB per response, aged out after seven days, with quota-error cleanup. It never caches auth, account, leaderboard or matchmaking APIs, HTML sessions, game state or GLB models. Normal browser HTTP caching remains separate.
+The automatic precache remains small. The opt-in pack contains a build-time anonymous SPA shell, matching JS/CSS, the local simulation worker, models, textures, audio and menu art. SHA-256 and byte-size checks reject mixed releases. Limits are 64 MiB total, 8 MiB per file and 96 files; incomplete downloads cannot launch offline. A completed pack pins shell/code/art together. Activating a new release removes the old pack and requires an explicit new download. Auth/account/leaderboard/matchmaking APIs, session HTML and game state are never cached. The separate ordinary code cache remains bounded at 32 files / 3 MiB each / seven days; normal HTTP caching is separate.
 
 Updates wait in the background. **Update app** appears on the menu; activation is refused while any same-origin Crossline tab is on `/play`, including pause/reconnect. After all matches are left, the requested update reloads the menu. An active match is never automatically reloaded. Closing all app tabs also lets the normal service-worker lifecycle activate a waiting release.
 
-PWA browser checks cover manifest/icons, app-specific install eligibility, cache bounds, offline/reconnect behavior, API exclusion and cross-tab update blocking. Run `PLAYWRIGHT_CHANNEL=chrome pnpm exec playwright test tests/browser/pwa.spec.ts`. The worker is disabled during `pnpm dev`; use a production build for PWA checks.
+PWA/offline browser checks cover manifest/icons, app-specific install eligibility, cache bounds, interrupted downloads, real network-disabled reload/gameplay on desktop and phone emulation, API exclusion and cross-tab update blocking. Run `PLAYWRIGHT_CHANNEL=chrome pnpm exec playwright test tests/browser/pwa.spec.ts`. The worker is disabled during `pnpm dev`; use a production build for PWA checks.
+
+
+## Weak connections and Solo pacing
+
+Practice and Solo never open a WebSocket. A worker runs their fixed-step simulation independently of rendering. Online predicts movement and muzzle feedback immediately, with server-confirmed hits, ammo, health and scores. Acknowledgment delay above 250ms or silence above 350ms shows a warning. After one second without acknowledgment (or an 8 KiB socket backlog), controls pause visibly; held inputs clear, prediction resets, and recovery requires Resume. Input history stays bounded. The server ignores new-client input based on a server timestamp more than 1.2 seconds old. Shared multiplayer cannot continue offline.
+
+A deterministic, stationary exposed-player fixture across twelve seeds measured median defeat time against one/two/four nearby bots at 13.1/13.2/8.7 seconds, versus 5.6/3.2/2.8 seconds before this Solo-only balance change. The player had no spawn protection and did not shoot or seek cover. This is a regression scenario, not a guarantee for every encounter; bots remain lethal when the player stays exposed.

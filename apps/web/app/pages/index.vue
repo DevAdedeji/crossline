@@ -5,6 +5,7 @@ import { prepareEntry } from '~/game/entry'
 import { readStick, ONLINE_CAPACITY_TARGET } from '@crossline/shared'
 import { selectController, controllerButtons } from '~/game/controller'
 
+const controlsReady=ref(false)
 const arenaCapacity=ref(ONLINE_CAPACITY_TARGET)
 const modes = reactive([
   {
@@ -36,9 +37,9 @@ const modes = reactive([
     players: '1 PLAYER + 5 BOTS',
   },
 ])
-onMounted(async()=>{try{const arena=await $fetch<{capacity:number}>('/api/arena');arenaCapacity.value=arena.capacity}catch{/* Default capacity remains visible if the match server is unavailable. */}})
+onMounted(async()=>{if(!navigator.onLine)return;try{const arena=await $fetch<{capacity:number}>('/api/arena');arenaCapacity.value=arena.capacity}catch{/* Default capacity remains visible if the match server is unavailable. */}})
 const showAccount=ref(false),account=ref<Awaited<ReturnType<typeof currentAccount>>>(null)
-async function signedIn(){account.value=await currentAccount();showAccount.value=false;launching=true;await navigateTo('/play?mode=online')}
+async function signedIn(){account.value=navigator.onLine?await currentAccount():null;showAccount.value=false;launching=true;await navigateTo('/play?mode=online')}
 async function logout(){await authClient.signOut();account.value=null;sessionStorage.removeItem('crossline.ffa.reconnect')}
 const active = ref(0)
 let launching = false
@@ -61,6 +62,7 @@ function setFocus(index: number) {
 }
 async function selectMode(index: number, usePad=false) {
   if(launching)return
+  if(modes[index]?.id==='online'&&!navigator.onLine){message.value='Online needs internet. Practice and Solo run on this device.';return}
   if(modes[index]?.id==='online'&&!account.value){showAccount.value=true;return}
   launching=true;active.value=index
   const input=usePad?'pad':navigator.maxTouchPoints>0?'touch':'mouse'
@@ -135,7 +137,8 @@ function pollGamepad(time: number) {
   frame = requestAnimationFrame(pollGamepad)
 }
 onMounted(() => {
-  void currentAccount().then(value=>account.value=value).catch(()=>{})
+  controlsReady.value=true
+  if(navigator.onLine)void currentAccount().then(value=>account.value=value).catch(()=>{})
   try { callsign.value=localStorage.getItem('crossline.callsign') ?? '' } catch {}
   window.addEventListener('keydown', keydown)
   frame = requestAnimationFrame(pollGamepad)
@@ -147,7 +150,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="lobby relative isolate flex min-h-dvh flex-col overflow-hidden bg-[#101619] text-[#edf1ef]">
+  <main :data-ready="controlsReady" class="lobby relative isolate flex min-h-dvh flex-col overflow-hidden bg-[#101619] text-[#edf1ef]">
     <AccountGate v-if="showAccount" @signed-in="signedIn" @close="showAccount=false" />
     <div class="lobby-scene absolute inset-0 -z-20" aria-hidden="true" />
     <div class="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(8,13,16,.98)_0%,rgba(8,13,16,.86)_37%,rgba(8,13,16,.2)_75%),linear-gradient(0deg,rgba(8,13,16,.95),transparent_45%)]" aria-hidden="true" />

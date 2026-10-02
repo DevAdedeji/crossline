@@ -46,6 +46,6 @@ Neon Free includes 100 compute-unit hours per project each month and suspends id
 
 ## PWA release behavior
 
-The Nuxt build emits `/manifest.webmanifest`, `/sw.js`, local install icons and an offline reconnect page. Vercel serves the worker and manifest with revalidation headers. The worker exposes the deployed Git commit through its `GET_RELEASE` message for smoke checks; it contains no secret configuration. Builds use `VERCEL_GIT_COMMIT_SHA` when available.
+The Nuxt build emits `/manifest.webmanifest`, `/sw.js`, local install icons and an offline reconnect page. Vercel serves the worker and manifest with revalidation headers. The explicit offline pack uses an anonymous build-time SPA shell and SHA-256-verified public assets (64 MiB maximum); activating a release removes the previous pack. It never saves authenticated HTML or APIs. The worker exposes the deployed Git commit through its `GET_RELEASE` message for smoke checks; it contains no secret configuration. Builds use `VERCEL_GIT_COMMIT_SHA` when available.
 
 The client owns registration and prompts. There is no automatic `skipWaiting` or active-match reload; a waiting worker checks all open window URLs before accepting a menu update. API requests pass straight to the network. Browser integration tests exercise real worker installation, offline fallback, cache eviction and two worker revisions on a local HTTP fixture.

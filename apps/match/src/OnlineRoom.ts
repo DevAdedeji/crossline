@@ -37,6 +37,10 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
     this.setPatchRate(TICK_MS)
     this.onMessage('input',(client,value:unknown)=>{
       if(!this.canPlay(client.sessionId))return
+      // Ignore delayed client samples based on the last server time they observed.
+      // Older deployed clients remain compatible; all outcomes still use server simulation.
+      const observed=value&&typeof value==='object'&&'observedElapsed' in value?value.observedElapsed:undefined
+      if(observed!==undefined&&(typeof observed!=='number'||!Number.isFinite(observed)||this.game.elapsed-observed>1200||observed>this.game.elapsed+TICK_MS))return
       if(this.game.acceptInput(value,client.sessionId))this.lastInput.set(client.sessionId,this.clock.elapsedTime)
     })
     this.onMessage('action',(client,value:unknown)=>{

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { localSession, type ArenaState, type ArenaSession } from '~/game/arenaSession'
+import { NetworkHealth } from '~/game/networkHealth'
 import { MovementPrediction } from '~/game/prediction'
 import { WeaponFeedback } from '~/game/weaponFeedback'
 import { onlineJoinToken } from '~/game/account'
@@ -7,7 +9,7 @@ import type { Leaderboard } from '@crossline/shared'
 import { takeEntry } from '~/game/entry'
 import type { Engine } from '@babylonjs/core/Engines/engine'
 import { Client, type Room } from '@colyseus/sdk'
-import { ONLINE_CAPACITY_TARGET, SOLO, stanceEye, type HealthPickup, ROOM_NAME, TICK_MS, readStick, TRAINING_WORLD, COMBAT_WORLD, COMBAT_DISTRICTS, COMBAT_BOT_COUNT } from '@crossline/shared'
+import { ONLINE_CAPACITY_TARGET, SOLO, stanceEye, type HealthPickup, TICK_MS, readStick, TRAINING_WORLD, COMBAT_WORLD, COMBAT_DISTRICTS, COMBAT_BOT_COUNT } from '@crossline/shared'
 import {
   RIFLE, QUICK_MATCH_MS,
   aimedTarget,
@@ -30,6 +32,7 @@ const personalBest=ref(0), newBest=ref(false)
 const props = withDefaults(defineProps<{ mode?: GameMode }>(), { mode: 'training' })
 const isOnline = computed(() => props.mode === 'online')
 const leaders=ref<Leaderboard>(),leadersUnavailable=ref(false),joinError=ref(''),showLeaders=ref(false)
+const networkStalled=ref(false), networkNotice=ref('')
 const onlineEntered = ref(false), onlinePaused = ref(false), onlineCapacity = ref(ONLINE_CAPACITY_TARGET), roomCode = ref('')
 const isSolo = computed(() => props.mode === 'solo')
 const world = computed(() => props.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD)
@@ -54,15 +57,6 @@ function saveFireBinding(pad: Gamepad, binding: FireBinding) {
   fireBinding.value = binding
   bindingFire.value = false
   try { localStorage.setItem(`crossline.fire.${pad.id}`, JSON.stringify(binding)) } catch { /* Session binding still works. */ }
-}
-interface ArenaState {
-  actors: { forEach(callback: (actor: Combatant, id: string) => void): void }
-  phase: Phase
-  elapsed: number
-  duration: number
-  round: number
-  healthPacks?: { forEach(fn:(pack:HealthPickup)=>void):void }
-  capacity?: number
 }
 const touchDevice=ref(false),portrait=ref(false),touchActive=ref(false)
 let touchMovement={x:0,z:0},touchFiring=false,touchAiming=false
@@ -102,7 +96,7 @@ const look = { yaw: 0, pitch: 0 },
   audio = trainingAudio(entry?.audio),
   config = useRuntimeConfig()
 let engine: Engine | undefined,
-  room: Room<ArenaState> | undefined,
+  room: ArenaSession | undefined,
   timer: ReturnType<typeof setInterval> | undefined,
   stopped = false,
   mouseFire = false,
@@ -116,7 +110,7 @@ let padMovement = { x: 0, y: 0 },
   selectFireArmed = false
 const active = computed(
   () =>
-    status.value === 'Connected' &&
+    status.value === 'Connected' && !networkStalled.value &&
     phase.value === 'playing' &&
     (captured.value || padActive.value || touchActive.value) && !(touchDevice.value && portrait.value),
 )
@@ -137,7 +131,9 @@ const menuItems = computed(() =>
       : [`Start ${sessionWord.value}`, 'Return to menu'],
 )
 let locallyPaused=false
+let resetConnection=()=>{}
 function action(value: string) {
+  if(value==='start'){resetConnection();networkNotice.value=''}
   if(value==='pause')locallyPaused=true
   else if(value==='start'||value==='restart'||value==='finish')locallyPaused=false
   if(status.value === 'Connected')room?.send('action', value)
@@ -200,7 +196,7 @@ function gamepadDisconnected(event?: Event) {
   previousButtons = []
 }
 async function start(usePad = false) {
-  if (status.value !== 'Connected' || (touchDevice.value && portrait.value)) return
+  if (status.value !== 'Connected' || networkStalled.value || (touchDevice.value && portrait.value)) return
   audio.unlock()
   captureError.value = ''
   if(touchDevice.value && !usePad) {
@@ -421,6 +417,7 @@ onMounted(async () => {
     const cameraTarget = camera.position.clone()
     const prediction=new MovementPrediction(world.value)
     let inputSequence=0,lastInputFrame=performance.now()
+    const networkHealth=new NetworkHealth();resetConnection=()=>networkHealth.reset(performance.now());resetConnection()
     status.value = 'Loading models'
     const [assets] = await Promise.all([loadTrainingAssets(scene), audio.prepare()])
     if (stopped) {
@@ -494,7 +491,8 @@ onMounted(async () => {
     const client = new Client(String(config.public.matchUrl),{urlBuilder:url=>url.protocol==='http:'||url.protocol==='https:'?window.location.origin+'/api/match'+url.pathname+url.search:url.href})
     let name=''
     try{name=localStorage.getItem('crossline.callsign') ?? ''}catch{}
-    let joined: Room<ArenaState>
+    let joined: ArenaSession
+    let onlineRoom: Room<ArenaState> | undefined
     if(isOnline.value) {
       let token: string | null = null
       try { token=sessionStorage.getItem('crossline.ffa.reconnect'); name=localStorage.getItem('crossline.callsign') ?? '' } catch {}
@@ -512,10 +510,11 @@ onMounted(async () => {
       }
       try { joined=token ? await client.reconnect<ArenaState>(token) : await joinArena() }
       catch { joined=await joinArena() }
-      Object.assign(joined.reconnection,{enabled:true,minUptime:0,minDelay:300,maxDelay:2000,maxRetries:12})
-      try { sessionStorage.setItem('crossline.ffa.reconnect',joined.reconnectionToken) } catch {}
+      onlineRoom=joined as Room<ArenaState>
+      Object.assign(onlineRoom.reconnection,{enabled:true,minUptime:0,minDelay:300,maxDelay:2000,maxRetries:12})
+      try { sessionStorage.setItem('crossline.ffa.reconnect',onlineRoom!.reconnectionToken) } catch {}
       roomCode.value=joined.roomId
-    } else joined = await client.create<ArenaState>(isSolo.value ? 'solo' : ROOM_NAME,{name})
+    } else joined = localSession(isSolo.value ? 'solo' : 'training',name)
     if (stopped) {
       await joined.leave()
       return
@@ -561,6 +560,10 @@ onMounted(async () => {
       const player = self.value
       if (player) {
         weaponFeedback.sync(player)
+        if(isOnline.value){
+          networkHealth.acknowledge(player.inputSeq??0,performance.now())
+          if(networkStalled.value && networkHealth.state(performance.now())!=='stalled'){networkStalled.value=false;networkNotice.value='Connection restored. Resume when ready.'}
+        }
         prediction.reconcile(player,state.round,active.value)
         cameraTarget.set(player.x, player.y + stanceEye(player), player.z)
         if (
@@ -614,14 +617,16 @@ onMounted(async () => {
     })
     room.onDrop(() => {
       if(!isOnline.value || stopped)return
+      networkStalled.value=true;networkNotice.value='Connection lost. Reconnecting; your character remains vulnerable.'
       status.value='Reconnecting'; onlinePaused.value=true; phase.value='paused'; release()
     })
     room.onReconnect(() => {
       if(stopped)return
       if(isOnline.value)void onlineJoinToken().then(token=>joined.send('authenticate',token)).catch(()=>{joinError.value='Sign in again to reconnect.';void joined.leave()})
+      networkHealth.reset(performance.now());networkStalled.value=false;networkNotice.value='Connection restored. Resume when ready.'
       status.value='Connected'; onlinePaused.value=true; phase.value=onlineEntered.value ? 'paused' : 'ready'
       // The SDK rotates its token immediately after invoking onReconnect.
-      queueMicrotask(() => { try { sessionStorage.setItem('crossline.ffa.reconnect',joined.reconnectionToken) } catch {} })
+      queueMicrotask(() => { try { sessionStorage.setItem('crossline.ffa.reconnect',onlineRoom!.reconnectionToken) } catch {} })
       clearInput()
     })
     room.onLeave(() => {
@@ -632,21 +637,32 @@ onMounted(async () => {
       release()
     })
     room.onError(() => {
-      if(isOnline.value && joined.reconnection.isReconnecting)return
+      if(isOnline.value && onlineRoom?.reconnection.isReconnecting)return
       status.value = 'Connection error'
       release()
     })
     timer = setInterval(() => {
       if(status.value !== 'Connected')return
+      const buffered=(onlineRoom?.connection.transport as {ws?:{bufferedAmount:number}}|undefined)?.ws?.bufferedAmount??0
+      if(isOnline.value && onlineEntered.value){
+        const health=networkHealth.state(performance.now(),buffered)
+        if(health==='stalled'&&!networkStalled.value){
+          networkStalled.value=true;networkNotice.value='Connection interrupted. Controls paused; your character remains vulnerable.'
+          onlinePaused.value=true;phase.value='paused';release();prediction.reset(self.value);weaponFeedback.reset()
+        }else if(!networkStalled.value&&phase.value==='playing')networkNotice.value=health==='weak'?'Weak connection — hits await server confirmation.':''
+      }
+      // Drop samples instead of growing a socket backlog. Recovery sends current neutral input.
+      if(buffered>8192)return
       const input=readInput()
       lastInputFrame=performance.now()
       const seq=++inputSequence
-      joined.send('input',{...input,seq})
+      joined.send('input',{...input,seq,...(isOnline.value?{observedElapsed:elapsed.value}:{})})
+      if(isOnline.value)networkHealth.command(seq,performance.now())
       if(active.value && self.value && self.value.health>0)prediction.command(seq,input)
     }, TICK_MS)
   } catch (error) {
     const code=error && typeof error==='object' && 'code' in error ? error.code : undefined
-    joinError.value=(code===4213||code===409)?'Arena is full. Wait for a free seat, then retry.':code===4214?'Sign in with your account to enter Online.':code===4215?'This account is already in the arena. Leave its other session or reconnect.':'The arena could not connect. Check the match server and retry.'
+    joinError.value=(code===4213||code===409)?'Arena is full. Wait for a free seat, then retry.':code===4214?'Sign in with your account to enter Online.':code===4215?'This account is already in the arena. Leave its other session or reconnect.':isOnline.value?'The arena could not connect. Check your connection and retry.':'Game assets unavailable. Connect and download offline play from the menu, then retry.'
     console.error('Arena initialization failed',typeof code==='number'?code:'unavailable')
     status.value = 'Arena unavailable'
     release()
@@ -674,7 +690,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main :data-client-position="clientPosition" :data-feedback-shots="feedbackShots" class="arena" :class="{ 'touch-layout': touchDevice }" :data-phase="phase" :data-server-phase="confirmedPhase" :data-mode="mode" :data-room-id="roomCode" :data-player-id="self?.id" :data-crouch="self?.crouch ?? 0" :data-eye-height="self ? stanceEye(self) : 1.6">
+  <main :data-client-position="clientPosition" :data-feedback-shots="feedbackShots" :data-network-stalled="networkStalled" class="arena" :class="{ 'touch-layout': touchDevice }" :data-phase="phase" :data-server-phase="confirmedPhase" :data-mode="mode" :data-room-id="roomCode" :data-player-id="self?.id" :data-crouch="self?.crouch ?? 0" :data-eye-height="self ? stanceEye(self) : 1.6">
+    <p v-if="networkNotice" class="network-notice" role="status" data-testid="network-notice">{{ networkNotice }}</p>
     <canvas ref="canvas" :aria-label="`Crossline ${modeTitle} arena`" @contextmenu.prevent />
     <div v-if="touchDevice && portrait" class="rotate-phone" role="dialog" aria-modal="true" aria-label="Rotate phone">
       <div><span class="rotate-icon" aria-hidden="true">↻</span><h1>Turn your phone sideways.</h1><p>Crossline uses landscape controls. Rotate your device to continue.</p><NuxtLink to="/">Return to menu</NuxtLink></div>
@@ -724,7 +741,7 @@ onBeforeUnmount(() => {
         >
           <title>{{ a.name }}</title>
         </circle></svg
-      ><small>{{ status }} · {{ isOnline ? `${actors.length} / ${onlineCapacity} PLAYERS` : isSolo ? `${COMBAT_BOT_COUNT} COMBAT BOTS` : '3 TARGETS · 2 PATROLS' }}</small>
+      ><small>{{ isOnline ? status : status === 'Connected' ? 'Connected · ON DEVICE' : status }} · {{ isOnline ? `${actors.length} / ${onlineCapacity} PLAYERS` : isSolo ? `${COMBAT_BOT_COUNT} COMBAT BOTS` : '3 TARGETS · 2 PATROLS' }}</small>
     </aside>
     <div v-if="mode !== 'training' && healUntil>now" class="health-feedback" role="status" data-testid="health-feedback">+{{ healAmount }} HP · SUPPLIES COLLECTED</div>
     <div class="kill-feed">
@@ -876,6 +893,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.network-notice{position:absolute;top:90px;left:50%;transform:translateX(-50%);z-index:30;background:#142026e8;color:#ffcb82;padding:8px 12px;max-width:80vw;font:12px/1.4 Arial;pointer-events:none}
 .arena {
   height: 100dvh;
   min-height: 500px;

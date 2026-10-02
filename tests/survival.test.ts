@@ -97,7 +97,7 @@ test('Solo incoming hits use lower bot damage, kill at zero, and permit time to 
  Object.assign(bot,{x:0,y:0,z:-6});Object.assign(human,{x:0,y:0,z:-14});
  const before=human.health;g.elapsed+=200;assert.equal(g.fire(bot,Math.PI,Math.atan2(.5,8),true),true)
  assert.equal(human.health,before-SOLO.botBodyDamage)
- for(let i=0;i<8&&human.health>0;i++){g.elapsed+=200;g.fire(bot,Math.PI,Math.atan2(.5,8),true)}
+ for(let i=0;i<12&&human.health>0;i++){g.elapsed+=SOLO.damageGraceMs+1;g.fire(bot,Math.PI,Math.atan2(.5,8),true)}
  assert.equal(human.health,0);assert.equal(human.deaths,1);assert.ok(human.respawnUntil>g.elapsed)
 })
 
@@ -110,4 +110,33 @@ test('Online packs have one authoritative winner, reject protected/lobby claims 
  assert.equal(g.drainEvents().filter(e=>e.type==='heal').length,1)
  g.acceptInput({...idle,health:100,pickupId:pack.id},b.id);run(g,6000);assert.equal(b.health,40)
  pack.availableAt=0;a.participating=false;b.participating=false;g.step();assert.equal(pack.availableAt,0)
+})
+
+
+test('Solo overlapping bot hits have a recovery gap while Online damage stays immediate',()=>{
+ for(const mode of ['solo','online'] as const){
+  const g=new TrainingGame('human',180000,()=>.5,mode)
+  if(mode==='online'){g.addHuman('human','HUMAN');g.enterHuman('human');g.addHuman('attacker','ATTACKER');g.enterHuman('attacker')}else g.start()
+  g.elapsed=5000
+  const human=g.actors.get('human')!,bot=g.actors.get(mode==='solo'?'bot-0':'attacker')!
+  for(const id of g.actors.keys())if(id!==human.id&&id!==bot.id)g.actors.delete(id)
+  Object.assign(human,{x:0,y:0,z:-14,protectedUntil:0});Object.assign(bot,{x:0,y:0,z:-6,protectedUntil:0})
+  g.fire(bot,Math.PI,Math.atan2(.5,8),true);const health=human.health
+  g.elapsed+=200;g.fire(bot,Math.PI,Math.atan2(.5,8),true)
+  assert.equal(human.health,mode==='solo'?health:health-RIFLE.damage)
+  g.elapsed+=SOLO.damageGraceMs;g.fire(bot,Math.PI,Math.atan2(.5,8),true)
+  assert.ok(human.health<health,'the recovery gap does not make the player invulnerable')
+ }
+})
+
+test('two nearby Solo bots give an exposed player reaction time and a survivable first encounter',()=>{
+ for(let seed=1;seed<=6;seed++){
+  let state=seed;const g=new TrainingGame('human',180000,()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return state/4294967296},'solo');g.start()
+  const human=g.actors.get('human')!;Object.assign(human,{x:0,y:0,z:-14,protectedUntil:0})
+  let i=0;for(const [id,a]of g.actors){if(!a.bot)continue;if(i>=2){g.actors.delete(id);continue}Object.assign(a,{x:(i-.5)*2,y:0,z:-6,yaw:Math.PI,protectedUntil:0});i++}
+  run(g,1200);assert.equal(human.health,100)
+  run(g,3800);assert.ok(human.health>=50,'five seconds leaves time to seek cover')
+  while(g.elapsed<25000&&human.health>0)g.step()
+  assert.ok(g.elapsed>8000&&Number(human.health)===0,'bots remain threatening over a longer exposed encounter')
+ }
 })

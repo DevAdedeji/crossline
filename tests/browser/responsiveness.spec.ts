@@ -1,3 +1,4 @@
+import {browserAccount} from './accounts'
 import {test,expect} from '@playwright/test'
 test('movement and muzzle feedback react before a delayed authority update',async({page})=>{
  test.setTimeout(90000)
@@ -7,10 +8,11 @@ test('movement and muzzle feedback react before a delayed authority update',asyn
    override send(data:string|ArrayBufferLike|Blob|ArrayBufferView){const delay=(window as unknown as {testInputDelay?:number}).testInputDelay ?? 0;if(!delay){super.send(data);return}setTimeout(()=>{if(this.readyState===Native.OPEN)super.send(data)},delay)}
   }
  })
-  await page.goto('/play');await expect(page.locator('.radar-panel')).toContainText('Connected',{timeout:60000})
-  await page.getByRole('button',{name:'Start training',exact:true}).click()
+  await browserAccount(page,'LATENCY')
+  await page.goto('/play?mode=online');await expect(page.locator('.radar-panel')).toContainText('Connected',{timeout:60000})
+  await page.getByRole('button',{name:'Enter arena',exact:true}).click()
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
-  await page.waitForTimeout(500)
+  await page.waitForTimeout(4500)
   await page.evaluate(()=>{(window as unknown as {testInputDelay:number}).testInputDelay=300})
   const metrics=await page.evaluate(()=>new Promise<{move:number;shot:number;authority:number}>(resolve=>{
    const arena=document.querySelector('main.arena')!,position=document.querySelector('[data-testid="position"]')!,start=performance.now(),initial=arena.getAttribute('data-client-position'),server=position.textContent,shot=arena.getAttribute('data-feedback-shots');let move=0,fire=0,authority=0
