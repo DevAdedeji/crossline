@@ -431,7 +431,7 @@ onMounted(async () => {
     const supplies = props.mode!=='training' ? healthPickups(scene) : undefined
     const labels=isOnline.value?playerLabels(scene,camera,world.value):undefined
     const visuals = combatPresentation(scene, camera, assets, arena.shadows, props.mode)
-    await scene.whenReadyAsync()
+    await Promise.all([scene.whenReadyAsync(),visuals.ready])
     if (stopped) return
     engine.runRenderLoop(() => {
       const dt = Math.min(engine!.getDeltaTime(), 50) / 1000

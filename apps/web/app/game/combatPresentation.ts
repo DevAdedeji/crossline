@@ -61,10 +61,11 @@ export function combatPresentation(
   flameInk.moveTo(24,128);flameInk.lineTo(10,79);flameInk.lineTo(24,93);flameInk.lineTo(29,4);flameInk.lineTo(39,68);flameInk.lineTo(53,37);flameInk.lineTo(43,106);flameInk.lineTo(39,128);flameInk.closePath();flameInk.fill();flameTexture.update()
   const glow=material('muzzle flame','#ffffff')
   glow.diffuseTexture=flameTexture;glow.useAlphaFromDiffuseTexture=true;glow.disableLighting=true;glow.emissiveColor=Color3.White();glow.backFaceCulling=false
+  const flameMeshes:Mesh[]=[]
   for(const angle of [0,Math.PI/2]){
     const turn=new TransformNode('flame orientation',scene);turn.parent=flash;turn.rotation.z=angle
     const flame=MeshBuilder.CreatePlane('barrel flame',{width:.03,height:.10},scene)
-    flame.parent=turn;flame.rotation.x=Math.PI/2;flame.position.z=.045;flame.material=glow;flame.renderingGroupId=2;flame.isPickable=false
+    flame.parent=turn;flame.rotation.x=Math.PI/2;flame.position.z=.045;flame.material=glow;flame.renderingGroupId=2;flame.isPickable=false;flameMeshes.push(flame)
   }
   flash.setEnabled(false)
   const smokeTexture=new DynamicTexture('muzzle smoke texture',64,scene,false);smokeTexture.hasAlpha=true
@@ -463,7 +464,8 @@ export function combatPresentation(
     impacts.length = 0
     tracers.length = 0
   }
-  return { sync, shot, fire, frame, reset }
+  const ready=Promise.all([glow.forceCompilationAsync(flameMeshes[0]!),smokeMaterial.forceCompilationAsync(smoke[0]!.mesh)])
+  return { sync, shot, fire, frame, reset, ready }
 }
 
 export { trainingAudio } from './trainingAudio'
