@@ -7,6 +7,7 @@ export function trainingAudio() {
     master: GainNode | undefined,
     muted = false
   let shots: AudioBuffer[] = [],
+    healBuffer: AudioBuffer | undefined,
     reloadBuffer: AudioBuffer | undefined
   let reloadVoice: AudioBufferSourceNode | undefined,
     reloadKey = 0
@@ -30,6 +31,9 @@ export function trainingAudio() {
         return context!.decodeAudioData(await response.arrayBuffer())
       }),
     )
+    healBuffer=context.createBuffer(1,Math.ceil(context.sampleRate*.22),context.sampleRate)
+    const chime=healBuffer.getChannelData(0)
+    for(let i=0;i<chime.length;i++){const t=i/context.sampleRate;chime[i]=Math.sin(2*Math.PI*(t<.1?660:880)*t)*Math.sin(Math.PI*i/chime.length)*.15}
     shots = buffers.slice(0, 2)
     reloadBuffer = buffers[2]
   }
@@ -59,12 +63,13 @@ export function trainingAudio() {
     return voice
   }
   function sound(
-    kind: 'shot' | 'hit' | 'death',
+    kind: 'shot' | 'hit' | 'death' | 'heal',
     own = true,
     source?: Position,
     listener?: Position,
     yaw = 0,
   ) {
+    if(kind==='heal'){if(healBuffer)play(healBuffer,1);return}
     if (kind !== 'shot' || !shots.length) return
     const dx = (source?.x ?? 0) - (listener?.x ?? 0),
       dz = (source?.z ?? 0) - (listener?.z ?? 0),

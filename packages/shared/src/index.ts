@@ -1,6 +1,8 @@
 import { TRAINING_WORLD, nearbySolids, RAMP, rampHeight, type Solid, type WorldGeometry } from './urban-map.ts'
 export * from './urban-map.ts'
 export * from './combat-map.ts'
+export * from './stance.ts'
+export * from './solo.ts'
 
 export const ROOM_NAME = 'training'
 export const TICK_MS = 1000 / 30
@@ -42,9 +44,9 @@ function supportHeight(position: Position, world: WorldGeometry): number {
   }
   return height
 }
-export function isBlocked(position: Position, world: WorldGeometry = TRAINING_WORLD): boolean {
+export function isBlocked(position: Position, world: WorldGeometry = TRAINING_WORLD, height = PLAYER_HEIGHT): boolean {
   for (const solid of nearbySolids(world, position.x, position.z)) {
-    if (position.y >= solid.y + solid.height / 2 - 0.0001 || position.y + PLAYER_HEIGHT <= solid.y - solid.height / 2 + 0.0001) continue
+    if (position.y >= solid.y + solid.height / 2 - 0.0001 || position.y + height <= solid.y - solid.height / 2 + 0.0001) continue
     if (overlapsFootprint(position.x, position.z, solid)) return true
   }
   // The ramp is solid below its sloped surface, so it cannot be entered sideways at height.
@@ -54,7 +56,7 @@ export function isBlocked(position: Position, world: WorldGeometry = TRAINING_WO
   if (touchesRamp && position.y < rampHeight(rampZ) - 0.001) return true
   return false
 }
-export function move(position: Position, input: MoveInput, dt: number, world: WorldGeometry = TRAINING_WORLD): Position {
+export function move(position: Position, input: MoveInput, dt: number, world: WorldGeometry = TRAINING_WORLD, height = PLAYER_HEIGHT): Position {
   const seconds = Math.max(0, Math.min(dt, TICK_MS)) / 1000
   const clamp = (n: number) => Math.max(-world.limit, Math.min(world.limit, n))
   let next = { x: position.x, y: position.y, z: position.z }
@@ -63,7 +65,7 @@ export function move(position: Position, input: MoveInput, dt: number, world: Wo
     const candidate = { ...next, [axis]: clamp(next[axis] + input[axis] * MOVE_SPEED * seconds) }
     const support = supportHeight(candidate, world)
     candidate.y = Math.max(candidate.y, support)
-    if (!isBlocked(candidate, world)) next = candidate
+    if (!isBlocked(candidate, world, height)) next = candidate
   }
   // Gravity continues after input times out; stepped-off roofs cannot leave players hovering.
   next.y = Math.max(supportHeight(next, world), next.y - 9 * seconds)

@@ -8,7 +8,7 @@ const modes = [
     number: '01',
     title: 'Solo vs Bots',
     subtitle: 'YOUR OWN BATTLEGROUND',
-    description: 'Twelve combat bots targeting you across nine districts. 156 × 156 metres. Fight back.',
+    description: 'Twelve bots targeting you. Use cover, crouch, and collect health packs across nine districts.',
     available: true,
     players: '1 PLAYER + 12 BOTS · LARGE MAP',
   },
@@ -181,7 +181,7 @@ onBeforeUnmount(() => {
     <section v-if="showControls" role="dialog" aria-modal="true" aria-label="Controls" class="absolute inset-0 z-20 grid place-items-center bg-black/80 p-6 backdrop-blur-sm">
       <div class="w-full max-w-lg border-t-2 border-[#ffb15c] bg-[#131d22] p-8 shadow-2xl">
         <p class="text-xs tracking-[.25em] text-[#ffb15c]">FIELD GUIDE</p><h2 class="display-type mt-2 mb-7 text-4xl font-black">STAY IN CONTROL.</h2>
-        <dl class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm"><dt class="text-white/50">MOVE / LOOK</dt><dd>WASD + mouse / sticks</dd><dt class="text-white/50">FIRE</dt><dd>Left click / A / × / RT / R2</dd><dt class="text-white/50">AIM</dt><dd>Right click / LT / L2</dd><dt class="text-white/50">RELOAD</dt><dd>R / Xbox X / PlayStation □</dd><dt class="text-white/50">SELECT / BACK</dt><dd>A / × · B / ○</dd><dt class="text-white/50">PAUSE</dt><dd>Esc / Start / B / ○</dd></dl>
+        <dl class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm"><dt class="text-white/50">MOVE / LOOK</dt><dd>WASD + mouse / sticks</dd><dt class="text-white/50">FIRE</dt><dd>Left click / A / × / RT / R2</dd><dt class="text-white/50">AIM</dt><dd>Right click / LT / L2</dd><dt class="text-white/50">CROUCH</dt><dd>C toggle / Ctrl hold / R3 toggle</dd><dt class="text-white/50">RELOAD</dt><dd>R / Xbox X / PlayStation □</dd><dt class="text-white/50">SELECT / BACK</dt><dd>A / × · B / ○</dd><dt class="text-white/50">PAUSE</dt><dd>Esc / Start / B / ○</dd></dl>
         <p class="mt-6 text-xs leading-relaxed text-white/50">Release A / × after deploying, then press it to fire. For a generic controller, assign its trigger from the in-game Controls panel.</p>
         <button data-ui-action class="mt-7 w-full bg-white/10 py-3 text-xs font-bold tracking-widest hover:bg-white/20" @click="showControls = false">CLOSE · ESC / B / ○</button>
       </div>

@@ -1,8 +1,7 @@
-import { TICK_MS, move, isBlocked, COMBAT_WORLD, TRAINING_WORLD, COMBAT_SPAWNS, COMBAT_BOT_COUNT, type Position, type MoveInput } from '@crossline/shared'
+import { SOLO, SOLO_HEALTH_PACKS, type HealthPickup, CROUCH, stanceAmount, stanceHeight, stanceEye, stanceAim, stanceHead, TICK_MS, move, isBlocked, COMBAT_WORLD, TRAINING_WORLD, COMBAT_SPAWNS, COMBAT_BOT_COUNT, type Position, type MoveInput } from '@crossline/shared'
 import {
   TRAINING,
   RIFLE,
-  EYE_HEIGHT,
   IDLE_INPUT,
   parseCombatInput,
   direction,
@@ -38,10 +37,11 @@ export class TrainingGame {
   round = 1
   input: CombatInput = { ...IDLE_INPUT }
   events: GameEvent[] = []
+  healthPacks = new Map<string, HealthPickup>()
   get world() { return this.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD }
   get spawns() { return this.mode !== 'training' ? COMBAT_SPAWNS : TRAINING_SPAWNS }
   get navigation() { return getNavigation(this.world) }
-  private move(position: Position, input: MoveInput, dt: number) { return move(position, input, dt, this.world) }
+  private move(position: Position, input: MoveInput, dt: number) { return move(position, input, dt, this.world, stanceHeight(position as Combatant)) }
   private worldHit(origin: Position, ray: Position) { return worldHit(origin, ray, RIFLE.range, this.world) }
   private lastNoise?: { id: string; position: Position; at: number }
   private humanInputs = new Map<string, CombatInput>()
@@ -63,6 +63,7 @@ export class TrainingGame {
       ...position,
       yaw: bot ? [Math.PI / 2, 0, -Math.PI / 3, 0, Math.PI * 0.75][Number(id.split('-')[1]) % 5]! : 0,
       pitch: 0,
+      crouch: 0,
       health: 100,
       ammo: RIFLE.magazine,
       kills: 0,
@@ -73,7 +74,7 @@ export class TrainingGame {
       headshots: 0,
       reloadUntil: 0,
       respawnUntil: 0,
-      protectedUntil: TRAINING.protectionMs,
+      protectedUntil: this.mode === 'solo' && !bot ? SOLO.protectionMs : TRAINING.protectionMs,
       lastShot: -10000,
       lastDamage: -10000,
     }
@@ -84,6 +85,8 @@ export class TrainingGame {
     this.humanInputs.clear()
     this.actors.clear()
     this.memories.clear()
+    this.healthPacks.clear()
+    if(this.mode === 'solo')for(const pack of SOLO_HEALTH_PACKS)this.healthPacks.set(pack.id,{...pack,availableAt:0})
     this.elapsed = 0
     this.phase = 'ready'
     this.input = { ...IDLE_INPUT }
@@ -132,7 +135,7 @@ export class TrainingGame {
   }
   stopHuman(id: string) {
     const actor=this.actors.get(id)
-    if(actor) this.humanInputs.set(id,{...IDLE_INPUT,yaw:actor.yaw,pitch:actor.pitch})
+    if(actor) this.humanInputs.set(id,{...IDLE_INPUT,yaw:actor.yaw,pitch:actor.pitch,crouch:stanceAmount(actor)>0})
   }
   removeHuman(id: string) {
     this.actors.delete(id); this.humanInputs.delete(id); this.spawnHistory.delete(id)
@@ -182,9 +185,9 @@ export class TrainingGame {
     const pool = fresh.length ? fresh : candidates
     const safety = (point: Position) => separation(point) + (this.mode !== 'training'
       ? others.filter(other => other.health > 0 && this.worldHit(
-        { x: other.x, y: other.y + EYE_HEIGHT, z: other.z },
+        { x: other.x, y: other.y + stanceEye(other), z: other.z },
         direction(Math.atan2(point.x - other.x, point.z - other.z),
-          -Math.atan2(point.y + 1.1 - other.y - EYE_HEIGHT, Math.hypot(point.x - other.x, point.z - other.z))),
+          -Math.atan2(point.y + 1.1 - other.y - stanceEye(other), Math.hypot(point.x - other.x, point.z - other.z))),
       ) < Math.hypot(point.x - other.x, point.z - other.z) - 0.5).length * 6
       : 0)
     const nearby = this.mode === 'online' ? pool.filter(p=>separation(p)>=12 && separation(p)<=45) : []
@@ -198,7 +201,8 @@ export class TrainingGame {
       ammo: RIFLE.magazine,
       reloadUntil: 0,
       respawnUntil: 0,
-      protectedUntil: this.elapsed + TRAINING.protectionMs,
+      crouch: 0,
+      protectedUntil: this.elapsed + (this.mode === 'solo' && !actor.bot ? SOLO.protectionMs : TRAINING.protectionMs),
       lastDamage: this.elapsed,
       lastShot: this.elapsed,
     })
@@ -234,7 +238,7 @@ export class TrainingGame {
       yaw + (this.random() - 0.5) * spread,
       pitch + (this.random() - 0.5) * spread,
     )
-    const origin = { x: actor.x, y: actor.y + EYE_HEIGHT, z: actor.z }
+    const origin = { x: actor.x, y: actor.y + stanceEye(actor), z: actor.z }
     let distance = this.worldHit(origin, ray)
     let victim: Combatant | undefined
     for (const candidate of this.actors.values()) {
@@ -256,8 +260,10 @@ export class TrainingGame {
     // Friendly bots still block the ray, but Solo bot shots can only damage humans.
     if (victim && victim.protectedUntil <= this.elapsed &&
         !(this.mode === 'solo' && actor.bot && victim.bot)) {
-      headshot = end.y >= victim.y + 1.3
-      damage = headshot ? RIFLE.headDamage : RIFLE.damage
+      headshot = end.y >= victim.y + stanceHead(victim)
+      damage = this.mode === 'solo' && actor.bot
+        ? headshot ? SOLO.botHeadDamage : SOLO.botBodyDamage
+        : headshot ? RIFLE.headDamage : RIFLE.damage
       victim.health = Math.max(0, victim.health - damage)
       victim.lastDamage = this.elapsed
       actor.hits++
@@ -344,16 +350,16 @@ export class TrainingGame {
     }
   }
 
-  private canSee(bot: Combatant, target: Position): boolean {
+  private canSee(bot: Combatant, target: Combatant): boolean {
     const dx = target.x - bot.x, dz = target.z - bot.z
     const distance = Math.hypot(dx, dz)
     if (distance > 44) return false
     const yaw = Math.atan2(dx, dz)
     const angle = Math.atan2(Math.sin(yaw - bot.yaw), Math.cos(yaw - bot.yaw))
     if (Math.abs(angle) > 1.25 && this.elapsed - bot.lastDamage > 1200) return false
-    const ray = direction(yaw, -Math.atan2(target.y + 1.1 - bot.y - EYE_HEIGHT, distance))
-    return this.worldHit({ x: bot.x, y: bot.y + EYE_HEIGHT, z: bot.z }, ray) >
-      Math.hypot(dx, dz, target.y + 1.1 - bot.y - EYE_HEIGHT) - 0.4
+    const ray = direction(yaw, -Math.atan2(target.y + stanceAim(target) - bot.y - stanceEye(bot), distance))
+    return this.worldHit({ x: bot.x, y: bot.y + stanceEye(bot), z: bot.z }, ray) >
+      Math.hypot(dx, dz, target.y + stanceAim(target) - bot.y - stanceEye(bot)) - 0.4
   }
   private humanTarget(actor: Combatant | undefined): actor is Combatant {
     return !!actor && !actor.bot && actor.participating !== false &&
@@ -379,7 +385,7 @@ export class TrainingGame {
       const target = candidates[0]
       if (target) {
         if (target.id !== memory.targetId) {
-          memory.reactAt = this.elapsed + 450 + this.random() * 250
+          memory.reactAt = this.elapsed + SOLO.reactionMs + this.random() * SOLO.reactionJitterMs
           memory.burstLeft = 0
           memory.nextShot = memory.reactAt
         }
@@ -398,26 +404,28 @@ export class TrainingGame {
       const wanted = Math.atan2(dx, dz)
       const delta = Math.atan2(Math.sin(wanted - bot.yaw), Math.cos(wanted - bot.yaw))
       bot.yaw += Math.max(-dt * 0.0025, Math.min(dt * 0.0025, delta))
-      bot.pitch = -Math.atan2(target.y + 1.1 - bot.y - EYE_HEIGHT, distance)
+      bot.pitch = -Math.atan2(target.y + stanceAim(target) - bot.y - stanceEye(bot), distance)
       if (this.elapsed >= (memory.reactAt ?? Infinity) && !bot.reloadUntil &&
-          Math.abs(delta) < 0.12 && this.elapsed >= (memory.nextShot ?? 0)) {
+          Math.abs(delta) < 0.12 && this.elapsed >= (memory.nextShot ?? 0) &&
+          [...this.actors.values()].filter(other=>other.bot && other.id!==bot.id && other.health>0 &&
+            this.memories.get(other.id)?.targetId===target.id && this.elapsed-other.lastShot<900).length < SOLO.maxAttackers) {
         if (!memory.burstLeft) {
-          memory.burstLeft = 3 + Math.floor(this.random() * 3)
-          memory.aimYaw = (this.random() - 0.5) * 0.045
-          memory.aimPitch = (this.random() - 0.5) * 0.025
+          memory.burstLeft = 2 + Math.floor(this.random() * 2)
+          memory.aimYaw = (this.random() - 0.5) * 0.075
+          memory.aimPitch = (this.random() - 0.5) * 0.04
         }
         if (this.fire(bot, bot.yaw + (memory.aimYaw ?? 0), bot.pitch + (memory.aimPitch ?? 0), true)) {
           memory.burstLeft--
-          memory.nextShot = this.elapsed + (memory.burstLeft ? 270 : 650 + this.random() * 400)
+          memory.nextShot = this.elapsed + (memory.burstLeft ? SOLO.shotIntervalMs : 1100 + this.random() * 400)
         }
       }
       if (bot.reloadUntil || bot.health < 45) {
         // Seek nearby geometry that breaks the opponent's line of sight while recovering.
         const cover = this.navigation.points.filter((point) => Math.hypot(point.x - bot.x, point.z - bot.z) < 12 &&
           Math.abs(point.y - bot.y) < 0.5 &&
-          this.worldHit({ x: target.x, y: target.y + EYE_HEIGHT, z: target.z },
+          this.worldHit({ x: target.x, y: target.y + stanceEye(target), z: target.z },
             direction(Math.atan2(point.x - target.x, point.z - target.z),
-              -Math.atan2(point.y + 1.1 - target.y - EYE_HEIGHT, Math.hypot(point.x - target.x, point.z - target.z)))) <
+              -Math.atan2(point.y + 1.1 - target.y - stanceEye(target), Math.hypot(point.x - target.x, point.z - target.z)))) <
             Math.hypot(point.x - target.x, point.z - target.z) - 0.5)
         cover.sort((a, b) => Math.hypot(a.x - bot.x, a.z - bot.z) - Math.hypot(b.x - bot.x, b.z - bot.z))
         destination = cover[0]
@@ -428,11 +436,12 @@ export class TrainingGame {
       }
     } else if (memory.lastSeen && this.elapsed - (memory.seenAt ?? 0) < 2500) {
       destination = memory.lastSeen
-    } else if (!memory.path.length) {
+    } else {
       const noise = this.lastNoise
-      destination = noise && this.humanTarget(this.actors.get(noise.id)) && this.elapsed-noise.at < 5000 && Math.hypot(noise.position.x-bot.x,noise.position.z-bot.z)<55
-        ? noise.position
-        : this.navigation.points[Math.floor(this.random() * this.navigation.points.length)]
+      // A nearby human shot interrupts wandering instead of expiring behind a long patrol route.
+      if(noise && this.humanTarget(this.actors.get(noise.id)) && this.elapsed-noise.at < 5000 && Math.hypot(noise.position.x-bot.x,noise.position.z-bot.z)<55)
+        destination=noise.position
+      else if(!memory.path.length)destination=this.navigation.points[Math.floor(this.random()*this.navigation.points.length)]
     }
     if (destination && (this.elapsed >= memory.nextPlan || !memory.path.length)) {
       memory.path = this.navigation.findPath(bot, destination)
@@ -472,11 +481,14 @@ export class TrainingGame {
         actor.ammo = RIFLE.magazine
         actor.reloadUntil = 0
       }
-      if (this.elapsed - actor.lastDamage > 5000)
+      if (!(this.mode === 'solo' && !actor.bot) && this.elapsed - actor.lastDamage > 5000)
         actor.health = Math.min(100, actor.health + dt * 0.01)
       if (actor.bot) this.botStep(actor, dt)
       else {
         const input = this.mode === 'online' ? this.humanInputs.get(actor.id) ?? IDLE_INPUT : this.input
+        const desired = input.crouch || isBlocked(actor,this.world) ? 1 : 0
+        actor.crouch = Math.max(0,Math.min(1,stanceAmount(actor) + Math.sign(desired-stanceAmount(actor))*dt/CROUCH.transitionMs))
+        const speed = 1 - (1-CROUCH.speed)*stanceAmount(actor)
         actor.yaw = input.yaw
         actor.pitch = input.pitch
         Object.assign(
@@ -484,13 +496,32 @@ export class TrainingGame {
           this.move(
             actor,
             {
-              x: input.x * (input.aim ? 0.65 : 1),
-              z: input.z * (input.aim ? 0.65 : 1),
+              x: input.x * (input.aim ? 0.65 : 1) * speed,
+              z: input.z * (input.aim ? 0.65 : 1) * speed,
             },
             dt,
           ),
         )
         if (input.fire) this.fire(actor, input.yaw, input.pitch, input.aim)
+      }
+    }
+    this.collectHealth()
+  }
+  private collectHealth() {
+    if(this.mode !== 'solo')return
+    for(const actor of this.actors.values()) {
+      if(actor.bot || actor.health<=0 || actor.health>=SOLO.maxHealth)continue
+      for(const pack of this.healthPacks.values()) {
+        if(pack.availableAt>this.elapsed || Math.abs(actor.y-pack.y)>SOLO.pickupFloorTolerance)continue
+        const dx=pack.x-actor.x,dy=pack.y+.35-(actor.y+.5),dz=pack.z-actor.z
+        const length=Math.hypot(dx,dy,dz)
+        if(Math.hypot(dx,dz)>SOLO.pickupRadius || isBlocked(actor,this.world,stanceHeight(actor)))continue
+        if(length>.001 && this.worldHit({x:actor.x,y:actor.y+.5,z:actor.z},{x:dx/length,y:dy/length,z:dz/length})<length-.02)continue
+        const amount=Math.min(SOLO.heal,SOLO.maxHealth-actor.health)
+        pack.availableAt=this.elapsed+SOLO.pickupCooldownMs
+        actor.health+=amount
+        this.events.push({type:'heal',targetId:actor.id,pickupId:pack.id,amount,health:actor.health})
+        break
       }
     }
   }

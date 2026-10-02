@@ -1,3 +1,4 @@
+import { stanceHeight } from './stance.ts'
 import { TRAINING_WORLD, RAMP, rampHeight, type WorldGeometry } from './urban-map.ts'
 import { parseInput, type MoveInput, type Position } from './index.ts'
 
@@ -21,6 +22,7 @@ export const EYE_HEIGHT = 1.6
 export type GameMode = 'training' | 'solo' | 'online'
 export type Phase = 'ready' | 'playing' | 'paused' | 'finished'
 export interface CombatInput extends MoveInput {
+  crouch?: boolean
   yaw: number
   pitch: number
   fire: boolean
@@ -39,6 +41,7 @@ export function parseCombatInput(value: unknown): CombatInput | null {
     !('aim' in value)
   )
     return null
+  if ('crouch' in value && typeof value.crouch !== 'boolean') return null
   const { yaw, pitch, fire, aim } = value
   if (
     typeof yaw !== 'number' ||
@@ -51,9 +54,10 @@ export function parseCombatInput(value: unknown): CombatInput | null {
     typeof aim !== 'boolean'
   )
     return null
-  return { ...movement, yaw: yaw % (Math.PI * 2), pitch, fire, aim }
+  return { ...movement, yaw: yaw % (Math.PI * 2), pitch, fire, aim, crouch: 'crouch' in value ? value.crouch as boolean : false }
 }
 export interface Combatant extends Position {
+  crouch?: number
   connected?: boolean
   participating?: boolean
   id: string
@@ -86,6 +90,7 @@ export interface ShotEvent {
   eliminated: boolean
 }
 export type GameEvent =
+  | { type: 'heal'; targetId: string; pickupId: string; amount: number; health: number }
   | ShotEvent
   | { type: 'damage'; targetId: string; sourceId: string; damage: number; health: number }
   | { type: 'spawn'; actorId: string; yaw: number }
@@ -179,14 +184,14 @@ export function sight(from: Position, to: Position): boolean {
 export function actorHit(
   origin: Position,
   ray: Position,
-  actor: Position,
+  actor: Position & { crouch?: number },
   range: number,
 ): number | null {
   return rayBox(
     origin,
     ray,
     { x: actor.x - 0.36, y: actor.y, z: actor.z - 0.36 },
-    { x: actor.x + 0.36, y: actor.y + 1.75, z: actor.z + 0.36 },
+    { x: actor.x + 0.36, y: actor.y + stanceHeight(actor), z: actor.z + 0.36 },
     range,
   )
 }

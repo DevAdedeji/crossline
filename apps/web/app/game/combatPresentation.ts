@@ -1,3 +1,4 @@
+import { crouchPose } from './crouchPose'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { Ray } from '@babylonjs/core/Culling/ray'
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture'
@@ -60,6 +61,7 @@ export function combatPresentation(
       wrist: TransformNode | undefined
       finger: TransformNode | undefined
       yaw: number
+      crouch: number
       shootUntil: number
       stationary: boolean
       dispose: () => void
@@ -147,8 +149,13 @@ export function combatPresentation(
         }
         const gun = assets.gun(`${actor.id}-carbine`, root, 0.7)
         gun.position.set(0.18, 1.13, 0.3)
+        const poseState={amount:0}
+        const disposePose=crouchPose(scene,root,()=>poseState.amount)
         bot = {
+          get crouch(){return poseState.amount},
+          set crouch(value:number){poseState.amount=value},
           dispose: () => {
+            disposePose()
             for(const mesh of root.getChildMeshes())shadows.removeShadowCaster(mesh)
             for(const group of instance.animationGroups)group.dispose()
             for(const skeleton of instance.skeletons)skeleton.dispose()
@@ -209,6 +216,7 @@ export function combatPresentation(
       bot.moving = clock < bot.motionUntil
       bot.previous.set(actor.x, actor.y, actor.z)
       bot.alive = actor.health > 0
+      bot.crouch = bot.alive ? actor.crouch ?? 0 : 0
       if (Vector3.Distance(bot.root.position, bot.previous) > 3)
         bot.root.position.copyFrom(bot.previous)
       bot.yaw = actor.yaw

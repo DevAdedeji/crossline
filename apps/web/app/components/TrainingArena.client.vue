@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import type { Engine } from '@babylonjs/core/Engines/engine'
 import { Client, type Room } from '@colyseus/sdk'
-import { ROOM_NAME, TICK_MS, readStick, TRAINING_WORLD, COMBAT_WORLD, COMBAT_DISTRICTS, COMBAT_BOT_COUNT } from '@crossline/shared'
+import { SOLO, stanceEye, type HealthPickup, ROOM_NAME, TICK_MS, readStick, TRAINING_WORLD, COMBAT_WORLD, COMBAT_DISTRICTS, COMBAT_BOT_COUNT } from '@crossline/shared'
 import {
   RIFLE,
-  EYE_HEIGHT,
   aimedTarget,
   direction,
   type Combatant,
@@ -12,6 +11,7 @@ import {
   type Phase,
   type GameMode,
 } from '@crossline/shared/combat'
+import { healthPickups } from '~/game/healthPickups'
 import { createUrbanScene } from '~/game/createUrbanScene'
 import { loadTrainingAssets } from '~/game/trainingAssets'
 import { combatPresentation, trainingAudio } from '~/game/combatPresentation'
@@ -50,6 +50,7 @@ interface ArenaState {
   elapsed: number
   duration: number
   round: number
+  healthPacks?: { forEach(fn:(pack:HealthPickup)=>void):void }
   capacity?: number
 }
 const canvas = ref<HTMLCanvasElement>(),
@@ -59,6 +60,8 @@ const canvas = ref<HTMLCanvasElement>(),
   elapsed = ref(0),
   duration = ref(180000),
   round = ref(1)
+const packs = ref<HealthPickup[]>([]), healAmount=ref(0), healUntil=ref(0)
+const crouchToggle=ref(false)
 const actors = ref<Combatant[]>([]),
   self = ref<Combatant>(),
   captured = ref(false),
@@ -129,7 +132,7 @@ function clearInput() {
   padFire = false
   padAim = false
   selectFireArmed = false
-  if(status.value === 'Connected')room?.send('input', { x: 0, z: 0, ...look, fire: false, aim: false })
+  if(status.value === 'Connected')room?.send('input', { x: 0, z: 0, ...look, fire: false, aim: false, crouch: (self.value?.crouch ?? 0)>0 })
 }
 function release() {
   clearInput()
@@ -213,9 +216,10 @@ function keydown(event: KeyboardEvent) {
     return
   }
   if (active.value) {
-    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'Space'].includes(event.code))
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyC', 'ControlLeft', 'ControlRight', 'Space'].includes(event.code))
       event.preventDefault()
     keys.add(event.code)
+    if (event.code === 'KeyC' && !event.repeat) crouchToggle.value=!crouchToggle.value
     if (event.code === 'KeyR' && !event.repeat) reload()
   } else if (['ArrowUp', 'ArrowDown', 'Enter'].includes(event.code)) {
     event.preventDefault()
@@ -296,6 +300,7 @@ function pollPad(dt: number) {
         padActive.value = true
         audio.unlock()
       }
+      if (edge(11)) crouchToggle.value=!crouchToggle.value
       if (edge(9) || edge(1)) pause()
       if (padActive.value) {
         padMovement = readStick(pad.axes[0], pad.axes[1])
@@ -345,6 +350,7 @@ onMounted(async () => {
       return
     }
     arena.addVehicles(assets)
+    const supplies = isSolo.value ? healthPickups(scene) : undefined
     const visuals = combatPresentation(scene, camera, assets, arena.shadows, props.mode)
     await scene.whenReadyAsync()
     if (stopped) return
@@ -362,7 +368,7 @@ onMounted(async () => {
       targetId.value =
         active.value && viewer && viewer.health > 0
           ? aimedTarget(
-              { x: viewer.x, y: viewer.y + EYE_HEIGHT, z: viewer.z },
+              { x: viewer.x, y: viewer.y + stanceEye(viewer), z: viewer.z },
               direction(look.yaw, look.pitch),
               actors.value,
               viewer.id,
@@ -423,6 +429,10 @@ onMounted(async () => {
       if (phase.value !== nextPhase) menuIndex.value = 0
       phase.value = nextPhase
       onlineCapacity.value=state.capacity ?? 8
+      const availablePacks:HealthPickup[]=[]
+      state.healthPacks?.forEach(pack=>availablePacks.push({...pack}))
+      packs.value=availablePacks
+      supplies?.sync(availablePacks,state.elapsed)
       elapsed.value = state.elapsed
       duration.value = state.duration
       round.value = state.round
@@ -432,7 +442,7 @@ onMounted(async () => {
       self.value = values.find((a) => a.id === joined.sessionId)
       const player = self.value
       if (player) {
-        cameraTarget.set(player.x, player.y + EYE_HEIGHT, player.z)
+        cameraTarget.set(player.x, player.y + stanceEye(player), player.z)
         if (
           Math.hypot(
             camera.position.x - cameraTarget.x,
@@ -468,7 +478,10 @@ onMounted(async () => {
       } else if (event.type === 'damage' && event.targetId === joined.sessionId) {
         damageUntil.value = performance.now() + 220
         if (event.health === 0) audio.sound('death')
+      } else if (event.type === 'heal' && event.targetId === joined.sessionId) {
+        healAmount.value=event.amount;healUntil.value=performance.now()+2200;audio.sound('heal')
       } else if (event.type === 'spawn' && event.actorId === joined.sessionId) {
+        crouchToggle.value=false
         Object.assign(look, { yaw: event.yaw, pitch: 0 })
         clearInput()
       } else if (event.type === 'kill') {
@@ -521,6 +534,7 @@ onMounted(async () => {
         ...look,
         fire: enabled && (padActive.value ? padFire : mouseFire),
         aim: enabled && (padActive.value ? padAim : mouseAim),
+        crouch: enabled ? crouchToggle.value || keys.has('ControlLeft') || keys.has('ControlRight') : (self.value?.crouch ?? 0)>0,
       })
     }, TICK_MS)
   } catch (error) {
@@ -551,7 +565,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="arena" :data-phase="phase" :data-server-phase="confirmedPhase" :data-mode="mode" :data-room-id="roomCode" :data-player-id="self?.id">
+  <main class="arena" :data-phase="phase" :data-server-phase="confirmedPhase" :data-mode="mode" :data-room-id="roomCode" :data-player-id="self?.id" :data-crouch="self?.crouch ?? 0" :data-eye-height="self ? stanceEye(self) : 1.6">
     <canvas ref="canvas" :aria-label="`Crossline ${modeTitle} arena`" @contextmenu.prevent />
     <header>
       <NuxtLink to="/" class="brand">CROSSLINE<span>+</span></NuxtLink>
@@ -575,6 +589,8 @@ onBeforeUnmount(() => {
           :height="b.depth"
           fill="#85887b"
         />
+        <rect v-for="p in packs" :key="p.id" :x="p.x-1.6" :y="-p.z-1.6" width="3.2" height="3.2" :fill="p.availableAt<=elapsed ? '#80ffc2' : '#53675d'"
+          :data-pack="p.id" :data-ready="p.availableAt<=elapsed" :data-x="p.x" :data-z="p.z" :data-available-at="p.availableAt"><title>{{ p.availableAt<=elapsed ? '+35 HP' : 'Health pack cooling down' }}</title></rect>
         <circle
           v-for="a in actors"
           :key="a.id"
@@ -593,6 +609,7 @@ onBeforeUnmount(() => {
         </circle></svg
       ><small>{{ status }} · {{ isOnline ? `${actors.length} / ${onlineCapacity} PLAYERS` : isSolo ? `${COMBAT_BOT_COUNT} COMBAT BOTS` : '3 TARGETS · 2 PATROLS' }}</small>
     </aside>
+    <div v-if="isSolo && healUntil>now" class="health-feedback" role="status" data-testid="health-feedback">+{{ healAmount }} HP · SUPPLIES COLLECTED</div>
     <div class="kill-feed">
       <p v-for="item in feed.filter((f) => f.until > now)" :key="item.until + item.text">
         {{ item.text }}
@@ -632,7 +649,7 @@ onBeforeUnmount(() => {
           }}
         </h1>
         <p v-if="phase === 'ready'">
-          {{ isOnline ? 'Human players only. Unlimited respawns. Continuous scoring until you leave. Open another client on this local server to play together.' : isSolo ? 'Three minutes. Twelve bots targeting you. They never attack each other. Keep moving, use cover, and fight back.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
+          {{ isOnline ? 'Human players only. Unlimited respawns. Continuous scoring until you leave. Open another client on this local server to play together.' : isSolo ? 'Twelve bots targeting you. Use cover and crouch. Walk over green supply cases for +35 HP; they return after 25 seconds. Health does not regenerate in Solo.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
         </p>
         <p v-if="phase === 'paused'">
           {{ isOnline ? 'Your controls are paused. The shared match continues and your character stays vulnerable.' : 'The whole session is paused. Your timer and opponents will wait.' }}
@@ -688,11 +705,11 @@ onBeforeUnmount(() => {
         <button class="audio-toggle" @click="showControls = !showControls">{{ showControls ? 'Hide controls' : 'Controls' }}</button>
         <p v-if="showControls" class="controls">
           WASD move · Mouse look · Left click fire · Right click aim<br />R reload · Esc pause ·
-          Health regenerates after cover
+          {{ isSolo ? 'Walk over green cases for +35 HP · C toggles crouch · Ctrl holds crouch' : 'Health regenerates after cover · C toggles crouch · Ctrl holds crouch' }}
         </p>
         <p v-if="showControls" class="controls">
           Controller: sticks move/look · A / × or RT / R2 fire · LT / L2 aim · X / □ reload<br />A / × select · Start
-          or B / ○ pause/back · D-pad navigate
+          or B / ○ pause/back · D-pad navigate · Right-stick click toggles crouch
         </p>
         <small data-testid="gamepad-status">{{ padStatus }}</small>
         <div v-if="showControls && padReady" class="mt-3 space-y-2 text-xs">
@@ -704,10 +721,10 @@ onBeforeUnmount(() => {
       </div>
     </section>
     <footer>
-      <div class="health">
+      <div class="health" :class="{ critical: (self?.health ?? 100)<=30 }">
         <small>VITALS</small
-        ><strong data-testid="health">{{ Math.ceil(self?.health ?? 100) }}<span> HP</span></strong>
-        <div class="health-bar"><i :style="{ width: `${self?.health ?? 100}%` }" /></div>
+        ><strong data-testid="health">{{ Math.ceil(self?.health ?? 100) }}<span>{{ isSolo ? ' / 100 HP' : ' HP' }}</span></strong>
+        <div class="health-bar" role="progressbar" aria-label="Health" :aria-valuenow="Math.ceil(self?.health ?? 100)" :aria-valuemin="0" :aria-valuemax="100"><i :style="{ width: `${self?.health ?? 100}%` }" /></div>
         <small v-if="self && self.protectedUntil > elapsed && phase === 'playing'"
           >SPAWN PROTECTION</small
         >
@@ -726,6 +743,8 @@ onBeforeUnmount(() => {
     </footer>
     <div class="telemetry">
       <span v-if="padReady" data-testid="active-controller">{{ padActive ? 'CONTROLLER ACTIVE' : 'CONTROLLER READY · MOVE A STICK TO USE' }}</span>
+      <span data-testid="stance">{{ (self?.crouch ?? 0)>.5 ? 'CROUCHED' : 'STANDING' }} · C / CTRL / R3</span>
+      <span v-if="isSolo" class="supplies-hint">GREEN SQUARES: +35 HP</span>
       <span data-testid="heading" :data-pitch="pitch.toFixed(4)"
         >LOOK {{ (Math.round(heading) % 360).toString().padStart(3, '0') }}°</span
       ><span data-testid="position">{{ position }}</span
@@ -1059,5 +1078,8 @@ footer strong span {
 </style>
 
 <style scoped>
+.health.critical strong { color:#ff806a; }
+.health.critical .health-bar i { background:#ff806a; }
+.health-feedback { position:absolute; top:24%; left:50%; transform:translateX(-50%); color:#a7ffcb; background:#14372de8; padding:12px 18px; font-size:14px; border:1px solid #75d9a6; }
 .target-name { position:absolute; top:55%; left:50%; transform:translateX(-50%); color:#ffb15c; font:12px monospace; pointer-events:none; }
 </style>

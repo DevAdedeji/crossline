@@ -6,6 +6,7 @@ import { TrainingGame } from './training/TrainingGame.js'
 
 export const Actor = schema(
   {
+    crouch: t.number().default(0),
     connected: t.boolean().default(true),
     participating: t.boolean().default(true),
     id: t.string(),
@@ -32,9 +33,11 @@ export const Actor = schema(
   },
   'Actor',
 )
+export const HealthPack = schema({ id:t.string(), x:t.number(), y:t.number(), z:t.number(), availableAt:t.number() },'HealthPack')
 export const TrainingState = schema(
   {
     actors: t.map(Actor),
+    healthPacks: t.map(HealthPack),
     phase: t.string().default('ready'),
     elapsed: t.number(),
     duration: t.number().default(TRAINING.durationMs),
@@ -77,7 +80,7 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
       if (this.game.phase === 'playing' && this.clock.elapsedTime - this.lastInput > 1200)
         this.game.pause()
       if (this.clock.elapsedTime - this.lastInput > 250)
-        this.game.input = { ...IDLE_INPUT, yaw: this.game.input.yaw, pitch: this.game.input.pitch }
+        this.game.input = { ...IDLE_INPUT, yaw: this.game.input.yaw, pitch: this.game.input.pitch, crouch: this.game.input.crouch }
       this.game.step(TICK_MS)
       this.sync()
       for (const event of this.game.drainEvents()) this.broadcast('event', event)
@@ -96,6 +99,11 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
   }
   private sync() {
     if (!this.game) return
+    for(const [id,value] of this.game.healthPacks) {
+      let pack=this.state.healthPacks.get(id)
+      if(!pack){pack=new HealthPack();this.state.healthPacks.set(id,pack)}
+      Object.assign(pack,value)
+    }
     this.state.phase = this.game.phase
     this.state.elapsed = this.game.elapsed
     this.state.duration = this.game.durationMs
@@ -113,6 +121,7 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
     this.game?.pause()
     this.game = undefined
     this.state.actors.clear()
+    this.state.healthPacks.clear()
   }
 }
 

@@ -23,7 +23,10 @@ try {
  assert.equal(a.state.capacity,8);assert.equal(a.state.actors.get(a.sessionId)!.participating,false)
  a.send('action','start');await until(()=>a.state.actors.get(a.sessionId)!.participating===true,'alpha enters')
  b.send('action','start');await until(()=>b.state.actors.get(b.sessionId)!.participating===true,'bravo enters')
- inputs.set(a,idle());inputs.set(b,idle())
+ inputs.set(a,{...idle(),crouch:true});inputs.set(b,idle())
+ await until(()=>b.state.actors.get(a.sessionId)?.crouch===1,'remote crouch replicated')
+ a.send('input',{...idle(),crouch:99});await delay(80);assert.equal(b.state.actors.get(a.sessionId)!.crouch,1)
+ inputs.set(a,idle());await until(()=>b.state.actors.get(a.sessionId)?.crouch===0,'standing replicated')
  await until(()=>[a.sessionId,b.sessionId].every(id=>a.state.actors.get(id)!.protectedUntil<=a.state.elapsed),'spawn protection elapsed')
  const events:GameEvent[]=[];a.onMessage('event',e=>events.push(e))
  function aim(shooter:Room<State>,targetId:string,fire:boolean){const me=shooter.state.actors.get(shooter.sessionId)!,target=shooter.state.actors.get(targetId)!;const distance=Math.hypot(target.x-me.x,target.z-me.z);const yaw=Math.atan2(target.x-me.x,target.z-me.z),pitch=Math.atan2(me.y+1.6-target.y-1.1,distance);return{...idle(),yaw,pitch,aim:true,fire}}
