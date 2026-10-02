@@ -45,7 +45,9 @@ test('guest budgets bound total rooms and sessions per client and reclaim reserv
 const production={NODE_ENV:'production',MATCH_HOST:'0.0.0.0',WEB_ORIGIN:origin,DATABASE_URL:'postgresql://database.example/crossline',DATABASE_CA_FILE:'/placeholder/ca.pem',BETTER_AUTH_SECRET:'synthetic-auth-unit-test-secret-2026-only',MATCH_PROXY_SECRET:secret}
 test('production configuration fails closed on missing secrets, local fixtures and insecure origins',()=>{
  assert.equal(matchConfig(production).production,true)
- for(const overrides of [{MATCH_PROXY_SECRET:''},{MATCH_PROXY_SECRET:production.BETTER_AUTH_SECRET},{WEB_ORIGIN:'http://crossline.example'},{WEB_ORIGIN:origin+'/'},{AUTH_DEV_LOCAL:'1'},{CROSSLINE_LOCAL_LOAD:'1'},{DATABASE_CA_FILE:''}])assert.throws(()=>matchConfig({...production,...overrides}))
+ assert.equal(matchConfig({...production,DATABASE_CA_FILE:undefined}).production,true)
+ assert.deepEqual(databaseOptions('postgresql://db.example/crossline?sslmode=disable',{NODE_ENV:'production'}).ssl,{rejectUnauthorized:true})
+ for(const overrides of [{MATCH_PROXY_SECRET:''},{MATCH_PROXY_SECRET:production.BETTER_AUTH_SECRET},{WEB_ORIGIN:'http://crossline.example'},{WEB_ORIGIN:origin+'/'},{AUTH_DEV_LOCAL:'1'},{CROSSLINE_LOCAL_LOAD:'1'}])assert.throws(()=>matchConfig({...production,...overrides}))
 })
 test('runtime and migration PostgreSQL options verify a provider CA and enforce pool limits',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'crossline-ca-'))

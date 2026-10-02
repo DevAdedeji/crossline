@@ -20,13 +20,13 @@ Match service:
 
 - `NODE_ENV=production`, `MATCH_HOST=0.0.0.0`, platform `PORT` (omit local `MATCH_PORT`).
 - `WEB_ORIGIN=https://<web-host>` exactly matching the web configuration. CORS and browser WebSocket origins are restricted to it.
-- `DATABASE_URL` and `DATABASE_CA_FILE` pointing to the provider CA certificate supplied securely at runtime. Remote TLS verifies certificates; no insecure bypass is offered.
+- `DATABASE_URL`. Remote TLS always verifies certificates using Node’s trusted CA store (including Neon). For providers with a private CA, set `DATABASE_CA_FILE` to a securely supplied certificate file. No insecure bypass is offered.
 - `BETTER_AUTH_SECRET` and a distinct `MATCH_PROXY_SECRET`, each at least 32 strong random characters. No actual secrets are included or generated here.
 - `DB_POOL_MAX=3` (allowed 1–5); `FFA_MAX_CLIENTS=100` (allowed 2–100).
 
 Signup requires username, email and password and establishes a session immediately. Login requires email/password. No email-provider login, domain verification, sender credentials, SMTP or Resend dependency remains. New addresses stay `emailVerified=false`; account access is not proof of email ownership. Password reset, account linking and email changes are deferred, and the verification/reset HTTP routes are not exposed.
 
-The production configuration rejects local auth, local database/load fixtures, insecure origins, missing CA and missing/equal secrets. Startup queries the account tables before exposing the listener. Migration execution remains separate: after explicit authorization and target verification, `pnpm db:migrate` reads exported variables or `packages/db/.env` and applies the checked-in migrations using the same PostgreSQL TLS/CA/pool helper as runtime. Never put credentials in source, screenshots, reports or logs.
+The production configuration rejects local auth, local database/load fixtures, insecure origins and missing/equal secrets. Startup queries the account tables before exposing the listener. Migration execution remains separate: after explicit authorization and target verification, `pnpm db:migrate` reads exported variables or `packages/db/.env` and applies the checked-in migrations using the same PostgreSQL TLS/CA/pool helper as runtime. Never put credentials in source, screenshots, reports or logs.
 
 ## Limits and failure behavior
 
