@@ -178,7 +178,18 @@ PWA/offline browser checks cover manifest/icons, app-specific install eligibilit
 
 Practice and Solo never open a WebSocket. A worker runs their fixed-step simulation independently of rendering. Online predicts movement and muzzle feedback immediately, with server-confirmed hits, ammo, health and scores. Acknowledgment delay above 250ms or silence above 350ms shows a warning. After one second without acknowledgment (or an 8 KiB socket backlog), controls pause visibly; held inputs clear, prediction resets, and recovery requires Resume. Input history stays bounded. The server ignores new-client input based on a server timestamp more than 1.2 seconds old. Shared multiplayer cannot continue offline.
 
-A deterministic, stationary exposed-player fixture across twelve seeds measured median defeat time against one/two/four nearby bots at 13.1/13.2/8.7 seconds, versus 5.6/3.2/2.8 seconds before this Solo-only balance change. The player had no spawn protection and did not shoot or seek cover. This is a regression scenario, not a guarantee for every encounter; bots remain lethal when the player stays exposed.
+Solo incoming bot damage is now 5 body / 7 head (previously 10 / 15). Initial reaction is 2.0–2.7 seconds, two-shot bursts are spaced 1.25 seconds apart, and the rest between bursts is 2.8–3.6 seconds. A 1.2-second incoming-hit recovery window is shared across every attacking bot, so staggered crossfire cannot drain health at the old rate. Player weapon damage and Online damage remain 25 body / 50 head; health supplies, spawn protection and bot count are unchanged.
+
+Reproduce with `pnpm exec tsx scripts/solo-balance.ts`. Twelve deterministic seeds per scenario place a stationary unprotected player in the open, with nearby bots and no shooting or health supplies. Median time to defeat:
+
+| Nearby bots | Previous balance | Gentler balance |
+| --- | ---: | ---: |
+| 1 | 13.1 s | 53.9 s |
+| 2 | 13.2 s | 44.0 s |
+| 4 | 8.7 s | 43.4 s |
+| 8 | 8.3 s | 32.3 s |
+
+At ten seconds, median remaining health with eight bots increased from 0 to 75. Three one-bot runs and one two-bot run survived the 90-second measurement window; medians include those censored survivors, rather than dropping them. All four/eight-bot runs still ended in defeat under sustained exposure. Bots can move, lose sight or obstruct each other's shots, so counts are not a linear damage multiplier. These controlled scenarios are regression measurements, not a promise for every encounter. No Online balance values changed.
 
 
 ## Furnished interiors and viewport recovery

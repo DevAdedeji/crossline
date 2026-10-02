@@ -1,3 +1,4 @@
+import { soloEncounter } from '../scripts/solo-balance.ts'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { TrainingGame } from '../apps/match/src/training/TrainingGame.js'
@@ -95,9 +96,9 @@ test('Solo incoming hits use lower bot damage, kill at zero, and permit time to 
  run(g,850);assert.equal(human.health,100,'reaction window allows movement before first fire')
  run(g,1200);assert.ok(human.health>40,'first burst is survivable')
  Object.assign(bot,{x:0,y:0,z:-6});Object.assign(human,{x:0,y:0,z:-14});
- const before=human.health;g.elapsed+=200;assert.equal(g.fire(bot,Math.PI,Math.atan2(.5,8),true),true)
+ const before=human.health;g.elapsed+=SOLO.damageGraceMs+1;assert.equal(g.fire(bot,Math.PI,Math.atan2(.5,8),true),true)
  assert.equal(human.health,before-SOLO.botBodyDamage)
- for(let i=0;i<12&&human.health>0;i++){g.elapsed+=SOLO.damageGraceMs+1;g.fire(bot,Math.PI,Math.atan2(.5,8),true)}
+ for(let i=0;i<Math.ceil(SOLO.maxHealth/SOLO.botBodyDamage)&&human.health>0;i++){g.elapsed+=SOLO.damageGraceMs+1;g.fire(bot,Math.PI,Math.atan2(.5,8),true)}
  assert.equal(human.health,0);assert.equal(human.deaths,1);assert.ok(human.respawnUntil>g.elapsed)
 })
 
@@ -129,14 +130,25 @@ test('Solo overlapping bot hits have a recovery gap while Online damage stays im
  }
 })
 
-test('two nearby Solo bots give an exposed player reaction time and a survivable first encounter',()=>{
- for(let seed=1;seed<=6;seed++){
-  let state=seed;const g=new TrainingGame('human',180000,()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return state/4294967296},'solo');g.start()
-  const human=g.actors.get('human')!;Object.assign(human,{x:0,y:0,z:-14,protectedUntil:0})
-  let i=0;for(const [id,a]of g.actors){if(!a.bot)continue;if(i>=2){g.actors.delete(id);continue}Object.assign(a,{x:(i-.5)*2,y:0,z:-6,yaw:Math.PI,protectedUntil:0});i++}
-  run(g,1200);assert.equal(human.health,100)
-  run(g,3800);assert.ok(human.health>=50,'five seconds leaves time to seek cover')
-  while(g.elapsed<25000&&human.health>0)g.step()
-  assert.ok(g.elapsed>8000&&Number(human.health)===0,'bots remain threatening over a longer exposed encounter')
+test('multiple Solo attackers leave time to fight back but remain lethal under sustained exposure',()=>{
+ for(const bots of [2,4,8])for(let seed=1;seed<=6;seed++){
+  const encounter=soloEncounter(seed,bots)
+  assert.ok(encounter.firstDamageMs!==null && encounter.firstDamageMs>=2000,'initial acquisition gives two seconds to react')
+  assert.ok(encounter.health[5]!>=80,'first contact cannot strip most health')
+  assert.ok(encounter.health[10]!>=65,'crossfire leaves time to fight back or reach supplies')
+  assert.ok(encounter.defeatMs===null || encounter.defeatMs>=25000,'crowded encounters stay substantially more forgiving')
+  if(bots>=4)assert.ok(encounter.defeatMs!==null && encounter.defeatMs<90000,'standing exposed still ends in defeat')
  }
+})
+
+test("a second Solo bot cannot bypass another bot's incoming-hit recovery gap",()=>{
+ const g=new TrainingGame('human',180000,()=>.5,'solo');g.start();g.elapsed=5000
+ const human=g.actors.get('human')!,a=g.actors.get('bot-0')!,b=g.actors.get('bot-1')!
+ for(const id of g.actors.keys())if(![human.id,a.id,b.id].includes(id))g.actors.delete(id)
+ Object.assign(human,{x:0,y:0,z:-14,protectedUntil:0})
+ Object.assign(a,{x:-2,y:0,z:-6,protectedUntil:0});Object.assign(b,{x:2,y:0,z:-6,protectedUntil:0})
+ const shoot=(bot:typeof a)=>g.fire(bot,Math.atan2(-bot.x,-8),Math.atan2(.5,Math.hypot(bot.x,8)),true)
+ assert.equal(shoot(a),true);const health=human.health;assert.ok(health<100)
+ g.elapsed+=600;assert.equal(shoot(b),true);assert.equal(human.health,health,'staggered attackers share the same recovery gap')
+ g.elapsed+=SOLO.damageGraceMs-600+1;assert.equal(shoot(b),true);assert.equal(human.health,health-SOLO.botBodyDamage)
 })
