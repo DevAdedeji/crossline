@@ -53,6 +53,8 @@ interface ArenaState {
   healthPacks?: { forEach(fn:(pack:HealthPickup)=>void):void }
   capacity?: number
 }
+const touchDevice=ref(false),portrait=ref(false),touchActive=ref(false)
+let touchMovement={x:0,z:0},touchFiring=false,touchAiming=false
 const canvas = ref<HTMLCanvasElement>(),
   status = ref('Connecting'),
   phase = ref<Phase>('ready'),
@@ -103,7 +105,7 @@ const active = computed(
   () =>
     status.value === 'Connected' &&
     phase.value === 'playing' &&
-    (captured.value || padActive.value),
+    (captured.value || padActive.value || touchActive.value) && !(touchDevice.value && portrait.value),
 )
 const seconds = computed(() => Math.ceil(Math.max(0, duration.value - elapsed.value) / 1000))
 const time = computed(
@@ -126,6 +128,7 @@ function action(value: string) {
 }
 function clearInput() {
   keys.clear()
+  touchMovement={x:0,z:0};touchFiring=false;touchAiming=false
   mouseFire = false
   mouseAim = false
   padMovement = { x: 0, y: 0 }
@@ -137,6 +140,7 @@ function clearInput() {
 function release() {
   clearInput()
   padActive.value = false
+  touchActive.value=false
   if (document.pointerLockElement === canvas.value) document.exitPointerLock()
 }
 function pause() {
@@ -158,10 +162,16 @@ function gamepadDisconnected(event?: Event) {
   previousButtons = []
 }
 async function start(usePad = false) {
-  if (status.value !== 'Connected') return
+  if (status.value !== 'Connected' || (touchDevice.value && portrait.value)) return
   audio.unlock()
   captureError.value = ''
+  if(touchDevice.value && !usePad) {
+    touchActive.value=true;padActive.value=false
+    if(isOnline.value){onlineEntered.value=true;onlinePaused.value=false;phase.value='playing'}
+    action('start');return
+  }
   if (usePad) {
+    touchActive.value=false
     selectFireArmed = false
     padActive.value = true
     if(isOnline.value) { onlineEntered.value=true; onlinePaused.value=false; phase.value='playing' }
@@ -256,7 +266,12 @@ function pointerChange() {
 function hidden() {
   if (document.hidden) pause()
 }
-const resize = () => engine?.resize()
+const resize = () => {portrait.value=window.innerHeight>window.innerWidth;if(touchDevice.value && portrait.value)pause();engine?.resize()}
+function touchMode(){if(phase.value!=='playing')return;touchActive.value=true;padActive.value=false}
+function touchMove(x:number,z:number){touchMode();touchMovement={x,z}}
+function touchLook(x:number,y:number){if(!active.value)return;touchMode();Object.assign(look,rotateLook(look,x*.004,y*.004))}
+function touchFire(value:boolean){if(value)touchMode();touchFiring=value}
+function touchAim(value:boolean){if(value)touchMode();touchAiming=value}
 function pollPad(dt: number) {
   const pad = selectController(Array.from(navigator.getGamepads?.() ?? []), padIndex)
   if (!pad) {
@@ -295,6 +310,7 @@ function pollPad(dt: number) {
       if (!pressed[0]) selectFireArmed = true
       if (!padActive.value && (controllerActivity(pad) || controllerFire(pad, fireBinding.value))) {
         const wasArmed = selectFireArmed
+        touchActive.value=false
         clearInput()
         selectFireArmed = wasArmed
         padActive.value = true
@@ -336,10 +352,12 @@ function pollPad(dt: number) {
   previousButtons = pressed
 }
 onMounted(async () => {
+  touchDevice.value=matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints>0
+  portrait.value=window.innerHeight>window.innerWidth
   await nextTick()
   if (!canvas.value) return
   try {
-    const arena = createUrbanScene(canvas.value, world.value)
+    const arena = createUrbanScene(canvas.value, world.value, {mobile:touchDevice.value})
     engine = arena.engine
     const { scene, camera } = arena
     const cameraTarget = camera.position.clone()
@@ -379,7 +397,7 @@ onMounted(async () => {
           : undefined
       visuals.frame(
         dt,
-        active.value && (padActive.value ? padAim : mouseAim),
+        active.value && (touchActive.value ? touchAiming : padActive.value ? padAim : mouseAim),
         keys.size > 0 || Math.hypot(padMovement.x, padMovement.y) > 0.1,
         reloadLeft.value,
         (self.value?.health ?? 0) > 0 && phase.value === 'playing',
@@ -402,6 +420,7 @@ onMounted(async () => {
     window.addEventListener('blur', pause)
     window.addEventListener('gamepaddisconnected', gamepadDisconnected)
     window.addEventListener('resize', resize)
+    resize()
     const client = new Client(String(config.public.matchUrl))
     let joined: Room<ArenaState>
     if(isOnline.value) {
@@ -518,12 +537,12 @@ onMounted(async () => {
       if(status.value !== 'Connected')return
       const enabled = active.value,
         forward = enabled
-          ? padActive.value
+          ? touchActive.value ? touchMovement.z : padActive.value
             ? -padMovement.y
             : Number(keys.has('KeyW')) - Number(keys.has('KeyS'))
           : 0,
         right = enabled
-          ? padActive.value
+          ? touchActive.value ? touchMovement.x : padActive.value
             ? padMovement.x
             : Number(keys.has('KeyD')) - Number(keys.has('KeyA'))
           : 0,
@@ -532,8 +551,8 @@ onMounted(async () => {
         x: (Math.sin(look.yaw) * forward + Math.cos(look.yaw) * right) / length,
         z: (Math.cos(look.yaw) * forward - Math.sin(look.yaw) * right) / length,
         ...look,
-        fire: enabled && (padActive.value ? padFire : mouseFire),
-        aim: enabled && (padActive.value ? padAim : mouseAim),
+        fire: enabled && (touchActive.value ? touchFiring : padActive.value ? padFire : mouseFire),
+        aim: enabled && (touchActive.value ? touchAiming : padActive.value ? padAim : mouseAim),
         crouch: enabled ? crouchToggle.value || keys.has('ControlLeft') || keys.has('ControlRight') : (self.value?.crouch ?? 0)>0,
       })
     }, TICK_MS)
@@ -565,8 +584,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="arena" :data-phase="phase" :data-server-phase="confirmedPhase" :data-mode="mode" :data-room-id="roomCode" :data-player-id="self?.id" :data-crouch="self?.crouch ?? 0" :data-eye-height="self ? stanceEye(self) : 1.6">
+  <main class="arena" :class="{ 'touch-layout': touchDevice }" :data-phase="phase" :data-server-phase="confirmedPhase" :data-mode="mode" :data-room-id="roomCode" :data-player-id="self?.id" :data-crouch="self?.crouch ?? 0" :data-eye-height="self ? stanceEye(self) : 1.6">
     <canvas ref="canvas" :aria-label="`Crossline ${modeTitle} arena`" @contextmenu.prevent />
+    <div v-if="touchDevice && portrait" class="rotate-phone" role="dialog" aria-modal="true" aria-label="Rotate phone">
+      <div><span class="rotate-icon" aria-hidden="true">↻</span><h1>Turn your phone sideways.</h1><p>Crossline uses landscape controls. Rotate your device to continue.</p><NuxtLink to="/">Return to menu</NuxtLink></div>
+    </div>
+    <TouchControls v-if="touchDevice && active" :crouched="(self?.crouch ?? 0)>.5" @move="touchMove" @look="touchLook" @fire="touchFire" @aim="touchAim" @reload="reload" @crouch="crouchToggle=!crouchToggle" @pause="pause" />
     <header>
       <NuxtLink to="/" class="brand">CROSSLINE<span>+</span></NuxtLink>
       <div class="location">
@@ -703,11 +726,12 @@ onBeforeUnmount(() => {
         </button>
         <p v-if="captureError" role="alert">{{ captureError }}</p>
         <button class="audio-toggle" @click="showControls = !showControls">{{ showControls ? 'Hide controls' : 'Controls' }}</button>
-        <p v-if="showControls" class="controls">
+        <p v-if="showControls && touchDevice" class="controls">Left stick moves · Swipe the right side to look · Hold FIRE · AIM toggles sights · RELOAD · CROUCH · Ⅱ pauses</p>
+        <p v-if="showControls && !touchDevice" class="controls">
           WASD move · Mouse look · Left click fire · Right click aim<br />R reload · Esc pause ·
           {{ isSolo ? 'Walk over green cases for +35 HP · C toggles crouch · Ctrl holds crouch' : 'Health regenerates after cover · C toggles crouch · Ctrl holds crouch' }}
         </p>
-        <p v-if="showControls" class="controls">
+        <p v-if="showControls && !touchDevice" class="controls">
           Controller: sticks move/look · A / × or RT / R2 fire · LT / L2 aim · X / □ reload<br />A / × select · Start
           or B / ○ pause/back · D-pad navigate · Right-stick click toggles crouch
         </p>
@@ -720,7 +744,7 @@ onBeforeUnmount(() => {
         <button class="audio-toggle" @click="toggleAudio">Sound {{ muted ? 'off' : 'on' }}</button>
       </div>
     </section>
-    <footer>
+    <footer :class="{ 'touch-menu-hidden': touchDevice && !active }">
       <div class="health" :class="{ critical: (self?.health ?? 100)<=30 }">
         <small>VITALS</small
         ><strong data-testid="health">{{ Math.ceil(self?.health ?? 100) }}<span>{{ isSolo ? ' / 100 HP' : ' HP' }}</span></strong>
@@ -738,12 +762,12 @@ onBeforeUnmount(() => {
         ><strong data-testid="ammo">{{ self?.ammo ?? 24 }}<span> / ∞</span></strong
         ><small v-if="reloadLeft > 0">RELOADING {{ (reloadLeft / 1000).toFixed(1) }}s</small
         ><small v-else-if="self?.ammo === 0">R / X TO RELOAD</small
-        ><small v-else>{{ padActive ? 'A / × OR RT FIRE · X / □ RELOAD' : 'R RELOAD' }}</small>
+        ><small v-else>{{ touchDevice ? 'TOUCH RELOAD' : padActive ? 'A / × OR RT FIRE · X / □ RELOAD' : 'R RELOAD' }}</small>
       </div>
     </footer>
     <div class="telemetry">
       <span v-if="padReady" data-testid="active-controller">{{ padActive ? 'CONTROLLER ACTIVE' : 'CONTROLLER READY · MOVE A STICK TO USE' }}</span>
-      <span data-testid="stance">{{ (self?.crouch ?? 0)>.5 ? 'CROUCHED' : 'STANDING' }} · C / CTRL / R3</span>
+      <span v-if="!touchDevice" data-testid="stance">{{ (self?.crouch ?? 0)>.5 ? 'CROUCHED' : 'STANDING' }} · C / CTRL / R3</span>
       <span v-if="isSolo" class="supplies-hint">GREEN SQUARES: +35 HP</span>
       <span data-testid="heading" :data-pitch="pitch.toFixed(4)"
         >LOOK {{ (Math.round(heading) % 360).toString().padStart(3, '0') }}°</span
@@ -1082,4 +1106,18 @@ footer strong span {
 .health.critical .health-bar i { background:#ff806a; }
 .health-feedback { position:absolute; top:24%; left:50%; transform:translateX(-50%); color:#a7ffcb; background:#14372de8; padding:12px 18px; font-size:14px; border:1px solid #75d9a6; }
 .target-name { position:absolute; top:55%; left:50%; transform:translateX(-50%); color:#ffb15c; font:12px monospace; pointer-events:none; }
+</style>
+
+<style scoped>
+.rotate-phone{position:fixed;inset:0;z-index:100;background:#101b1b;display:grid;place-items:center;padding:28px;text-align:center;touch-action:manipulation}
+.rotate-phone h1{font-size:27px;margin:18px 0}.rotate-phone p{max-width:300px;line-height:1.6;color:#c3cec6;font-size:14px}.rotate-phone a{display:inline-block;margin-top:24px;color:#ffb15c;padding:12px}.rotate-icon{font-size:64px;color:#ffb15c}
+.touch-layout{min-height:0;height:100dvh;touch-action:none;overscroll-behavior:none}
+.touch-layout header{padding:calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));height:50px}
+.touch-layout .brand{font-size:20px}.touch-layout .location{display:none}.touch-layout .timer{font-size:22px}.touch-layout .timer small{font-size:7px}
+.touch-layout .radar-panel{top:54px;left:calc(12px + env(safe-area-inset-left));width:75px}.touch-layout .radar{width:75px;height:75px}.touch-layout .radar-panel small{font-size:6px}
+.touch-menu-hidden{visibility:hidden}
+.touch-layout footer{padding:8px calc(12px + env(safe-area-inset-right)) calc(9px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));gap:14px;align-items:end}
+.touch-layout footer strong{font-size:23px}.touch-layout footer strong span{font-size:11px}.touch-layout footer small{font-size:7px}.touch-layout .health{width:120px}.touch-layout .health-bar{margin-top:5px}
+.touch-layout .telemetry{display:none}.touch-layout .score{font-size:10px}.touch-layout .kill-feed{top:62px;right:12px;font-size:8px;max-width:180px}.touch-layout .health-feedback{top:20%;padding:8px 12px;font-size:11px}
+.touch-layout .overlay{padding:10px}.touch-layout .menu-card{width:min(540px,94vw);max-height:calc(100dvh - 20px);overflow-y:auto;padding:18px 25px;touch-action:pan-y}.touch-layout .menu-card h1{font-size:28px;margin:10px 0}.touch-layout .menu-card p{font-size:11px;line-height:1.45}.touch-layout .menu-actions button{min-height:38px;padding:10px 16px;font-size:10px}.touch-layout .controls{font-size:10px}.touch-layout .eyebrow{font-size:8px}
 </style>

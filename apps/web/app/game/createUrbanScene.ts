@@ -24,11 +24,12 @@ import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent'
 import { TRAINING_WORLD, COMBAT_DISTRICTS, type WorldGeometry, RAMP, ROOF_HEIGHT } from '@crossline/shared'
 
 /** Shared collider geometry with locally licensed facade and surface artwork. */
-export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry = TRAINING_WORLD) {
+export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry = TRAINING_WORLD, options: {mobile?:boolean} = {}) {
   const BUILDINGS = world.buildings, MAP_SOLIDS = world.solids, PARKED_CARS = world.cars
   const engine = new Engine(canvas, true, { stencil: true })
-  engine.setHardwareScalingLevel(Math.max(1, window.devicePixelRatio / 1.5))
+  engine.setHardwareScalingLevel(options.mobile ? Math.max(1.25,window.devicePixelRatio/1.25) : Math.max(1, window.devicePixelRatio / 1.5))
   const scene = new Scene(engine)
+  scene.skipPointerMovePicking=true
   scene.clearColor = new Color4(0.57, 0.66, 0.67, 1)
   scene.fogMode = Scene.FOGMODE_EXP2
   scene.fogDensity = world.limit > 26 ? 0.005 : 0.007
@@ -69,8 +70,8 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   sun.orthoBottom = world.limit>26 ? -92 : -38
   sun.shadowMinZ = 1
   sun.shadowMaxZ = 110
-  const shadows = new ShadowGenerator(2048, sun)
-  shadows.usePercentageCloserFiltering = true
+  const shadows = new ShadowGenerator(options.mobile ? 1024 : 2048, sun)
+  shadows.usePercentageCloserFiltering = !options.mobile
   shadows.bias = 0.01
   shadows.normalBias = 0.12
 

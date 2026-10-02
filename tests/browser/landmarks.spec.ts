@@ -19,12 +19,12 @@ test('a real player walks the factory mezzanine/roof and all tower stairs with r
   const path=nav.findPath(await position(),goal);path.push(goal)
   for(const point of path){
    await expect.poll(async()=>{
-    const p=await position(),dx=point.x-p.x,dz=point.z-p.z,d=Math.hypot(dx,dz)
+    await page.bringToFront();const p=await position(),dx=point.x-p.x,dz=point.z-p.z,d=Math.hypot(dx,dz)
     if(d<.14){await axes();return Math.abs(p.y-point.y)<.3}
     const yaw=Number((await page.getByTestId('heading').innerText()).match(/[0-9]+/)![0])*Math.PI/180,raw=.18+.82*Math.min(1,d/1.2)
     await axes((Math.cos(yaw)*dx-Math.sin(yaw)*dz)/d*raw,-(Math.sin(yaw)*dx+Math.cos(yaw)*dz)/d*raw)
     return false
-   },{timeout:10000,intervals:[35],message:`walk ${JSON.stringify(point)}`}).toBe(true)
+   },{timeout:10000,intervals:[35],message:`walk ${JSON.stringify(point)}`}).toBe(true).catch(async error=>{console.error('Walk failure', {position:await position(),goal:point,phase:await page.locator('main.arena').getAttribute('data-phase')});await page.screenshot({path:info.outputPath('walk-stalled.png')});throw error})
   }
   await axes();await expect.poll(()=>Math.abs((peer.state?.actors.get(id)?.y ?? -100)-goal.y)).toBeLessThan(.3)
  }
