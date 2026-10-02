@@ -29,21 +29,32 @@ test('navigation connects all districts through collision-checked routes', async
     for(let i=1;i<path.length;i++)assert.ok(nav.canWalk(path[i-1]!,path[i]!),district.name)
   }
 })
-test('large Solo simulation stays finite, active and inside world bounds for a full match', () => {
-  let seed=11
+test('large Solo simulations stay bounded and target only humans across full matches', () => {
+ for(const initialSeed of [11,41,124]) {
+  let seed=initialSeed
   const game=new TrainingGame('human',180000,()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296},'solo')
   assert.equal(game.actors.size,13);game.start()
   let shots=0,kills=0,maxStep=0
   for(let i=0;i<5401;i++) {
     const start=performance.now();game.step();maxStep=Math.max(maxStep,performance.now()-start)
-    for(const event of game.drainEvents()){if(event.type==='shot')shots++;if(event.type==='kill')kills++}
+    for(const event of game.drainEvents()) {
+      if(event.type==='shot')shots++
+      if(event.type==='kill')kills++
+      if(event.type==='damage')assert.equal(game.actors.get(event.targetId)!.bot,false)
+    }
+    for(const memory of game['memories'].values()) {
+      if(memory.targetId)assert.equal(game.actors.get(memory.targetId)!.bot,false)
+      if(memory.lastSeenId)assert.equal(game.actors.get(memory.lastSeenId)!.bot,false)
+    }
     for(const actor of game.actors.values()) {
       assert.ok([actor.x,actor.y,actor.z,actor.yaw].every(Number.isFinite))
       assert.ok(Math.abs(actor.x)<=78&&Math.abs(actor.z)<=78)
+      if(actor.bot){assert.equal(actor.health,100);assert.equal(actor.deaths,0)}
     }
   }
-  assert.equal(game.phase,'finished');assert.ok(shots>50);assert.ok(kills>0)
-  console.log(JSON.stringify({largeMapShots:shots,kills,maxStepMs:Math.round(maxStep*100)/100}))
+  assert.equal(game.phase,'finished');assert.ok(shots>10);assert.ok(kills>0)
+  console.log(JSON.stringify({seed:initialSeed,largeMapShots:shots,kills,maxStepMs:Math.round(maxStep*100)/100}))
+ }
 })
 
 test('long-range Solo shots use combat-map cover rather than the Training boundary', () => {

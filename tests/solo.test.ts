@@ -27,15 +27,59 @@ test('Solo bots react before firing, damage the player, reload and stop while pa
   run(game, 3); assert.equal(game.elapsed, elapsed); assert.equal(JSON.stringify([...game.actors]), snapshot)
   game.start(); run(game, 2); assert.ok(bot.ammo > 0)
 })
-test('Solo allows bot-versus-bot damage; Training blocks all bot fire', () => {
-  const solo = setup(); const human = solo.actors.get('human')!
-  const other = { ...human, id: 'bot-1', bot: true, name: 'OTHER' }
-  solo.actors.delete('human'); solo.actors.set(other.id, other)
-  const bot = solo.actors.get('bot-0')!
-  assert.equal(solo.fire(bot, Math.PI, Math.atan2(.5, 8), true), true)
-  assert.ok(other.health < 100)
+test('Solo blocks bot friendly fire, including a bot standing between the shooter and human', () => {
+  const solo = setup(), human = solo.actors.get('human')!, bot = solo.actors.get('bot-0')!
+  const other = { ...human, id: 'bot-1', bot: true, name: 'OTHER', z: -10 }
+  solo.actors.set(other.id, other)
+  for (let i=0;i<8;i++) {
+    solo.elapsed+=200
+    assert.equal(solo.fire(bot, Math.PI, Math.atan2(.5, 8), true), true)
+  }
+  assert.equal(other.health,100); assert.equal(other.deaths,0)
+  assert.equal(human.health,100); assert.equal(bot.hits,0); assert.equal(bot.score,0)
+  assert.ok(solo.drainEvents().every(event=>event.type!=='damage' && event.type!=='kill'))
+  // Human shots still damage bots.
+  assert.equal(solo.fire(human,0,Math.atan2(.5,4),true),true)
+  assert.equal(other.health,75)
   const training = setup('training'); assert.equal(training.fire(training.actors.get('bot-0')!, Math.PI, 0), false)
   run(training, 10); assert.equal(training.actors.get('human')!.health, 100)
+})
+test('Solo rejects stale bot targets before flinch delays and never acquires a bot without a human', () => {
+  const game=setup(),bot=game.actors.get('bot-0')!,human=game.actors.get('human')!
+  const other={...human,id:'bot-1',bot:true,name:'OTHER'}
+  game.actors.delete(human.id);game.actors.set(other.id,other)
+  game['memories'].set(other.id,{path:[],nextPlan:0})
+  const memory=game['memories'].get(bot.id)!
+  Object.assign(memory,{targetId:other.id,lastSeenId:other.id,lastSeen:{x:other.x,y:other.y,z:other.z},nextScan:Infinity,burstLeft:3})
+  bot.lastDamage=game.elapsed;game.step()
+  assert.equal(memory.targetId,undefined);assert.equal(memory.lastSeen,undefined);assert.equal(memory.burstLeft,0)
+  run(game,15)
+  for(const actor of game.actors.values()){assert.equal(actor.shots,0);assert.equal(actor.health,100)}
+  for(const state of game['memories'].values()){assert.equal(state.targetId,undefined);assert.equal(state.lastSeenId,undefined)}
+})
+test('Solo forgets dead/protected humans and reacquires them with a fresh reaction after respawn', () => {
+  const game=setup(),bot=game.actors.get('bot-0')!,human=game.actors.get('human')!
+  const memory=game['memories'].get(bot.id)!
+  game.step();assert.equal(memory.targetId,human.id)
+  // Sight may be lost before death; last-seen pursuit must also be invalidated.
+  memory.targetId=undefined;memory.nextScan=Infinity
+  human.health=0;human.respawnUntil=game.elapsed+500
+  bot.lastDamage=game.elapsed;game.step()
+  assert.equal(memory.lastSeen,undefined);assert.equal(memory.targetId,undefined)
+  const shots=bot.shots
+  run(game,.6);assert.equal(human.health,100);assert.ok(human.protectedUntil>game.elapsed)
+  Object.assign(human,{x:0,y:0,z:-14})
+  Object.assign(bot,{x:0,y:0,z:-6,yaw:Math.PI})
+  // Even a stale target restored during protection must be rejected before the next scan.
+  Object.assign(memory,{targetId:human.id,lastSeenId:human.id,nextScan:Infinity})
+  game.step();assert.equal(memory.targetId,undefined);assert.equal(memory.lastSeenId,undefined)
+  run(game,.3);assert.equal(bot.shots,shots);assert.equal(human.health,100)
+  human.protectedUntil=game.elapsed
+  Object.assign(bot,{x:0,y:0,z:-6,yaw:Math.PI,lastDamage:-10000})
+  memory.nextScan=0;game.step()
+  assert.equal(memory.targetId,human.id);assert.ok(memory.reactAt!>game.elapsed)
+  run(game,.3);assert.equal(bot.shots,shots)
+  run(game,2);assert.ok(bot.shots>shots);assert.ok(human.health<100 || human.deaths>0)
 })
 test('Solo dead actors respawn safely, restart clears AI and protection prevents instant spawn attacks', () => {
   const game = setup(), bot = game.actors.get('bot-0')!

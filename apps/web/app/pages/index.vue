@@ -8,7 +8,7 @@ const modes = [
     number: '01',
     title: 'Solo vs Bots',
     subtitle: 'YOUR OWN BATTLEGROUND',
-    description: 'Twelve combat bots across nine districts. 156 × 156 metres. Fight for the top spot.',
+    description: 'Twelve combat bots targeting you across nine districts. 156 × 156 metres. Fight back.',
     available: true,
     players: '1 PLAYER + 12 BOTS · LARGE MAP',
   },

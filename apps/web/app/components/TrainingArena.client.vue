@@ -632,7 +632,7 @@ onBeforeUnmount(() => {
           }}
         </h1>
         <p v-if="phase === 'ready'">
-          {{ isOnline ? 'Human players only. Unlimited respawns. Continuous scoring until you leave. Open another client on this local server to play together.' : isSolo ? 'Three minutes. Twelve opponents. Everyone is a target. Keep moving, use cover, and finish on top.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
+          {{ isOnline ? 'Human players only. Unlimited respawns. Continuous scoring until you leave. Open another client on this local server to play together.' : isSolo ? 'Three minutes. Twelve bots targeting you. They never attack each other. Keep moving, use cover, and fight back.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
         </p>
         <p v-if="phase === 'paused'">
           {{ isOnline ? 'Your controls are paused. The shared match continues and your character stays vulnerable.' : 'The whole session is paused. Your timer and opponents will wait.' }}

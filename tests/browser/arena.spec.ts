@@ -465,9 +465,16 @@ test('Solo is a separate combat match with damage, pause, standings and replay',
   await expect(page.locator('main.arena')).toHaveAttribute('data-mode', 'solo')
   await pulse(page, 0)
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase', 'playing')
-  await expect.poll(async () => page.locator('[data-actor]').evaluateAll(nodes => nodes.some(node => Number(node.getAttribute('data-health')) < 100)), { timeout: 30000 }).toBe(true)
-  await button(page, 0, true)
-  await expect(page.getByTestId('ammo')).not.toContainText('24 /')
+  const humanId = await page.locator('main.arena').getAttribute('data-player-id')
+  await expect.poll(async () => Number(await page.locator(`[data-actor="${humanId}"]`).getAttribute('data-health')), { timeout: 30000 }).toBeLessThan(100)
+  // Before the human fires, no bot can have taken friendly damage.
+  expect(await page.locator('[data-actor]').evaluateAll((nodes,id)=>nodes.filter(node=>node.getAttribute('data-actor')!==id).every(node=>Number(node.getAttribute('data-health'))===100),humanId)).toBe(true)
+  // The player may die during the first burst. Respawn clears input and requires a fresh press.
+  await expect.poll(async () => {
+    await button(page, 0, false); await page.waitForTimeout(100)
+    await button(page, 0, true); await page.waitForTimeout(150)
+    return Number((await page.getByTestId('ammo').innerText()).split('/')[0])
+  }, { timeout: 12000 }).toBeLessThan(24)
   await button(page, 0, false)
   await pulse(page, 9)
   await expect(page.getByRole('heading', { name: 'Solo vs Bots paused.' })).toBeVisible()

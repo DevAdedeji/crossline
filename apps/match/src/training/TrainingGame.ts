@@ -21,6 +21,7 @@ interface BotMemory {
   path: Position[]
   nextPlan: number
   targetId?: string
+  lastSeenId?: string
   lastSeen?: Position
   seenAt?: number
   reactAt?: number
@@ -207,7 +208,7 @@ export class TrainingGame {
     this.events.push({ type: 'spawn', actorId: actor.id, yaw: actor.yaw })
     const memory = this.memories.get(actor.id)
     if (memory) {
-      Object.assign(memory, { path: [], nextPlan: 0, targetId: undefined, lastSeen: undefined,
+      Object.assign(memory, { path: [], nextPlan: 0, targetId: undefined, lastSeenId: undefined, lastSeen: undefined,
         seenAt: undefined, reactAt: undefined, nextShot: undefined, burstLeft: 0, nextScan: 0 })
     }
   }
@@ -252,7 +253,9 @@ export class TrainingGame {
     let damage = 0
     let headshot = false
     let eliminated = false
-    if (victim && victim.protectedUntil <= this.elapsed) {
+    // Friendly bots still block the ray, but Solo bot shots can only damage humans.
+    if (victim && victim.protectedUntil <= this.elapsed &&
+        !(this.mode === 'solo' && actor.bot && victim.bot)) {
       headshot = end.y >= victim.y + 1.3
       damage = headshot ? RIFLE.headDamage : RIFLE.damage
       victim.health = Math.max(0, victim.health - damage)
@@ -352,13 +355,24 @@ export class TrainingGame {
     return this.worldHit({ x: bot.x, y: bot.y + EYE_HEIGHT, z: bot.z }, ray) >
       Math.hypot(dx, dz, target.y + 1.1 - bot.y - EYE_HEIGHT) - 0.4
   }
+  private humanTarget(actor: Combatant | undefined): actor is Combatant {
+    return !!actor && !actor.bot && actor.participating !== false &&
+      actor.health > 0 && actor.protectedUntil <= this.elapsed
+  }
   private combatBotStep(bot: Combatant, dt: number) {
     const memory = this.memories.get(bot.id)!
+    // Invalidate before flinch/reload/scan delays, including last-seen pursuit after sight loss.
+    if ((memory.targetId && !this.humanTarget(this.actors.get(memory.targetId))) ||
+        (memory.lastSeenId && !this.humanTarget(this.actors.get(memory.lastSeenId)))) {
+      Object.assign(memory, { targetId: undefined, lastSeenId: undefined, lastSeen: undefined,
+        seenAt: undefined, reactAt: undefined, nextShot: undefined, burstLeft: 0,
+        path: [], nextPlan: 0, nextScan: 0 })
+    }
     if (this.elapsed - bot.lastDamage < 300) return
     if (bot.ammo === 0) this.reload(bot.id)
     if (this.elapsed >= (memory.nextScan ?? 0)) {
       const candidates = [...this.actors.values()].filter((actor) =>
-        actor.id !== bot.id && actor.health > 0 && actor.protectedUntil <= this.elapsed && this.canSee(bot, actor))
+        this.humanTarget(actor) && this.canSee(bot, actor))
       candidates.sort((a, b) =>
         Math.hypot(a.x - bot.x, a.z - bot.z) * (a.id === memory.targetId ? 0.75 : 1) -
         Math.hypot(b.x - bot.x, b.z - bot.z) * (b.id === memory.targetId ? 0.75 : 1))
@@ -370,13 +384,14 @@ export class TrainingGame {
           memory.nextShot = memory.reactAt
         }
         memory.targetId = target.id
+        memory.lastSeenId = target.id
         memory.lastSeen = { x: target.x, y: target.y, z: target.z }
         memory.seenAt = this.elapsed
       } else memory.targetId = undefined
       memory.nextScan = this.elapsed + 180
     }
     const target = memory.targetId ? this.actors.get(memory.targetId) : undefined
-    const visible = target && target.health > 0 && target.protectedUntil <= this.elapsed && this.canSee(bot, target)
+    const visible = this.humanTarget(target) && this.canSee(bot, target)
     let destination: Position | undefined
     if (visible) {
       const dx = target.x - bot.x, dz = target.z - bot.z, distance = Math.hypot(dx, dz)
@@ -415,7 +430,7 @@ export class TrainingGame {
       destination = memory.lastSeen
     } else if (!memory.path.length) {
       const noise = this.lastNoise
-      destination = noise && noise.id !== bot.id && this.elapsed-noise.at < 5000 && Math.hypot(noise.position.x-bot.x,noise.position.z-bot.z)<55
+      destination = noise && this.humanTarget(this.actors.get(noise.id)) && this.elapsed-noise.at < 5000 && Math.hypot(noise.position.x-bot.x,noise.position.z-bot.z)<55
         ? noise.position
         : this.navigation.points[Math.floor(this.random() * this.navigation.points.length)]
     }
