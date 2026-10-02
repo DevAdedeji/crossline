@@ -7,6 +7,7 @@ export interface Solid {
 }
 export interface Building {
   id: string; name: string; x: number; z: number; width: number; depth: number
+  height?: number
   material: Solid['material']; doors: ('north' | 'south' | 'east' | 'west')[]
 }
 export interface ParkedCar {
@@ -76,6 +77,7 @@ export const CAR_COLLIDERS: readonly Solid[] = PARKED_CARS.map((car) => ({ id: c
 export const COLLIDERS: readonly Solid[] = [...MAP_SOLIDS, ...CAR_COLLIDERS]
 
 export interface WorldGeometry {
+  navigationPoints?: readonly {x:number;y:number;z:number}[]
   id: string
   name: string
   limit: number

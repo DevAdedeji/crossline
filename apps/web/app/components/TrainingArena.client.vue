@@ -457,7 +457,7 @@ onMounted(async () => {
           (b) => Math.abs(player.x - b.x) < b.width / 2 && Math.abs(player.z - b.z) < b.depth / 2,
         )
         const district = props.mode !== 'training' ? [...COMBAT_DISTRICTS].sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0]?.name : 'MERCER STREET'
-        area.value = player.y > 3.8 ? 'ROOFTOPS' : building ? building.name : district ?? 'MERCER STREET'
+        area.value = building ? player.y>=(building.height ?? 4.1)-.2 ? 'ROOFTOPS' : `${building.name}${building.height ? ` / LEVEL ${Math.floor(player.y/3.2)+1}` : ''}` : player.y>3.8 ? 'UPPER WALKWAY' : district ?? 'MERCER STREET'
       }
       visuals.sync(isOnline.value ? values.filter(a=>a.id !== joined.sessionId) : values)
       if (state.phase === 'finished' || state.phase === 'paused') release()

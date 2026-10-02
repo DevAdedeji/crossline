@@ -40,6 +40,32 @@ export function addFacades(scene: Scene, assets: TrainingAssets, shadows: Shadow
     }
   }
   for (const building of world.buildings) {
+    if(building.id==='ironworks') {
+      for(const side of [-1,1]) {
+        for(let offset=-15;offset<=15;offset+=3)for(const y of [.1,4.55]) {
+          if(y<1 && Math.abs(offset)<(side<0?4.5:3.5))continue
+          module('factory','panel',offset,y,48+side*13.25,side>0?Math.PI:0,2.8,y<1?3.8:3)
+        }
+        for(let offset=-10.5;offset<=10.5;offset+=3)for(const y of [.1,4.55]) {
+          if(y<1&&Math.abs(offset)<3.5)continue
+          module('factory','panel',side*17.25,y,48+offset,side>0?-Math.PI/2:Math.PI/2,2.8,y<1?3.8:3)
+        }
+      }
+      continue
+    }
+    if(building.id==='foundry-tower') {
+      for(let floor=0;floor<4;floor++)for(const side of [-1,1]) {
+        for(const offset of [-5.25,-1.75,1.75,5.25]) {
+          if(floor===0&&side<0&&Math.abs(offset)<3)continue
+          module('apartment','panel',48+offset,floor*3.2+.1,48+side*8.25,side>0?Math.PI:0,3.2,2.75)
+        }
+        for(const offset of [-6,-3,0,3,6]) {
+          if(side>0&&Math.abs(offset-(floor%2===0?-6.5:6))<2)continue
+          module('apartment','panel',48+side*7.25,floor*3.2+.1,48+offset,side>0?-Math.PI/2:Math.PI/2,2.7,2.75)
+        }
+      }
+      continue
+    }
     const kit = building.material === 'brick' || building.material === 'metal' ? 'factory' : 'apartment'
     // Window bays flank the central openings. Source front faces -Z after glTF conversion.
     for (const side of [-1, 1]) {

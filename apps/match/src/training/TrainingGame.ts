@@ -429,7 +429,7 @@ export class TrainingGame {
             Math.hypot(point.x - target.x, point.z - target.z) - 0.5)
         cover.sort((a, b) => Math.hypot(a.x - bot.x, a.z - bot.z) - Math.hypot(b.x - bot.x, b.z - bot.z))
         destination = cover[0]
-      } else if (distance > 17) destination = memory.lastSeen
+      } else if (distance > 17 || Math.abs(target.y-bot.y)>.7) destination = memory.lastSeen
       else if (!memory.burstLeft) {
         const side = Number(bot.id.slice(-1)) % 2 ? 1 : -1
         Object.assign(bot, this.move(bot, { x: Math.cos(bot.yaw) * side * 0.2, z: -Math.sin(bot.yaw) * side * 0.2 }, dt))

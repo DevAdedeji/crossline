@@ -1,6 +1,7 @@
 import { TRAINING_WORLD, nearbySolids, RAMP, rampHeight, type Solid, type WorldGeometry } from './urban-map.ts'
 export * from './urban-map.ts'
 export * from './combat-map.ts'
+export * from './landmarks.ts'
 export * from './stance.ts'
 export * from './solo.ts'
 

@@ -63,10 +63,10 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   sun.intensity = 0.9
   sun.diffuse = Color3.FromHexString('#ffe2b1')
   sun.autoUpdateExtends = false
-  sun.orthoLeft = -38
-  sun.orthoRight = 38
-  sun.orthoTop = 38
-  sun.orthoBottom = -38
+  sun.orthoLeft = world.limit>26 ? -92 : -38
+  sun.orthoRight = world.limit>26 ? 92 : 38
+  sun.orthoTop = world.limit>26 ? 92 : 38
+  sun.orthoBottom = world.limit>26 ? -92 : -38
   sun.shadowMinZ = 1
   sun.shadowMaxZ = 110
   const shadows = new ShadowGenerator(2048, sun)
@@ -169,7 +169,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   for (const x of world.roadCenters) for(const z of world.roadCenters)
     for(let stripe=-3.6;stripe<=3.7;stripe+=1.2)for(const side of [-5.1,5.1])
       box('crosswalk',x+stripe,.025,z+side,.65,.015,1.5,paint)
-  for (const solid of MAP_SOLIDS)
+  for (const solid of MAP_SOLIDS.filter(s=>!['landmark-factory-crane','landmark-factory-hoist'].includes(s.id)))
     box(
       solid.id,
       solid.x,
@@ -212,7 +212,31 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   const glass = material('window-glass', '#325f6a')
   glass.specularColor = Color3.FromHexString('#9fbab4')
   glass.specularPower = 64
+  if(world.limit>26) {
+    box('factory work floor',0,.05,48,33.4,.02,25.4,palette.concrete)
+    box('tower ground floor',48,.05,48,13.4,.02,15.4,palette.concrete)
+    sign('NORTH IRONWORKS',0,7.65,33.95,0,17,1.3)
+    sign('LOADING HALL / ENTER',0,3.85,33.95,0,5.5,.55)
+    sign('MEZZANINE / ROOF ↑',13,1.4,43,0,3,.6)
+    sign('ROOF ACCESS ↑',-14,5.3,56,Math.PI,3,.6)
+    sign('FOUNDRY / OPERATIONS',48,11.3,38.95,0,12,1)
+    sign('STAIRS / ALL FLOORS ↑',58,1.4,36.8,0,5,.65)
+    for(let floor=0;floor<4;floor++)sign(`LEVEL 0${floor+1}`,48,floor*3.2+2.3,40.3,Math.PI,3,.55)
+    for(const z of [39,47,55]) {
+      box('factory overhead beam',0,7.3,z,33,.4,.35,palette.metal)
+      for(const x of [-10,0,10])box('factory hanging light',x,6.9,z,2.8,.12,.6,paint)
+    }
+    box('factory gantry crane',0,5.8,46,22,.6,.8,material('crane enamel','#b29043'))
+    box('factory hoist',1,5,46,1.5,1,.9,palette.metal)
+    box('factory hoist cable',1,4.1,46,.05,.9,.05,palette.metal)
+    for(const x of [-8,6,-7])box('factory warning band',x,1.55,x===-8?42.47:x===6?46.47:50.47,3.8,.18,.025,paint)
+    for(let floor=1;floor<=4;floor++) {
+      const z=floor%2===1?55.3:39.3,y=floor*3.2
+      for(const x of [57.5,60.5])box('stair rail post',x,y+.5,z+(floor%2===1?1.6:-1.6),.09,1,.09,palette.metal)
+    }
+  }
   for (const building of BUILDINGS) {
+    if(building.height && building.height>4.5)continue
     const doorSide = building.doors[0] === 'east' ? 1 : -1
     sign(
       building.name,

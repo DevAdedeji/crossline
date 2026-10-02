@@ -29,7 +29,8 @@ test('navigation connects all districts through collision-checked routes', async
     for(let i=1;i<path.length;i++)assert.ok(nav.canWalk(path[i-1]!,path[i]!),district.name)
   }
 })
-test('large Solo simulations stay bounded and target only humans across full matches', () => {
+test('large Solo simulations stay bounded and target only humans across full matches', async () => {
+ await getNavigation(COMBAT_WORLD).precompute()
  for(const initialSeed of [11,41,124]) {
   let seed=initialSeed
   const game=new TrainingGame('human',180000,()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296},'solo')

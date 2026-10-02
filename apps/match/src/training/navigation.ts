@@ -47,7 +47,7 @@ export const NAV_POINTS: Position[] = [
   .filter((point) => !isBlocked(point))
 const cache = new WeakMap<WorldGeometry, ReturnType<typeof createNavigation>>()
 function createNavigation(world: WorldGeometry) {
-  const candidates = [...NAV_POINTS]
+  const candidates = [...NAV_POINTS,...(world.navigationPoints ?? [])]
   if (world !== TRAINING_WORLD) {
     for (let x=-72;x<=72;x+=6) for(let z=-72;z<=72;z+=6) candidates.push({x,y:0,z})
     for(const b of world.buildings) candidates.push({x:b.x,y:0,z:b.z},{x:b.x+b.width/2+1,y:0,z:b.z},{x:b.x,y:0,z:b.z+b.depth/2+1})
