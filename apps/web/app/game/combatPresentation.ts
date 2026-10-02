@@ -141,13 +141,26 @@ export function combatPresentation(
   splashMaterial.disableLighting = true
   splashMaterial.emissiveColor = Color3.White()
   splashMaterial.backFaceCulling = false
-  const impacts: {
-    mesh: ReturnType<typeof MeshBuilder.CreateSphere>
-    velocity: Vector3
-    remaining: number
-    duration: number
-  }[] = []
-  const tracers: { mesh: ReturnType<typeof MeshBuilder.CreateLines>; remaining: number }[] = []
+  // Reuse bounded transient geometry so sustained fire does not create and
+  // dispose GPU buffers in the middle of a frame.
+  const makeImpactPool = (name: string, count: number, surface: StandardMaterial, plane = false) =>
+    Array.from({length: count}, () => {
+      const mesh = plane ? MeshBuilder.CreatePlane(name, {size: .62}, scene)
+        : MeshBuilder.CreateSphere(name, {diameter: 1, segments: 4}, scene)
+      mesh.material = surface; mesh.isPickable = false; mesh.setEnabled(false)
+      if (plane) mesh.billboardMode = Mesh.BILLBOARDMODE_ALL
+      return {mesh, velocity: new Vector3(), remaining: 0, duration: 1}
+    })
+  const bloodPool = makeImpactPool('blood impact', 64, blood)
+  const dustPool = makeImpactPool('world impact', 40, dust)
+  const splashPool = makeImpactPool('blood splash', 12, splashMaterial, true)
+  const impacts = [...bloodPool, ...dustPool, ...splashPool]
+  let bloodCursor = 0, dustCursor = 0, splashCursor = 0, tracerCursor = 0
+  const tracers = Array.from({length: 24}, () => {
+    const mesh = MeshBuilder.CreateLines('tracer', {points: [Vector3.Zero(), new Vector3(0,0,.01)], updatable: true}, scene)
+    mesh.isPickable = false; mesh.setEnabled(false)
+    return {mesh, remaining: 0}
+  })
   function sync(actors: Combatant[]) {
     const visibleActors = actors.filter(a=>(a.bot || mode === 'online') && a.participating !== false)
     const ids = new Set(visibleActors.map(a=>a.id))
@@ -308,26 +321,19 @@ export function combatPresentation(
       )
       contact = (surface?.pickedPoint ?? contact.subtract(direction.scale(0.25)))
         .subtract(direction.scale(0.08))
-      const splash = MeshBuilder.CreatePlane('blood splash', { size: 0.62 }, scene)
-      splash.position.copyFrom(contact)
-      splash.scaling.setAll(bloodScale)
-      splash.billboardMode = Mesh.BILLBOARDMODE_ALL
-      splash.material = splashMaterial
-      splash.isPickable = false
-      impacts.push({ mesh: splash, velocity: direction.scale(-0.15), remaining: 0.65, duration: 0.65 })
+      const effect = splashPool[splashCursor++ % splashPool.length]!
+      effect.mesh.position.copyFrom(contact); effect.mesh.scaling.setAll(bloodScale)
+      effect.velocity.copyFrom(direction).scaleInPlace(-.15)
+      effect.remaining = effect.duration = .65; effect.mesh.visibility = 1; effect.mesh.setEnabled(true)
     }
     // Misses at maximum range and protected/dead actors produce no blood.
     if (damagingHit || (!event.hitId && Vector3.Distance(start, contact) < 79)) {
       const duration = damagingHit ? 0.65 : 0.22
       for (let i = 0; i < (damagingHit ? 9 : 5); i++) {
-        const particle = MeshBuilder.CreateSphere(
-          damagingHit ? 'blood impact' : 'world impact',
-          { diameter: damagingHit ? 0.08 * Math.sqrt(bloodScale) : 0.022, segments: 4 },
-          scene,
-        )
-        particle.position.copyFrom(contact)
-        particle.material = damagingHit ? blood : dust
-        particle.isPickable = false
+        const effect = damagingHit ? bloodPool[bloodCursor++ % bloodPool.length]! : dustPool[dustCursor++ % dustPool.length]!
+        const particle = effect.mesh
+        particle.scaling.setAll(damagingHit ? .08 * Math.sqrt(bloodScale) : .022)
+        particle.position.copyFrom(contact); particle.visibility = 1; particle.setEnabled(true)
         const spread = damagingHit ? 1.5 : 0.7
         const velocity = new Vector3(
           (Math.random() - 0.5) * spread,
@@ -335,24 +341,20 @@ export function combatPresentation(
           (Math.random() - 0.5) * spread,
         )
         if (damagingHit) velocity.subtractInPlace(direction.scale(0.6))
-        impacts.push({ mesh: particle, velocity, remaining: duration, duration })
+        effect.velocity.copyFrom(velocity); effect.remaining = effect.duration = duration
       }
     }
 
     if (own && feedback) fire()
-    const line = MeshBuilder.CreateLines(
-      'tracer',
-      {
-        points: [
-          own ? Vector3.TransformCoordinates(muzzlePoint,weapon.computeWorldMatrix(true)) : new Vector3(event.start.x, event.start.y, event.start.z),
-          new Vector3(event.end.x, event.end.y, event.end.z),
-        ],
-      },
-      scene,
-    )
-    line.color = own ? new Color3(.85, 0.78, 0.6) : new Color3(1, 0.38, 0.15)
-    tracers.push({ mesh: line, remaining: 0.045 })
+    const tracer = tracers[tracerCursor++ % tracers.length]!
+    MeshBuilder.CreateLines('tracer', {points: [
+      own ? Vector3.TransformCoordinates(muzzlePoint,weapon.computeWorldMatrix(true)) : start,
+      new Vector3(event.end.x,event.end.y,event.end.z),
+    ], instance: tracer.mesh})
+    tracer.mesh.color = own ? new Color3(.85, .78, .6) : new Color3(1, .38, .15)
+    tracer.remaining = .045; tracer.mesh.setEnabled(true)
   }
+
   function frame(
     dt: number,
     aiming: boolean,
@@ -392,12 +394,12 @@ export function combatPresentation(
     const effectDt = running ? dt : 0
     for (let i = impacts.length - 1; i >= 0; i--) {
       const effect = impacts[i]!
+      if (effect.remaining <= 0) continue
       effect.remaining -= effectDt
       effect.mesh.position.addInPlace(effect.velocity.scale(effectDt))
       effect.mesh.visibility = Math.max(0, effect.remaining / effect.duration)
       if (effect.remaining <= 0) {
-        effect.mesh.dispose()
-        impacts.splice(i, 1)
+        effect.mesh.setEnabled(false)
       }
     }
     kick = Math.max(0, kick - effectDt * 9)
@@ -446,10 +448,10 @@ export function combatPresentation(
     camera.fov += (1.2 - ads * 0.43 - camera.fov) * Math.min(1, dt * 15)
     for (let i = tracers.length - 1; i >= 0; i--) {
       const t = tracers[i]!
+      if (t.remaining <= 0) continue
       t.remaining -= effectDt
       if (t.remaining <= 0) {
-        t.mesh.dispose()
-        tracers.splice(i, 1)
+        t.mesh.setEnabled(false)
       }
     }
   }
@@ -459,12 +461,11 @@ export function combatPresentation(
     ads = 0
     flash.setEnabled(false)
     for(const puff of smoke){puff.remaining=0;puff.mesh.setEnabled(false)}
-    for (const impact of impacts) impact.mesh.dispose()
-    for (const tracer of tracers) tracer.mesh.dispose()
-    impacts.length = 0
-    tracers.length = 0
+    for (const effect of [...impacts, ...tracers]) { effect.remaining = 0; effect.mesh.setEnabled(false) }
   }
-  const ready=Promise.all([glow.forceCompilationAsync(flameMeshes[0]!),smokeMaterial.forceCompilationAsync(smoke[0]!.mesh)])
+  const ready=Promise.all([glow.forceCompilationAsync(flameMeshes[0]!),smokeMaterial.forceCompilationAsync(smoke[0]!.mesh),
+    dust.forceCompilationAsync(dustPool[0]!.mesh), blood.forceCompilationAsync(bloodPool[0]!.mesh),
+    splashMaterial.forceCompilationAsync(splashPool[0]!.mesh), tracers[0]!.mesh.material!.forceCompilationAsync(tracers[0]!.mesh)])
   return { sync, shot, fire, frame, reset, ready }
 }
 

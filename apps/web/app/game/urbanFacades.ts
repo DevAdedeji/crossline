@@ -1,4 +1,6 @@
-import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
+import { Mesh } from '@babylonjs/core/Meshes/mesh'
+import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
+import '@babylonjs/core/Meshes/thinInstanceMesh'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import type { Scene } from '@babylonjs/core/scene'
 import type { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
@@ -6,41 +8,44 @@ import type { TrainingAssets } from './trainingAssets'
 import { TRAINING_WORLD, type WorldGeometry } from '@crossline/shared'
 
 /** Selected CC0 Poly Haven modules; visual skins never close authoritative door openings. */
-export function addFacades(scene: Scene, assets: TrainingAssets, shadows: ShadowGenerator, world: WorldGeometry = TRAINING_WORLD) {
-  let serial = 0
-  function module(
-    kit: 'apartment' | 'factory',
-    part: 'panel' | 'blank' | 'trim',
-    x: number,
-    y: number,
-    z: number,
-    yaw: number,
-    width = 3,
-    height = 3,
-  ) {
-    const root = new TransformNode(`facade-${serial++}`, scene)
-    root.position.set(x, y, z)
-    root.rotation.y = yaw
-    root.scaling.set(width / 3, height / 3, 1)
-    const instance = assets[kit].instantiateModelsToScene((n) => `${root.name}:${n}`, false)
-    for (const node of instance.rootNodes) node.parent = root
-    for (const node of root.getDescendants()) {
-      if (['panel', 'blank', 'trim'].some((name) => node.name.endsWith(`:${name}`)))
-        node.setEnabled(node.name.endsWith(`:${part}`))
-    }
-    for (const mesh of root.getChildMeshes()) {
-      mesh.isPickable = false
-      mesh.receiveShadows = true
-      if (mesh.material instanceof PBRMaterial) {
-        mesh.material.environmentIntensity = 0.5
-        mesh.material.backFaceCulling = false
-      }
-      if (mesh.isEnabled() && Math.abs(z) < 30) shadows.addShadowCaster(mesh)
-      mesh.freezeWorldMatrix()
+export function addFacades(scene: Scene, assets: TrainingAssets, _shadows: ShadowGenerator, world: WorldGeometry = TRAINING_WORLD) {
+  // One shared geometry buffer per source mesh, spatial tile and material. Avoid
+  // instantiating the entire module kit (including disabled parts) for every window.
+  const batches = new Map<string, {source: Mesh; matrices: number[]}>()
+  function module(kit: 'apartment' | 'factory', part: 'panel' | 'blank' | 'trim',
+    x: number, y: number, z: number, yaw: number, width = 3, height = 3) {
+    const placement = Matrix.Compose(new Vector3(width / 3, height / 3, 1), Quaternion.RotationYawPitchRoll(yaw, 0, 0), new Vector3(x, y, z))
+    for (const source of assets[kit].meshes) {
+      if (!(source instanceof Mesh) || !source.getTotalVertices()) continue
+      let node = source.parent
+      while (node && node.name !== part) node = node.parent
+      if (!node) continue
+      const key = `${kit}/${part}/${source.uniqueId}/${Math.floor(x / 32)}/${Math.floor(z / 32)}`
+      const batch = batches.get(key) ?? {source, matrices: []}
+      batch.matrices.push(...source.computeWorldMatrix(true).multiply(placement).asArray())
+      batches.set(key, batch)
     }
   }
   for (const building of world.buildings) {
-    if(building.id.startsWith('city-'))continue
+    if(building.id.startsWith('city-')) {
+      const kit = building.material === 'brick' ? 'factory' : 'apartment'
+      const floors = Math.round((building.height ?? 3.2) / 3.2)
+      for (let floor = 0; floor < floors; floor++) for (const side of [-1, 1]) {
+        for (const offset of [-7.5, -4.5, -1.5, 1.5, 4.5, 7.5]) {
+          // Both ground-level through doors stay completely open.
+          if (floor === 0 && Math.abs(offset) < 3) continue
+          module(kit, 'panel', building.x + offset, floor * 3.2 + .12,
+            building.z + side * (building.depth / 2 + .25), side > 0 ? Math.PI : 0, 2.95, 2.95)
+        }
+        for (const offset of [-6, -3, 0, 3, 6])
+          module(kit, 'panel', building.x + side * (building.width / 2 + .25), floor * 3.2 + .12,
+            building.z + offset, side > 0 ? -Math.PI / 2 : Math.PI / 2, 2.95, 2.95)
+      }
+      for (const side of [-1, 1]) for (const offset of [-7.5, -4.5, -1.5, 1.5, 4.5, 7.5])
+        module(kit, 'trim', building.x + offset, floors * 3.2 + .05,
+          building.z + side * (building.depth / 2 + .27), side > 0 ? Math.PI : 0)
+      continue
+    }
     if(building.id==='ironworks') {
       for(const side of [-1,1]) {
         for(let offset=-15;offset<=15;offset+=3)for(const y of [.1,4.55]) {
@@ -142,4 +147,23 @@ export function addFacades(scene: Scene, assets: TrainingAssets, shadows: Shadow
       )
     }
   }
+  for (const [key, {source, matrices}] of batches) {
+    const mesh = source.clone(`facade-batch:${key}`, null, true)!
+    mesh.parent = null; mesh.position.setAll(0); mesh.scaling.setAll(1)
+    mesh.rotationQuaternion = Quaternion.Identity(); mesh.rotation.setAll(0)
+    mesh.setEnabled(true); mesh.isVisible = true; mesh.isPickable = false
+    mesh.receiveShadows = true
+    if (mesh.material instanceof PBRMaterial) {
+      mesh.material.environmentIntensity = .65
+      mesh.material.backFaceCulling = false
+    }
+    // Babylon stores instance vertex buffers on Geometry; tiles need independent
+    // buffer bindings even though all copies within a tile share one mesh.
+    mesh.makeGeometryUnique()
+    mesh.thinInstanceSetBuffer('matrix', new Float32Array(matrices), 16, true)
+    mesh.freezeWorldMatrix()
+    // The shared solid walls already cast their silhouettes. Detailed window
+    // trims receive shadows, without another city-wide shadow geometry pass.
+  }
+
 }

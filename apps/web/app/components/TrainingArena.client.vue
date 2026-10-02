@@ -898,7 +898,7 @@ header {
   justify-content: space-between;
   align-items: flex-start;
   padding: 25px 32px;
-  background: linear-gradient(#101711b0, transparent);
+  text-shadow: 0 1px 3px #000, 0 0 8px #0008;
   pointer-events: none;
 }
 .brand {
@@ -978,7 +978,7 @@ header {
 .damage-flash {
   position: absolute;
   inset: 0;
-  box-shadow: inset 0 0 100px 35px #ac231c9c;
+  box-shadow: inset 0 0 45px 10px #ac231c70;
   pointer-events: none;
 }
 .overlay {
@@ -986,8 +986,7 @@ header {
   inset: 0;
   display: grid;
   place-items: center;
-  background: #101b1b66;
-  backdrop-filter: blur(5px);
+  background: #07101530;
 }
 .menu-card {
   width: min(540px, 94vw);
@@ -1097,7 +1096,7 @@ footer {
   align-items: flex-end;
   padding: 24px 32px 12px;
   pointer-events: none;
-  background: linear-gradient(transparent, #101711a8);
+  text-shadow: 0 1px 3px #000, 0 0 8px #0008;
 }
 footer small {
   display: block;
@@ -1190,7 +1189,7 @@ footer strong span {
 
 <style scoped>
 .arena { font-family: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; }
-.overlay { background: linear-gradient(90deg, rgba(7,13,17,.95), rgba(7,13,17,.66)); backdrop-filter: blur(4px); }
+
 .menu-card { max-height: calc(100dvh - 100px); overflow-y: auto; border-top: 3px solid #ffb15c; background: rgba(15,23,28,.94); padding: 30px; box-shadow: 0 25px 100px #0007; }
 .menu-card h1 { font-family: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: -.035em; }
 .menu-card .eyebrow { color: #ffb15c; letter-spacing: .22em; }

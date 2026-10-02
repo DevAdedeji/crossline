@@ -72,6 +72,9 @@ for (const [id, x, z, width, depth, height] of [
 for (const [x, z, width, depth] of [[0, 26.6, 53.2, 0.4], [0, -26.6, 53.2, 0.4], [-26.6, 0, 0.4, 53.2], [26.6, 0, 0.4, 53.2]]) box(`boundary-${x}-${z}`, x!, 1.2, z!, width!, 2.4, depth!, 'concrete')
 for (const [x, z] of [[-5.2, -3.8], [5.2, 4.2], [22, -18], [-23, 21]]) box(`lamp-${x}-${z}`, x!, 2.3, z!, 0.16, 4.6, 0.16, 'metal')
 for (const [x, z] of [[21, 20], [21, -20], [-23, -22]]) box(`planter-${x}-${z}`, x!, 0.4, z!, 2.2, 0.8, 2.2, 'concrete')
+// Street seating uses conservative shared bounds, so its visible backs and seats are solid cover.
+for (const [x,z] of [[18,20],[18,-20],[-22,-19]])
+  box(`street-bench-${x}-${z}`,x!,.45,z!,2.5,.9,.85,'wood')
 export const MAP_SOLIDS: readonly Solid[] = solids
 export const CAR_COLLIDERS: readonly Solid[] = PARKED_CARS.map((car) => ({ id: car.id, x: car.x, y: 0.78, z: car.z, width: car.sideways ? 4.5 : 2, height: 1.56, depth: car.sideways ? 2 : 4.5, material: 'metal' }))
 export const COLLIDERS: readonly Solid[] = [...MAP_SOLIDS, ...CAR_COLLIDERS]

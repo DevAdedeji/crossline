@@ -184,7 +184,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   for (const x of world.roadCenters) for(const z of world.roadCenters)
     for(let stripe=-3.6;stripe<=3.7;stripe+=1.2)for(const side of [-5.1,5.1])
       box('crosswalk',x+stripe,.025,z+side,.65,.015,1.5,paint)
-  for (const solid of MAP_SOLIDS.filter(s=>!['landmark-factory-crane','landmark-factory-hoist'].includes(s.id) && !/hospital-bed-\d/.test(s.id)))
+  for (const solid of MAP_SOLIDS.filter(s=>!['landmark-factory-crane','landmark-factory-hoist'].includes(s.id) && !s.id.startsWith('street-bench-') && !/hospital-bed-\d/.test(s.id)))
     box(
       solid.id,
       solid.x,
@@ -270,21 +270,9 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
       for(const x of [57.5,60.5])box('stair rail post',x,y+.5,z+(floor%2===1?.9:-.9),.09,1,.09,palette.metal)
     }
   }
-  // City facades share a few materials and the existing 32m static render batches.
-  const cityGlass=material('city-glass','#405c64'),cityFrame=material('city-frame','#b9b8a6')
+  // Imported window bays now skin the city; keep only usable interior fittings here.
   for(const b of BUILDINGS.filter(b=>b.id.startsWith('city-'))) {
     const floors=Math.round((b.height ?? 3.2)/3.2)
-    for(let f=0;f<floors;f++)for(const side of [-1,1]) {
-      for(const dx of [-6,-3,3,6]) {
-        box('city window frame',b.x+dx,f*3.2+1.8,b.z+side*8.23,2.2,1.55,.08,cityFrame)
-        box('city window glass',b.x+dx,f*3.2+1.8,b.z+side*8.28,1.85,1.2,.04,cityGlass)
-      }
-      for(const dz of [-5,-1,3,6]) {
-        box('city side frame',b.x+side*9.23,f*3.2+1.8,b.z+dz,.08,1.55,2.2,cityFrame)
-        box('city side glass',b.x+side*9.28,f*3.2+1.8,b.z+dz,.04,1.2,1.85,cityGlass)
-      }
-      box('city cornice',b.x,f*3.2+3.08,b.z+side*8.25,18.5,.2,.3,cityFrame)
-    }
     for(let f=0;f<floors;f++)box('city ceiling light',b.x+3.5,f*3.2+2.98,b.z,2.4,.06,.5,hospitalLight)
     box('city entry floor',b.x,.015,b.z,17.5,.02,15.5,hospitalTiles)
     sign(b.name,b.x,2.55,b.z-8.25,0,6,.45)
@@ -329,6 +317,22 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   function addVehicles(assets: TrainingAssets) {
     addFacades(scene, assets, shadows, world)
     interiorDetails(scene, shadows, world.buildings)
+    for (const solid of MAP_SOLIDS.filter(s => s.id.startsWith('planter') || s.id.startsWith('street-bench-'))) {
+      const tree = solid.id.startsWith('planter')
+      const instance = (tree ? assets.tree : assets.bench).instantiateModelsToScene(n => `${solid.id}:${n}`, false)
+      const root = new TransformNode(`street-prop:${solid.id}`, scene)
+      root.position.set(solid.x, tree ? solid.y + solid.height / 2 : 0, solid.z)
+      if (tree) root.rotation.y = solid.x * .71
+      for (const node of instance.rootNodes) node.parent = root
+      for (const mesh of root.getChildMeshes()) {
+        mesh.isPickable = false; mesh.receiveShadows = true; mesh.freezeWorldMatrix()
+        shadows.addShadowCaster(mesh)
+        if (mesh.material instanceof PBRMaterial) {
+          mesh.material.environmentIntensity = .6
+          mesh.material.freeze()
+        }
+      }
+    }
     const reflection = new ReflectionProbe('street reflection', 128, scene)
     reflection.position.set(0, 2, 0)
     scene.environmentTexture = reflection.cubeTexture
@@ -340,9 +344,10 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     glass.diffuseColor = Color3.FromHexString('#36434a')
     glass.freeze()
 
-    for (const car of PARKED_CARS) {
+    const carSurfaces = new Map<string, PBRMaterial>()
+    for (const [index, car] of PARKED_CARS.entries()) {
       const root = new TransformNode(car.id, scene)
-      const instance = assets.sedan.instantiateModelsToScene((n) => `${car.id}-${n}`, true, {
+      const instance = assets.sedan.instantiateModelsToScene((n) => `${car.id}-${n}`, false, {
         doNotInstantiate: true,
       })
       for (const node of instance.rootNodes) {
@@ -354,32 +359,30 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
       for (const mesh of root.getChildMeshes()) {
         mesh.receiveShadows = true
         shadows.addShadowCaster(mesh)
-        const surface = mesh.material
-        if (surface instanceof PBRMaterial) {
-          surface.roughness = surface.name.includes('Windows') ? 0.12 : 0.4
-          surface.reflectionTexture = reflection.cubeTexture
-          surface.environmentIntensity = 0.65
-          surface.metallic = surface.name.includes('Blue')
-            ? 0.45
-            : surface.name.includes('Windows')
-              ? 0.7
-              : 0.05
-          if (surface.name.includes('Blue')) surface.albedoColor = Color3.FromHexString(car.color)
+        const source = mesh.material
+        if (source instanceof PBRMaterial) {
+          const color = ['original', 'blue', 'sand', 'olive'][index % 4]!
+          let surface = carSurfaces.get(color)
+          if (!surface) {
+            surface = source.clone(`coupe ${color}`)!
+            if (color !== 'original') {
+              const texture = new Texture(`/textures/car-${color}.jpg`, scene, false, false)
+              texture.wrapU = source.albedoTexture?.wrapU ?? Texture.WRAP_ADDRESSMODE
+              texture.wrapV = source.albedoTexture?.wrapV ?? Texture.WRAP_ADDRESSMODE
+              surface.albedoTexture = texture
+            }
+            surface.roughness = .32; surface.metallic = .25
+            surface.reflectionTexture = reflection.cubeTexture; surface.environmentIntensity = .7
+            carSurfaces.set(color, surface)
+          }
+          mesh.material = surface
         }
+        mesh.freezeWorldMatrix()
       }
     }
   }
 
-  const foliage = material('foliage', '#536d50')
-  for (const solid of MAP_SOLIDS.filter((value) => value.id.startsWith('planter'))) {
-    box('tree-trunk', solid.x, 1.8, solid.z, 0.3, 2.4, 0.3, palette.wood)
-    const crown = MeshBuilder.CreateSphere('tree-canopy', { diameter: 3, segments: 4 }, scene)
-    crown.position.set(solid.x, 3.5, solid.z)
-    crown.scaling.y = 1.3
-    crown.material = foliage
-    staticMeshes.push(crown)
-  }
-  for (const solid of MAP_SOLIDS.filter((value) => value.id.startsWith('lamp'))) {
+  for (const solid of MAP_SOLIDS.filter((value) => value.id.startsWith('lamp') || value.id.startsWith('city-lamp'))) {
     box('lamp-arm', solid.x + 0.45, 4.55, solid.z, 1, 0.12, 0.12, palette.metal)
     box('lamp-head', solid.x + 0.9, 4.5, solid.z, 0.45, 0.15, 0.65, paint)
   }

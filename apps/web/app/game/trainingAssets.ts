@@ -7,13 +7,15 @@ import '@babylonjs/loaders/glTF'
 
 /** Local, licensed GLB data only. See public/models/ATTRIBUTION.md. */
 export async function loadTrainingAssets(scene: Scene) {
-  const [soldier, rifle, sedan, apartment, factory] = await Promise.all(
+  const [soldier, rifle, sedan, apartment, factory, tree, bench] = await Promise.all(
     [
       'rocketbox-soldier',
       'lamoot-ak47',
       'rohezal-coupe',
       'polyhaven-apartment',
       'polyhaven-factory',
+      'polyhaven-street-tree',
+      'polyhaven-street-bench',
     ].map((name) => LoadAssetContainerAsync(`/models/${name}.glb`, scene)),
   )
   for (const material of soldier!.materials) {
@@ -41,6 +43,6 @@ export async function loadTrainingAssets(scene: Scene) {
     model.position.x = (1.08008 * length) / 5.493686
     return root
   }
-  return { soldier: soldier!, sedan: sedan!, apartment: apartment!, factory: factory!, gun }
+  return { soldier: soldier!, sedan: sedan!, apartment: apartment!, factory: factory!, tree: tree!, bench: bench!, gun }
 }
 export type TrainingAssets = Awaited<ReturnType<typeof loadTrainingAssets>>

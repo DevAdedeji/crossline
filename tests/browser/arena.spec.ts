@@ -118,6 +118,7 @@ test('real mouse target practice, reload, pause, results, replay and exit', asyn
   await page.keyboard.press('Escape')
   await expect(page.getByRole('heading', { name: 'Training paused.' })).toBeVisible()
   await expect(page.locator('main.arena')).toHaveAttribute('data-server-phase', 'paused')
+  await expect(page.locator('.damage-flash')).toHaveCount(0)
   const frozen = (await page.getByTestId('timer').textContent())!
   await page.waitForTimeout(1100)
   await expect(page.getByTestId('timer')).toHaveText(frozen)
@@ -133,6 +134,7 @@ test('real mouse target practice, reload, pause, results, replay and exit', asyn
   await page.getByRole('button', { name: 'Play again' }).click()
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
   await expect(page.getByTestId('score')).toHaveText('0')
+  await expect(page.locator('.overlay')).toHaveCount(0)
   await expect(page.getByTestId('timer')).toContainText('3:00')
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Return to menu' }).click()
@@ -479,6 +481,7 @@ test('Solo is a separate combat match with damage, pause, standings and replay',
   await pulse(page, 9)
   await expect(page.getByRole('heading', { name: 'Solo vs Bots paused.' })).toBeVisible()
   await expect(page.locator('main.arena')).toHaveAttribute('data-server-phase', 'paused')
+  await expect(page.locator('.damage-flash')).toHaveCount(0)
   const frozen = (await page.getByTestId('timer').textContent())!
   await page.waitForTimeout(500)
   await expect(page.getByTestId('timer')).toHaveText(frozen)
@@ -489,6 +492,7 @@ test('Solo is a separate combat match with damage, pause, standings and replay',
   await pulse(page, 0)
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
   await expect(page.getByTestId('score')).toHaveText('0')
+  await expect(page.locator('.overlay')).toHaveCount(0)
   await pulse(page, 9)
   await page.getByRole('button',{name:'Return to menu',exact:true}).click()
   await expect(page).toHaveURL('/')

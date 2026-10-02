@@ -152,3 +152,11 @@ Local movement prediction uses the authoritative collision/stance step and repla
 Phone rendering now uses up to 1.5 render pixels per CSS pixel instead of inversely reducing resolution on high-density displays; Mac scaling is unchanged. A DPR-3 844×390 viewport changed from 351×162 to 1266×585. On the available Mac, the original live scene ran near 60 FPS but movement waited 296–352 ms for authority. A browser test with 300 ms delayed input measured local movement/muzzle response at 13.5 ms and authority at 379 ms. Emulation is not physical-phone performance certification; server latency and authoritative hit confirmation still depend on network distance.
 
 Live release verification: both providers deployed `9f4abb5`. Clean Chrome measured 18.6 ms local movement/firing response versus 299.5 ms authority, with zero settled position error. Desktop and emulated DPR-3 phone views stayed near 60 FPS; the phone buffer was 1266×585. A first cold shot showed a one-off stall, so muzzle/smoke shaders are now explicitly compiled during scene loading. The focused delayed-input and phone checks passed again after that warmup change.
+
+## Street detail and rendering
+
+The street-detail revision uses textured cutout-leaf trees, assembled wooden benches, shared car-paint variants, and imported window/cornice modules on the outer city buildings. Bench bounds are authoritative; the west rooftop route stays clear. Asset provenance is in `apps/web/public/models/ATTRIBUTION.md`.
+
+Façades use spatially grouped thin instances rather than cloning complete kits per window. Opaque façade maps are compressed; particles and tracers use bounded reusable pools and their shaders warm before play. The gameplay HUD has text shadows instead of full-width dark gradients; pause uses a light tint without backdrop blur. Incoming damage remains a brief red edge cue.
+
+A map-only Chrome profile on an Apple M4 Pro reduced active meshes from 745/2119/2008 to 406/783/850 across street/interior/roof views. Both desktop and phone emulation stayed near 60 FPS with p95 frame intervals about 16.7–16.8 ms. This excludes animated players, production network latency, and physical-phone hardware. Run `CROSSLINE_PREVIEW_URL=http://127.0.0.1:3000 node scripts/render-profile.mjs` against a Nuxt development server to repeat the scene-only check.

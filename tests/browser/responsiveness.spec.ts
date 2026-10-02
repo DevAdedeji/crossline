@@ -31,3 +31,20 @@ test('high-density phone renders clearly at 1.5 pixels per CSS pixel',async({bro
   expect(size.width/size.cssWidth).toBeCloseTo(1.5,1);expect(size.height/size.cssHeight).toBeCloseTo(1.5,1)
  }finally{await context.close()}
 })
+
+test('gameplay stays unobscured through aim, pause and resume',async({page},info)=>{
+ await page.goto('/play');await expect(page.locator('.radar-panel')).toContainText('Connected',{timeout:60000})
+ await page.getByRole('button',{name:'Start training',exact:true}).click()
+ await expect(page.locator('.overlay')).toHaveCount(0)
+ await page.mouse.down({button:'right'});await page.waitForTimeout(200)
+ await expect(page.locator('.overlay')).toHaveCount(0);await page.mouse.up({button:'right'})
+ const backgrounds=await page.locator('header, footer').evaluateAll(nodes=>nodes.map(n=>getComputedStyle(n).backgroundImage))
+ expect(backgrounds).toEqual(['none','none'])
+ await page.screenshot({path:info.outputPath('clear-gameplay.png')})
+ await page.keyboard.press('Escape');await expect(page.locator('.overlay')).toBeVisible()
+ expect(await page.locator('.overlay').evaluate(n=>getComputedStyle(n).backdropFilter)).toBe('none')
+ await page.getByRole('button',{name:'Resume training',exact:true}).click()
+ await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
+ await expect(page.locator('.overlay')).toHaveCount(0)
+ await page.keyboard.press('Escape');await page.getByRole('button',{name:'Return to menu',exact:true}).click()
+})
