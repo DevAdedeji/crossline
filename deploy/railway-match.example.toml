@@ -1,5 +1,5 @@
-# Preparation only. Keep the match server's production refusal in place.
-# Public hosting needs a separately approved production-readiness change first.
+# Preparation only; this file does not deploy a service.
+# Supply reviewed secure configuration and obtain deployment authorization first.
 [build]
 builder = "RAILPACK"
 buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @crossline/match build"

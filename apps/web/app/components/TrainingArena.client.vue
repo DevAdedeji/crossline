@@ -451,7 +451,7 @@ onMounted(async () => {
     window.addEventListener('gamepaddisconnected', gamepadDisconnected)
     window.addEventListener('resize', resize)
     resize()
-    const client = new Client(String(config.public.matchUrl))
+    const client = new Client(String(config.public.matchUrl),{urlBuilder:url=>url.protocol==='http:'||url.protocol==='https:'?window.location.origin+'/api/match'+url.pathname+url.search:url.href})
     let name=''
     try{name=localStorage.getItem('crossline.callsign') ?? ''}catch{}
     let joined: Room<ArenaState>

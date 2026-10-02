@@ -1,4 +1,5 @@
-import { Room, type Client } from '@colyseus/core'
+import { guestBudget } from './admission.js'
+import { Room, ServerError, type AuthContext, type Client } from '@colyseus/core'
 import { schema, t, type SchemaType } from '@colyseus/schema'
 import { TICK_MS } from '@crossline/shared'
 import { TRAINING, QUICK_MATCH_MS, IDLE_INPUT } from '@crossline/shared/combat'
@@ -54,7 +55,15 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
   maxMessagesPerSecond = 120
   private game?: TrainingGame
   private lastInput = 0
+  static async onAuth(_token:unknown,_options:unknown,context:AuthContext){return {ip:context.headers.get('x-crossline-client-ip')??'127.0.0.1'}}
   onCreate() {
+    try{guestBudget.reserve(this.roomId)}catch{throw new ServerError(503,'Guest rooms are busy. Try again shortly.')}
+    this.clock.setTimeout(()=>{void this.disconnect()},30*60*1000)
+    let idleSince=this.clock.elapsedTime
+    this.clock.setInterval(()=>{
+      if(this.game?.phase==='playing')idleSince=this.clock.elapsedTime
+      else if(this.clock.elapsedTime-idleSince>120000)void this.disconnect()
+    },10000)
     this.setState(new TrainingState())
     this.setPrivate(true)
     this.setPatchRate(TICK_MS)
@@ -90,7 +99,8 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
       for (const event of this.game.drainEvents()) this.broadcast('event', event)
     }, TICK_MS)
   }
-  onJoin(client: Client, options?: {name?:unknown}) {
+  onJoin(client: Client, options: {name?:unknown}|undefined, auth:{ip:string}) {
+    try{guestBudget.attach(this.roomId,auth.ip)}catch{throw new ServerError(4216,'Close another Solo or Practice session first.')}
     const testDuration =
       process.env.NODE_ENV === 'test' ? Number(process.env.TRAINING_TEST_DURATION_MS) : NaN
     const defaultDuration=this.mode==='solo'?QUICK_MATCH_MS:TRAINING.durationMs
@@ -123,6 +133,7 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
       Object.assign(actor, value)
     }
   }
+  onDispose(){guestBudget.release(this.roomId)}
   onLeave() {
     this.game?.pause()
     this.game = undefined

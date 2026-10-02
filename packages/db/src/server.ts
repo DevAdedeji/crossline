@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { databaseOptions } from './connection.ts'
 import postgres from 'postgres'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import { eq, desc, asc, sql } from 'drizzle-orm'
@@ -37,11 +37,6 @@ export function postgresGuestRepository(db:ReturnType<typeof drizzle<typeof sche
 }
 /** Optional and lazy: constructing this module never opens a connection. */
 export function openGuestDatabase(url:string) {
- const max=Number(process.env.DB_POOL_MAX ?? 3)
- if(!Number.isInteger(max)||max<1||max>5)throw new Error('DB_POOL_MAX must be 1–5')
- const local=['localhost','127.0.0.1','::1','[::1]'].includes(new URL(url).hostname)
- const ca=process.env.DATABASE_CA_FILE?readFileSync(process.env.DATABASE_CA_FILE,'utf8'):undefined
- const client=postgres(url,{max,idle_timeout:20,connect_timeout:5,max_lifetime:1800,
-  ssl:local?false:{rejectUnauthorized:true,...(ca?{ca}:{})},connection:{statement_timeout:5000}})
+ const client=postgres(url,databaseOptions(url))
  return {repository:postgresGuestRepository(drizzle(client,{schema})),close:()=>client.end({timeout:5})}
 }

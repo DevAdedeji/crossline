@@ -13,3 +13,9 @@ playwright-report/
 .pnpm-store/
 
 .crossline-local/
+
+# Provider certificate/key files are supplied outside source control.
+*.pem
+*.key
+*.p12
+*.pfx

@@ -1,3 +1,4 @@
+import { CommitGate } from './commitGate.js'
 import { loadCapacity, createLoadMetrics } from './loadMetrics.js'
 import { randomUUID } from 'node:crypto'
 import { accountService, type OnlineIdentity } from './auth/service.js'
@@ -22,6 +23,7 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
   private authenticating=new Map<string,number>()
   private connectionGeneration=new Map<string,number>()
   private leaderboardBusy=false
+  private commits=new CommitGate()
   private game = new TrainingGame('',0,Math.random,'online')
   private lastInput=new Map<string,number>()
   onCreate() {
@@ -59,19 +61,24 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
     })
     this.onMessage('leaderboard',()=>{void this.publishLeaders()})
     this.onMessage('*',()=>{})
-    this.clock.setInterval(()=>{void accountService().then(s=>s.statistics.flush()).catch(()=>{});void this.publishLeaders();void this.checkSessions()},2000)
+    this.clock.setInterval(()=>{void this.commits.retry();void this.publishLeaders();void this.checkSessions()},2000)
     this.setSimulationInterval(()=>{
+      if(this.commits.blocked)return
       const started=this.loadMetrics?performance.now():0
       for(const id of this.game.actors.keys())
         if(!this.canPlay(id)||this.clock.elapsedTime-(this.lastInput.get(id) ?? -Infinity)>INPUT_TIMEOUT_MS)this.game.stopHuman(id)
-      this.game.step(TICK_MS);this.sync()
-      for(const event of this.game.drainEvents()) {
-        if(event.type==='kill') {
-          const killer=this.accounts.get(event.killerId),victim=this.accounts.get(event.victimId)
-          if(killer && victim)void accountService().then(s=>s.statistics.enqueue(randomUUID(),killer.id,victim.id)).catch(()=>{})
-        }
-        this.broadcast('event',event)
+      this.game.step(TICK_MS)
+      const events=this.game.drainEvents(),records:{id:string;killer:string;victim:string}[]=[]
+      for(const event of events)if(event.type==='kill'){
+        const killer=this.accounts.get(event.killerId),victim=this.accounts.get(event.victimId)
+        if(killer&&victim)records.push({id:randomUUID(),killer:killer.id,victim:victim.id})
       }
+      const publish=()=>{this.sync();for(const event of events)this.broadcast('event',event)}
+      if(records.length)void this.commits.submit(async()=>{
+        const statistics=(await accountService()).statistics
+        for(const record of records)await statistics.record(record.id,record.killer,record.victim)
+      },publish)
+      else publish()
       this.loadMetrics?.tick(performance.now()-started)
     },TICK_MS)
   }
@@ -102,7 +109,7 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
     catch{this.broadcast('leaderboard-status',{unavailable:true})}
     finally{this.leaderboardBusy=false}
   }
-  onDispose(){this.loadMetrics?.close();if(activeArenaId===this.roomId){activeArenaId=undefined;activeArenaInfo=undefined}}
+  async onDispose(){await this.commits.retry();this.loadMetrics?.close();if(activeArenaId===this.roomId){activeArenaId=undefined;activeArenaInfo=undefined}}
   onDrop(client: Client) {
     this.connectionGeneration.set(client.sessionId,(this.connectionGeneration.get(client.sessionId) ?? 0)+1)
     if(this.revoked.has(client.sessionId))return
@@ -130,6 +137,7 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
     this.state.actors.delete(client.sessionId);this.sync()
   }
   private sync() {
+    if(this.commits.blocked)return
     for(const [id,value] of this.game.healthPacks){let pack=this.state.healthPacks.get(id);if(!pack){pack=new HealthPack();this.state.healthPacks.set(id,pack)}Object.assign(pack,value)}
     this.state.phase=this.game.phase
     this.state.elapsed=this.game.elapsed

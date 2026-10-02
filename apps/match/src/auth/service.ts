@@ -1,3 +1,4 @@
+import { boundedBody } from '@crossline/shared/proxy'
 import { verificationSender } from './email.js'
 import { betterAuth } from 'better-auth'
 import { APIError } from 'better-auth/api'
@@ -83,10 +84,12 @@ export async function handleAccountRequest(request:Request){
  const allowed=new Set(['/sign-up/email','/sign-in/email','/sign-out','/get-session','/send-verification-email','/verify-email','/one-time-token/generate'])
  if(!allowed.has(path))return Response.json({message:'Unavailable'},{status:404,headers})
  if(Number(request.headers.get('content-length')??0)>8192)return Response.json({message:'Request too large'},{status:413,headers})
- // Public match-server auth is blocked for now. A single local bucket cannot be bypassed with spoofed forwarding headers.
- const safeHeaders=new Headers(request.headers);safeHeaders.set('x-crossline-client-ip','127.0.0.1')
+ // requestGuard authenticates this IP; direct callers cannot set a forwarding header.
+ const safeHeaders=new Headers(request.headers)
+ if(process.env.NODE_ENV!=='production')safeHeaders.set('x-crossline-client-ip','127.0.0.1')
+ if(!safeHeaders.get('x-crossline-client-ip'))return Response.json({message:'Forbidden'},{status:403,headers})
  let body:string|undefined
- if(request.method!=='GET'&&request.method!=='HEAD'){body=await request.text();if(body.length>8192)return Response.json({message:'Request too large'},{status:413,headers})}
+ try{if(request.method!=='GET'&&request.method!=='HEAD')body=await boundedBody(request)}catch{return Response.json({message:'Request too large'},{status:413,headers})}
  const response=await value.auth.handler(new Request(request.url,{method:request.method,headers:safeHeaders,...(body?{body}:{})}))
  response.headers.set('cache-control','no-store')
  if(!response.ok){return Response.json({message:response.status===429?'Too many attempts. Wait a minute and retry.':'Unable to continue. Check your details and email verification.'},{status:response.status,headers:response.headers})}

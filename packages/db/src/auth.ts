@@ -3,7 +3,7 @@ import { drizzle as embedded } from 'drizzle-orm/pglite'
 import { migrate } from 'drizzle-orm/pglite/migrator'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import { readFileSync } from 'node:fs'
+import { databaseOptions } from './connection.ts'
 import { mkdir } from 'node:fs/promises'
 import { eq, desc, asc, sql } from 'drizzle-orm'
 import * as schema from './schema.ts'
@@ -15,11 +15,7 @@ export async function openAccountDatabase(options:{localPath?:string;url?:string
   return {db:db as unknown as ReturnType<typeof drizzle<typeof schema>>,close:()=>client.close(),local:true}
  }
  if(!options.url)throw new Error('Account database is not configured')
- const max=Number(process.env.DB_POOL_MAX ?? 3)
- if(!Number.isInteger(max)||max<1||max>5)throw new Error('DB_POOL_MAX must be 1–5')
- const local=['localhost','127.0.0.1','::1','[::1]'].includes(new URL(options.url).hostname)
- const ca=process.env.DATABASE_CA_FILE?readFileSync(process.env.DATABASE_CA_FILE,'utf8'):undefined
- const client=postgres(options.url,{max,idle_timeout:20,connect_timeout:5,max_lifetime:1800,ssl:local?false:{rejectUnauthorized:true,...(ca?{ca}:{})},connection:{statement_timeout:5000}})
+ const client=postgres(options.url,databaseOptions(options.url))
  return {db:drizzle(client,{schema}),close:()=>client.end({timeout:5}),local:false}
 }
 export class AccountStatistics {
