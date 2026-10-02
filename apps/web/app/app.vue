@@ -1,1 +1,1 @@
-<template><UApp><NuxtPage /></UApp></template>
+<template><UApp><NuxtPwaManifest /><NuxtPage /><PwaControls /></UApp></template>

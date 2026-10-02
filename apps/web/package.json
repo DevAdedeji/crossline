@@ -6,7 +6,7 @@
     "dev": "nuxt dev --host 127.0.0.1 --port 3000",
     "build": "nuxt build",
     "postinstall": "nuxt prepare",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck && tsc -p service-worker/tsconfig.json"
   },
   "dependencies": {
     "@babylonjs/core": "9.29.0",
@@ -20,6 +20,12 @@
     "vue": "^3.5.42"
   },
   "devDependencies": {
-    "vue-tsc": "^3.3.11"
+    "@vite-pwa/nuxt": "1.1.1",
+    "vue-tsc": "^3.3.11",
+    "workbox-core": "7.4.1",
+    "workbox-expiration": "7.4.1",
+    "workbox-precaching": "7.4.1",
+    "workbox-routing": "7.4.1",
+    "workbox-strategies": "7.4.1"
   }
 }

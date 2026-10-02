@@ -160,3 +160,15 @@ The street-detail revision uses textured cutout-leaf trees, assembled wooden ben
 Façades use spatially grouped thin instances rather than cloning complete kits per window. Opaque façade maps are compressed; particles and tracers use bounded reusable pools and their shaders warm before play. The gameplay HUD has text shadows instead of full-width dark gradients; pause uses a light tint without backdrop blur. Incoming damage remains a brief red edge cue.
 
 A map-only Chrome profile on an Apple M4 Pro reduced active meshes from 745/2119/2008 to 406/783/850 across street/interior/roof views. Both desktop and phone emulation stayed near 60 FPS with p95 frame intervals about 16.7–16.8 ms. This excludes animated players, production network latency, and physical-phone hardware. Run `CROSSLINE_PREVIEW_URL=http://127.0.0.1:3000 node scripts/render-profile.mjs` against a Nuxt development server to repeat the scene-only check.
+
+## Install Crossline
+
+Open https://crossline-three.vercel.app and choose **Install app**, or use your browser's install menu. On iPhone/iPad, open the site in Safari and choose **Share → Add to Home Screen**. The installed app uses a standalone window, its own icon and the existing landscape controls/safe-area layout. Desktop and mobile browser support varies; an OS-level installation on a physical phone has not been verified.
+
+All three modes still require internet and the authoritative match server. When a page cannot load offline, a small reconnect screen provides **Try again**; gameplay is not simulated offline.
+
+The service worker precaches only the offline page, manifest and install icons. Runtime caching covers same-origin hashed Nuxt JS/CSS only: at most 32 responses, 3 MiB per response, aged out after seven days, with quota-error cleanup. It never caches auth, account, leaderboard or matchmaking APIs, HTML sessions, game state or GLB models. Normal browser HTTP caching remains separate.
+
+Updates wait in the background. **Update app** appears on the menu; activation is refused while any same-origin Crossline tab is on `/play`, including pause/reconnect. After all matches are left, the requested update reloads the menu. An active match is never automatically reloaded. Closing all app tabs also lets the normal service-worker lifecycle activate a waiting release.
+
+PWA browser checks cover manifest/icons, app-specific install eligibility, cache bounds, offline/reconnect behavior, API exclusion and cross-tab update blocking. Run `PLAYWRIGHT_CHANNEL=chrome pnpm exec playwright test tests/browser/pwa.spec.ts`. The worker is disabled during `pnpm dev`; use a production build for PWA checks.

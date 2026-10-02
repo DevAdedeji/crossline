@@ -11,3 +11,8 @@
   background: repeating-linear-gradient(0deg, transparent, transparent 49px, #738265 50px), repeating-linear-gradient(90deg, transparent, transparent 49px, #738265 50px);
   mask-image: linear-gradient(to left, black, transparent);
 }
+
+@media (display-mode: standalone) {
+  .lobby>header { padding-top: max(1rem, env(safe-area-inset-top)); padding-left: max(1.5rem, env(safe-area-inset-left)); padding-right: max(1.5rem, env(safe-area-inset-right)); }
+  .lobby>footer { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+}

@@ -43,3 +43,9 @@ Sources: [Vercel request headers](https://vercel.com/docs/headers/request-header
 ## Neon idle behavior
 
 Neon Free includes 100 compute-unit hours per project each month and suspends idle compute after five minutes. The persistent arena skips leaderboard and session database polling when it has no clients. Health and arena status use memory; the PostgreSQL pool closes idle connections after 20 seconds. Pending score commits still retry until durable, even after players disconnect. Active players, explicit leaderboard requests and account operations legitimately wake the database. A connected player can keep it active; the free allowance is not a 24/7 database guarantee.
+
+## PWA release behavior
+
+The Nuxt build emits `/manifest.webmanifest`, `/sw.js`, local install icons and an offline reconnect page. Vercel serves the worker and manifest with revalidation headers. The worker exposes the deployed Git commit through its `GET_RELEASE` message for smoke checks; it contains no secret configuration. Builds use `VERCEL_GIT_COMMIT_SHA` when available.
+
+The client owns registration and prompts. There is no automatic `skipWaiting` or active-match reload; a waiting worker checks all open window URLs before accepting a menu update. API requests pass straight to the network. Browser integration tests exercise real worker installation, offline fallback, cache eviction and two worker revisions on a local HTTP fixture.
