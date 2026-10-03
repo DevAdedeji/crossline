@@ -49,7 +49,8 @@ const cache = new WeakMap<WorldGeometry, ReturnType<typeof createNavigation>>()
 function createNavigation(world: WorldGeometry) {
   const candidates = [...NAV_POINTS,...(world.navigationPoints ?? [])]
   if (world !== TRAINING_WORLD) {
-    for (let x=-world.limit+6;x<=world.limit-6;x+=6) for(let z=-world.limit+6;z<=world.limit-6;z+=6) candidates.push({x,y:0,z})
+    const gridStart = Math.ceil((-world.limit+6)/6)*6
+    for (let x=gridStart;x<=world.limit-6;x+=6) for(let z=gridStart;z<=world.limit-6;z+=6) candidates.push({x,y:0,z})
     for(const b of world.buildings) candidates.push({x:b.x,y:0,z:b.z},{x:b.x+b.width/2+1,y:0,z:b.z},{x:b.x,y:0,z:b.z+b.depth/2+1})
   }
   const points = [...new Map(candidates.map(p=>[`${p.x}/${p.y}/${p.z}`,p])).values()].filter(p=>!isBlocked(p,world))
@@ -89,20 +90,21 @@ function neighbors(index: number): number[] {
   }
   return result
 }
-function nearest(position: Position): number {
+function nearest(position: Position, arriving = false): number | undefined {
   const sorted = localPoints(position).map(index => ({
     index,
     distance:
       Math.hypot(points[index]!.x - position.x, points[index]!.z - position.z) + Math.abs(points[index]!.y - position.y) * 5,
   })).sort((a, b) => a.distance - b.distance)
   return (
-    sorted.find((entry) => canWalk(position, points[entry.index]!))?.index ?? sorted[0]!.index
+    sorted.find((entry) => arriving ? canWalk(points[entry.index]!, position) : canWalk(position, points[entry.index]!))?.index
   )
 }
 function findPath(from: Position, destination: Position): Position[] {
   if (canWalk(from, destination)) return [{ ...destination }]
   const start = nearest(from)
-  const goal = nearest(destination)
+  const goal = nearest(destination, true)
+  if (start === undefined || goal === undefined) return []
   const frontier:{index:number;cost:number;priority:number}[]=[]
   function push(index:number,cost:number) {
     const node={index,cost,priority:cost+Math.hypot(points[index]!.x-destination.x,points[index]!.z-destination.z)}
@@ -123,7 +125,15 @@ function findPath(from: Position, destination: Position): Position[] {
     if (current === goal) {
       const path = [goal]
       while (path[0] !== start) path.unshift(previous.get(path[0]!)!)
-      return path.map((index) => ({ ...points[index]! }))
+      const route = path.map((index) => ({ ...points[index]! }))
+      // A nearby graph anchor can be behind the actor. Join the furthest visible
+      // route point so replanning cannot pull a moving bot back to that anchor.
+      let entry = 0
+      for (let i=1;i<route.length;i++) {
+        if (Math.hypot(route[i]!.x-from.x,route[i]!.z-from.z)>18) break
+        if (canWalk(from,route[i]!)) entry=i
+      }
+      return [...route.slice(entry), { ...destination }]
     }
     for (const neighbor of neighbors(current)) {
       const a = points[current]!
@@ -136,7 +146,7 @@ function findPath(from: Position, destination: Position): Position[] {
       }
     }
   }
-  return [{ ...points[start]! }]
+  return []
 }
 
   async function precompute() {

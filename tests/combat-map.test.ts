@@ -5,10 +5,11 @@ import { QUICK_MATCH_MS, worldHit } from '../packages/shared/src/combat.js'
 import { getNavigation } from '../apps/match/src/training/navigation.js'
 import { TrainingGame } from '../apps/match/src/training/TrainingGame.js'
 
-test('combat map is 300m across, with distinct districts and safe distributed spawns', () => {
-  assert.equal(COMBAT_WORLD.limit*2,300)
+test('combat map triples its previous area, with distinct districts and safe distributed spawns', () => {
+  assert.equal(COMBAT_WORLD.limit*2,520)
+  assert.ok(Math.abs((COMBAT_WORLD.limit*2)**2 / 90000 - 3)<.01)
   assert.ok((COMBAT_WORLD.limit/TRAINING_WORLD.limit)**2>33)
-  assert.equal(COMBAT_DISTRICTS.length,25)
+  assert.equal(COMBAT_DISTRICTS.length,81)
   assert.ok(COMBAT_WORLD.buildings.length>=12)
   assert.ok(COMBAT_SPAWNS.every(p=>!isBlocked(p,COMBAT_WORLD)))
   assert.ok(COMBAT_DISTRICTS.every(d=>COMBAT_SPAWNS.some(p=>Math.hypot(p.x-d.x,p.z-d.z)<25)))

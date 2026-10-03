@@ -19,7 +19,13 @@ export async function loadTrainingAssets(scene: Scene) {
     ].map((name) => LoadAssetContainerAsync(`/models/${name}.glb`, scene)),
   )
   for (const material of soldier!.materials) {
-    if (material instanceof PBRMaterial) { material.metallic = 0; material.roughness = 0.82 }
+    if (material instanceof PBRMaterial) {
+      material.metallic = 0; material.roughness = 0.82
+      if (['sm002_body', 'sm002_helmet', 'sm002_equipment'].includes(material.name)) {
+        // Keep fabric/gear detail and skin tones while making the uniform charcoal black.
+        material.albedoColor = Color3.FromHexString(material.name === 'sm002_equipment' ? '#343b43' : '#252b33')
+      }
+    }
   }
   for (const material of rifle!.materials) {
     if (material instanceof PBRMaterial && material.name === 'blued steel') {

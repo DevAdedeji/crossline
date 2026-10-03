@@ -29,6 +29,11 @@ interface BotMemory {
   aimYaw?: number
   aimPitch?: number
   nextScan?: number
+  goal?: Position
+  intent?: 'pursue' | 'search' | 'patrol' | 'cover'
+  holdUntil?: number
+  stalledMs?: number
+  pursuing?: boolean
 }
 export class TrainingGame {
   actors = new Map<string, Combatant>()
@@ -215,7 +220,8 @@ export class TrainingGame {
     const memory = this.memories.get(actor.id)
     if (memory) {
       Object.assign(memory, { path: [], nextPlan: 0, targetId: undefined, lastSeenId: undefined, lastSeen: undefined,
-        seenAt: undefined, reactAt: undefined, nextShot: undefined, burstLeft: 0, nextScan: 0 })
+        seenAt: undefined, reactAt: undefined, nextShot: undefined, burstLeft: 0, nextScan: 0,
+        goal: undefined, intent: undefined, holdUntil: 0, stalledMs: 0, pursuing: false })
     }
   }
   fire(actor: Combatant, yaw: number, pitch: number, aiming = false): boolean {
@@ -375,7 +381,8 @@ export class TrainingGame {
         (memory.lastSeenId && !this.humanTarget(this.actors.get(memory.lastSeenId)))) {
       Object.assign(memory, { targetId: undefined, lastSeenId: undefined, lastSeen: undefined,
         seenAt: undefined, reactAt: undefined, nextShot: undefined, burstLeft: 0,
-        path: [], nextPlan: 0, nextScan: 0 })
+        path: [], nextPlan: 0, nextScan: 0, goal: undefined, intent: undefined,
+        holdUntil: 0, stalledMs: 0, pursuing: false })
     }
     if (this.elapsed - bot.lastDamage < 300) return
     if (bot.ammo === 0) this.reload(bot.id)
@@ -402,6 +409,7 @@ export class TrainingGame {
     const target = memory.targetId ? this.actors.get(memory.targetId) : undefined
     const visible = this.humanTarget(target) && this.canSee(bot, target)
     let destination: Position | undefined
+    let intent: BotMemory['intent']
     if (visible) {
       const dx = target.x - bot.x, dz = target.z - bot.z, distance = Math.hypot(dx, dz)
       const wanted = Math.atan2(dx, dz)
@@ -422,7 +430,10 @@ export class TrainingGame {
           memory.nextShot = this.elapsed + (memory.burstLeft ? SOLO.shotIntervalMs : SOLO.burstRestMs + this.random() * SOLO.burstRestJitterMs)
         }
       }
-      if (bot.reloadUntil || bot.health < 45) {
+      if ((bot.reloadUntil || bot.health < 45) && memory.intent === 'cover' && memory.goal && this.elapsed < (memory.holdUntil ?? 0)) {
+        destination = memory.goal
+        intent = 'cover'
+      } else if (bot.reloadUntil || bot.health < 45) {
         // Seek nearby geometry that breaks the opponent's line of sight while recovering.
         const cover = this.navigation.points.filter((point) => Math.hypot(point.x - bot.x, point.z - bot.z) < 12 &&
           Math.abs(point.y - bot.y) < 0.5 &&
@@ -432,42 +443,78 @@ export class TrainingGame {
             Math.hypot(point.x - target.x, point.z - target.z) - 0.5)
         cover.sort((a, b) => Math.hypot(a.x - bot.x, a.z - bot.z) - Math.hypot(b.x - bot.x, b.z - bot.z))
         destination = cover[0]
-      } else if (distance > 17 || Math.abs(target.y-bot.y)>.7) destination = memory.lastSeen
-      else if (!memory.burstLeft) {
-        const side = Number(bot.id.slice(-1)) % 2 ? 1 : -1
-        Object.assign(bot, this.move(bot, { x: Math.cos(bot.yaw) * side * 0.2, z: -Math.sin(bot.yaw) * side * 0.2 }, dt))
+        intent = 'cover'
+        memory.holdUntil = this.elapsed + 2500
+      } else {
+        // Different stop/resume distances prevent shuffling at the engagement edge.
+        memory.pursuing = distance > (memory.pursuing ? 14 : 21) || Math.abs(target.y-bot.y)>.7
+        if (memory.pursuing) {
+          destination = {x:target.x,y:target.y,z:target.z}
+          intent = 'pursue'
+        }
       }
+      if (!destination) {
+        memory.path = []
+        memory.goal = undefined
+        memory.intent = undefined
+      }
+    } else if (memory.intent === 'cover' && memory.goal && this.elapsed < (memory.holdUntil ?? 0)) {
+      destination = memory.goal
+      intent = 'cover'
     } else if (memory.lastSeen && this.elapsed - (memory.seenAt ?? 0) < 2500) {
       destination = memory.lastSeen
+      intent = 'search'
     } else {
       const noise = this.lastNoise
       // A nearby human shot interrupts wandering instead of expiring behind a long patrol route.
-      if(noise && this.humanTarget(this.actors.get(noise.id)) && this.elapsed-noise.at < 5000 && Math.hypot(noise.position.x-bot.x,noise.position.z-bot.z)<55)
+      if(noise && this.humanTarget(this.actors.get(noise.id)) && this.elapsed-noise.at < 5000 && Math.hypot(noise.position.x-bot.x,noise.position.z-bot.z)<55) {
         destination=noise.position
-      else if(!memory.path.length) {
+        intent='search'
+      } else if(!memory.path.length && this.elapsed >= (memory.holdUntil ?? 0)) {
         // Keep patrol routes near the active human district without granting sight or firing through cover.
         const human=[...this.actors.values()].find(actor=>!actor.bot && actor.participating!==false)
-        const local=human ? this.navigation.points.filter(p=>Math.hypot(p.x-human.x,p.z-human.z)<32 && Math.abs(p.y-human.y)<4.2) : []
+        const local=human ? this.navigation.points.filter(p=>Math.hypot(p.x-human.x,p.z-human.z)<32 && Math.abs(p.y-human.y)<4.2 && Math.hypot(p.x-bot.x,p.z-bot.z)>8) : []
         const patrol=local.length?local:this.navigation.points
         destination=patrol[Math.floor(this.random()*patrol.length)]
+        intent='patrol'
       }
     }
-    if (destination && (this.elapsed >= memory.nextPlan || !memory.path.length)) {
+    const goalChanged = destination && (!memory.goal || intent !== memory.intent ||
+      Math.hypot(destination.x-memory.goal.x,destination.z-memory.goal.z)>4 || Math.abs(destination.y-memory.goal.y)>.6)
+    if (destination && goalChanged && this.elapsed >= memory.nextPlan) {
       memory.path = this.navigation.findPath(bot, destination)
-      memory.nextPlan = this.elapsed + (visible ? 1000 : 4000)
+      memory.goal = {...destination}
+      memory.intent = intent
+      memory.nextPlan = this.elapsed + 1200
+      memory.stalledMs = 0
+      if (!memory.path.length) memory.holdUntil = this.elapsed + 1500
     }
+    // Consume reached points in the same tick; a waypoint must also be on this floor.
+    while (memory.path[0] && Math.hypot(memory.path[0].x-bot.x,memory.path[0].z-bot.z)<.12 && Math.abs(memory.path[0].y-bot.y)<.3) memory.path.shift()
     const waypoint = memory.path[0]
     if (waypoint && (!visible || destination)) {
       const dx = waypoint.x - bot.x, dz = waypoint.z - bot.z, distance = Math.hypot(dx, dz)
-      if (distance < 0.3) memory.path.shift()
-      else {
+      if (distance > .001) {
+        let speed = .5
         if (!visible) {
           const delta = Math.atan2(Math.sin(Math.atan2(dx, dz) - bot.yaw), Math.cos(Math.atan2(dx, dz) - bot.yaw))
           bot.yaw += Math.max(-dt * 0.0025, Math.min(dt * 0.0025, delta))
           bot.pitch *= 0.9
+          // Turn before walking away, instead of sliding sideways through sharp corners.
+          speed *= Math.max(0,Math.cos(delta))
         }
-        Object.assign(bot, this.move(bot, { x: dx / distance * 0.34, z: dz / distance * 0.34 }, dt))
+        speed = Math.min(speed,distance / Math.max(.001,6*dt/1000))
+        const next = this.move(bot, { x: dx / distance * speed, z: dz / distance * speed }, dt)
+        memory.stalledMs = speed>.1 && Math.hypot(next.x-bot.x,next.z-bot.z)<.002 ? (memory.stalledMs ?? 0)+dt : 0
+        Object.assign(bot,next)
+      } else memory.stalledMs = (memory.stalledMs ?? 0)+dt
+      if ((memory.stalledMs ?? 0)>800) {
+        memory.path=[];memory.goal=undefined;memory.stalledMs=0
+        memory.nextPlan=this.elapsed+500
       }
+    } else if (!visible && !memory.path.length && memory.intent === 'patrol') {
+      memory.intent=undefined;memory.goal=undefined
+      memory.holdUntil=this.elapsed+1000
     }
   }
 

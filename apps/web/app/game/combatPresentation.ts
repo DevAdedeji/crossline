@@ -1,4 +1,5 @@
 import { crouchPose } from './crouchPose'
+import { weaponPose } from './weaponPose'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { Ray } from '@babylonjs/core/Culling/ray'
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture'
@@ -87,10 +88,11 @@ export function combatPresentation(
       motionUntil: number
       alive: boolean
       gun: TransformNode
+      muzzle: TransformNode
       reactUntil: number
-      wrist: TransformNode | undefined
-      finger: TransformNode | undefined
       yaw: number
+      pitch: number
+      reloading: boolean
       crouch: number
       shootUntil: number
       stationary: boolean
@@ -192,13 +194,26 @@ export function combatPresentation(
         }
         const gun = assets.gun(`${actor.id}-carbine`, root, 0.7)
         gun.position.set(0.18, 1.13, 0.3)
+        // Barrel tip in the imported 70cm rifle's local coordinates.
+        const muzzle = new TransformNode(`${actor.id}-muzzle`,scene)
+        muzzle.parent=gun;muzzle.position.set(0,.015,.075)
+        for(const angle of [0,Math.PI/2]) {
+          const flame=MeshBuilder.CreatePlane(`${actor.id}-muzzle-flash`,{width:.035,height:.13},scene)
+          flame.parent=muzzle;flame.rotation.set(Math.PI/2,angle,0);flame.position.z=.05;flame.material=glow;flame.isPickable=false
+        }
+        muzzle.setEnabled(false)
         const poseState={amount:0}
         const disposePose=crouchPose(scene,root,()=>poseState.amount)
+        const disposeWeapon=mode === 'training' ? () => {} : weaponPose(scene,root,gun,()=>({
+          alive:bot?.alive ?? false,pitch:bot?.pitch ?? 0,reload:bot?.reloading ?? false,
+          recoil:Math.max(0,((bot?.shootUntil ?? 0)-clock-.5)/.15),
+        }))
         bot = {
           get crouch(){return poseState.amount},
           set crouch(value:number){poseState.amount=value},
           dispose: () => {
             disposePose()
+            disposeWeapon()
             for(const mesh of root.getChildMeshes())shadows.removeShadowCaster(mesh)
             for(const group of instance.animationGroups)group.dispose()
             for(const skeleton of instance.skeletons)skeleton.dispose()
@@ -223,14 +238,11 @@ export function combatPresentation(
           motionUntil: 0,
           alive: true,
           gun,
+          muzzle,
           reactUntil: 0,
-          wrist: root.getDescendants().find((n) => n.name.endsWith('Bip01 R Hand')) as
-            | TransformNode
-            | undefined,
-          finger: root.getDescendants().find((n) => n.name.endsWith('Bip01 R Finger2')) as
-            | TransformNode
-            | undefined,
           yaw: actor.yaw,
+          pitch: actor.pitch,
+          reloading: false,
           shootUntil: 0,
           stationary: mode === 'training' && Number(actor.id.slice(-1)) % 2 === 0,
         }
@@ -263,18 +275,16 @@ export function combatPresentation(
       if (Vector3.Distance(bot.root.position, bot.previous) > 3)
         bot.root.position.copyFrom(bot.previous)
       bot.yaw = actor.yaw
+      bot.pitch = actor.pitch
+      bot.reloading = actor.reloadUntil > 0
       bot.gun.setEnabled(mode !== 'training' && bot.alive)
       const action = !bot.alive
         ? 'Death'
         : clock < bot.reactUntil
           ? 'HitRecieve'
-          : mode !== 'training' && actor.reloadUntil > 0
-            ? 'Interact'
           : bot.stationary
             ? 'Idle_Neutral'
-            : clock < bot.shootUntil
-              ? 'Idle_Gun_Pointing'
-              : bot.moving
+            : bot.moving
                 ? 'Walk'
                 : 'Idle_Neutral'
 
@@ -306,7 +316,9 @@ export function combatPresentation(
     }
     // Resolve presentation against the visible victim surface, not an interior hitbox point.
     const damagingHit = event.damage > 0 && !!event.hitId
-    const start = new Vector3(event.start.x, event.start.y, event.start.z)
+    const start = shooter && !own
+      ? shooter.muzzle.getAbsolutePosition().clone()
+      : new Vector3(event.start.x, event.start.y, event.start.z)
     let contact = new Vector3(event.end.x, event.end.y, event.end.z)
     const direction = contact.subtract(start).normalize()
     // Maintain a readable angular size at range; cap growth so close hits stay restrained.
@@ -364,6 +376,7 @@ export function combatPresentation(
     running = true,
   ) {
     for (const bot of bots.values()) {
+      bot.muzzle.setEnabled(bot.alive && clock < bot.shootUntil-.61)
       if (running) {
         Vector3.LerpToRef(bot.root.position, bot.previous, Math.min(1, dt * 20), bot.root.position)
         const delta = Math.atan2(
@@ -371,15 +384,6 @@ export function combatPresentation(
           Math.cos(bot.yaw - bot.root.rotation.y),
         )
         bot.root.rotation.y += delta * Math.min(1, dt * 8)
-      }
-      if (bot.wrist && bot.finger && !bot.stationary) {
-        const inverse = Matrix.Invert(bot.root.computeWorldMatrix(true))
-        const wrist = Vector3.TransformCoordinates(bot.wrist.getAbsolutePosition(), inverse),
-          finger = Vector3.TransformCoordinates(bot.finger.getAbsolutePosition(), inverse),
-          forward = finger.subtract(wrist).normalize()
-        const up = Math.abs(forward.y) > 0.9 ? new Vector3(0, 0, -1) : Vector3.Up()
-        bot.gun.position.copyFrom(wrist.add(forward.scale(0.14)).add(up.scale(0.035)))
-        bot.gun.rotationQuaternion = Quaternion.FromLookDirectionRH(forward, up)
       }
     }
     for (const bot of bots.values()) {

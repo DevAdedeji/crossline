@@ -3,6 +3,7 @@ import { localSession, type ArenaState, type ArenaSession } from '~/game/arenaSe
 import { observeArenaViewport } from '~/game/viewport'
 import { NetworkHealth } from '~/game/networkHealth'
 import { MovementPrediction } from '~/game/prediction'
+import { StairCamera } from '~/game/stairCamera'
 import { WeaponFeedback } from '~/game/weaponFeedback'
 import { onlineJoinToken } from '~/game/account'
 import { playerLabels } from '~/game/playerLabels'
@@ -248,6 +249,7 @@ function choose(index: number, usePad = false) {
   void start(usePad)
 }
 async function openLeaders(){
+  if(!isOnline.value)return
   pause();showLeaders.value=true
   if(status.value==='Connected'){room?.send('leaderboard');return}
   try{leaders.value=await $fetch<Leaderboard>('/api/leaderboard');leadersUnavailable.value=false}catch{leadersUnavailable.value=true}
@@ -418,6 +420,7 @@ onMounted(async () => {
     const { scene, camera } = arena
     const cameraTarget = camera.position.clone()
     const prediction=new MovementPrediction(world.value)
+    const stairCamera=new StairCamera()
     let inputSequence=0,lastInputFrame=performance.now()
     const networkHealth=new NetworkHealth();resetConnection=()=>networkHealth.reset(performance.now());resetConnection()
     status.value = 'Loading models'
@@ -439,9 +442,9 @@ onMounted(async () => {
       const input=readInput()
       const predicted=prediction.view(input,active.value ? Math.min(TICK_MS,performance.now()-lastInputFrame) : 0,dt)
       if(predicted && self.value?.health && active.value){
-        camera.position.set(predicted.x,predicted.y+stanceEye(predicted),predicted.z)
+        camera.position.set(predicted.x,stairCamera.update(predicted.y+stanceEye(predicted),dt),predicted.z)
         clientPosition.value=`${predicted.x.toFixed(3)} / ${predicted.z.toFixed(3)}`
-      }else camera.position.copyFrom(cameraTarget)
+      }else {camera.position.copyFrom(cameraTarget);stairCamera.reset()}
       const actor=self.value
       if(actor && weaponFeedback.fire(performance.now(),input.fire && active.value,actor,elapsed.value,props.mode)){
         visuals.fire();audio.sound('shot',true,actor,actor,look.yaw)
@@ -606,7 +609,7 @@ onMounted(async () => {
         healAmount.value=event.amount;healUntil.value=performance.now()+2200;audio.sound('heal')
       } else if (event.type === 'spawn' && event.actorId === joined.sessionId) {
         crouchToggle.value=false
-        prediction.reset();weaponFeedback.reset()
+        prediction.reset();weaponFeedback.reset();stairCamera.reset()
         Object.assign(look, { yaw: event.yaw, pitch: 0 })
         clearInput()
       } else if (event.type === 'kill') {
@@ -809,7 +812,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <p v-if="phase === 'finished'" data-testid="personal-best">{{ newBest ? 'NEW PERSONAL BEST' : 'PERSONAL BEST' }} · {{ personalBest }} POINTS <small>ON THIS DEVICE</small></p>
-        <ol v-if="(isSolo && phase === 'finished') || isOnline" class="my-5 space-y-2 text-sm" aria-label="Match standings">
+        <ol v-if="isOnline" class="my-5 space-y-2 text-sm" aria-label="Match standings">
           <li v-for="(actor, index) in [...actors].sort((a,b) => b.score-a.score)" :key="actor.id" class="flex justify-between border-b border-white/10 py-1" :class="{ 'text-[#d9ff9c]': actor.id === self?.id }">
             <span>{{ index + 1 }} · {{ actor.name }}{{ actor.connected === false ? ' · RECONNECTING' : actor.participating === false ? ' · LOBBY' : '' }}</span><span>{{ actor.kills }} K / {{ actor.deaths }} D · {{ actor.score }}</span>
           </li>

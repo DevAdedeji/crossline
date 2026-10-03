@@ -1,4 +1,5 @@
 import { interiorDetails, detailedFurniture } from './interiorDetails'
+import { solidTopSurfaces, type SurfaceRect } from './solidSurfaces'
 import { addFacades } from './urbanFacades'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { ReflectionProbe } from '@babylonjs/core/Probes/reflectionProbe'
@@ -141,8 +142,27 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     height: number,
     depth: number,
     surface: StandardMaterial,
+    topFaces?: SurfaceRect[],
   ) {
     const mesh = MeshBuilder.CreateBox(name, { width, height, depth }, scene)
+    if (topFaces && !(topFaces.length===1 && topFaces[0]!.left===x-width/2 && topFaces[0]!.right===x+width/2 && topFaces[0]!.near===z-depth/2 && topFaces[0]!.far===z+depth/2)) {
+      const data = VertexData.ExtractFromMesh(mesh)
+      const positions = Array.from(data.positions!), normals = Array.from(data.normals!), indices: number[] = []
+      const uvs = Array.from(data.uvs!)
+      for (let i=0;i<data.indices!.length;i+=3) {
+        const a=data.indices![i]!,b=data.indices![i+1]!,c=data.indices![i+2]!
+        if (normals[a*3+1]!<.5) indices.push(a,b,c)
+      }
+      for (const face of topFaces) {
+        const start=positions.length/3
+        for (const [xx,zz] of [[face.left,face.near],[face.left,face.far],[face.right,face.far],[face.right,face.near]]) {
+          positions.push(xx!-x,height/2,zz!-z);normals.push(0,1,0);uvs.push((xx!-face.left)/width,(zz!-face.near)/depth)
+        }
+        // Babylon's left-handed mesh convention uses clockwise outward faces.
+        indices.push(start,start+2,start+1,start,start+3,start+2)
+      }
+      data.positions=positions;data.normals=normals;data.indices=indices;data.uvs=uvs;data.applyToMesh(mesh)
+    }
     if (surface.diffuseTexture) {
       const positions = mesh.getVerticesData(VertexBuffer.PositionKind)!,
         normals = mesh.getVerticesData(VertexBuffer.NormalKind)!,
@@ -184,7 +204,9 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   for (const x of world.roadCenters) for(const z of world.roadCenters)
     for(let stripe=-3.6;stripe<=3.7;stripe+=1.2)for(const side of [-5.1,5.1])
       box('crosswalk',x+stripe,.025,z+side,.65,.015,1.5,paint)
-  for (const solid of MAP_SOLIDS.filter(s=>!detailedFurniture(s) && !['landmark-factory-crane','landmark-factory-hoist'].includes(s.id) && !s.id.startsWith('street-bench-') && !/hospital-bed-\d/.test(s.id)))
+  const renderedSolids = MAP_SOLIDS.filter(s=>!detailedFurniture(s) && !['landmark-factory-crane','landmark-factory-hoist'].includes(s.id) && !s.id.startsWith('street-bench-') && !/hospital-bed-\d/.test(s.id))
+  const topSurfaces = solidTopSurfaces(renderedSolids)
+  for (const solid of renderedSolids)
     box(
       solid.id,
       solid.x,
@@ -194,6 +216,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
       solid.height,
       solid.depth,
       solid.id.startsWith('city-') ? solid.material==='plaster'?cityWall:solid.material==='brick'?cityBrick:['roof','concrete'].includes(solid.material)?cityConcrete:palette[solid.material] : solid.id.startsWith('landmark-hospital') ? solid.id.includes('mattress') ? hospitalLinen : /hospital-(floor|roof$)/.test(solid.id) ? hospitalTiles : solid.material==='plaster' ? hospitalWall : /bedhead|locker|nurses/.test(solid.id) ? hospitalSteel : palette[solid.material] : palette[solid.material],
+      topSurfaces.get(solid.id),
     )
 
   // Solid sloped wedge uses exactly the authoritative ramp's extent and height.

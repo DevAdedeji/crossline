@@ -457,7 +457,7 @@ test('select face button also fires, with release gating across start and resume
 })
 
 
-test('Solo is a separate combat match with damage, pause, standings and replay', async ({ page }, info) => {
+test('Solo is a separate combat match with damage, pause, personal results and replay', async ({ page }, info) => {
   test.setTimeout(60000)
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
@@ -488,7 +488,10 @@ test('Solo is a separate combat match with damage, pause, standings and replay',
   await expect(page.getByTestId('timer')).toHaveText(frozen)
   await page.getByRole('button', { name: 'Finish session', exact: true }).click()
   await expect(page.getByTestId('results')).toBeVisible()
-  await expect(page.getByRole('list', { name: 'Match standings' }).getByRole('listitem')).toHaveCount(13)
+  await expect(page.getByRole('list', { name: 'Match standings' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^LEADERBOARD/ })).toHaveCount(0)
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('dialog', { name: 'Arena leaders' })).toHaveCount(0)
   await page.screenshot({ path: info.outputPath('solo-results.png') })
   await pulse(page, 0)
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')

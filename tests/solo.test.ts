@@ -18,6 +18,29 @@ function setup(mode: 'solo' | 'training' = 'solo') {
   return game
 }
 function run(game: TrainingGame, seconds: number) { for (let i = 0; i < seconds * 1000 / TICK_MS; i++) game.step() }
+test('Solo pursuit advances along a street without reversing toward old graph anchors', () => {
+  const game=setup(),bot=game.actors.get('bot-0')!,human=game.actors.get('human')!
+  Object.assign(bot,{x:0,y:0,z:-61,yaw:Math.PI})
+  Object.assign(human,{x:0,y:0,z:-105})
+  for(let i=0;i<300;i++) {
+    const before={x:bot.x,z:bot.z}
+    game.step()
+    assert.ok(bot.z<=before.z+.001,`bot reversed at tick ${i}: ${before.z} -> ${bot.z}`)
+    assert.ok(Math.hypot(bot.x-before.x,bot.z-before.z)<=.101,'movement stays within walking speed')
+  }
+  assert.ok(bot.z < -85,`bot makes sustained progress, ended at ${bot.z}`)
+})
+test('Solo bots hold an engagement position instead of shuffling between shots', () => {
+  const game=setup(),bot=game.actors.get('bot-0')!,human=game.actors.get('human')!
+  Object.assign(bot,{x:0,y:0,z:-60,yaw:Math.PI})
+  Object.assign(human,{x:0,y:0,z:-78})
+  run(game,5)
+  assert.equal(bot.x,0);assert.equal(bot.z,-60)
+  assert.ok(bot.shots>0)
+  // Small target movement around the old 17m threshold must not restart pursuit.
+  for(const z of [-77,-78,-79,-78]){human.z=z;run(game,.4)}
+  assert.equal(bot.x,0);assert.equal(bot.z,-60)
+})
 test('Solo bots react before firing, damage the player, reload and stop while paused', () => {
   const game = setup(), bot = game.actors.get('bot-0')!, human = game.actors.get('human')!
   run(game, .35); assert.equal(bot.shots, 0)

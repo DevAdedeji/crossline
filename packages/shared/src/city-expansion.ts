@@ -2,7 +2,13 @@ import type { Building, Solid } from './urban-map.ts'
 
 /** Metres, shared verbatim by authoritative collision, bot routes and rendering. */
 const names = ['ARCHIVE QUARTER','WEST MARKET','RIVERSIDE HOMES','WEST TRANSIT','CANAL WORKS','SOUTH FREIGHT','NORTH TRANSIT','SOUTH GARDENS','NORTH HOUSING','SOUTH EXCHANGE','NORTH OFFICES','EAST LOGISTICS','POWER STATION','EAST MARKET','CIVIC HEIGHTS','CIVIC GARDENS']
-export const CITY_DISTRICTS = [-112,-48,0,48,112].flatMap(x=>[-112,-48,0,48,112].filter(z=>Math.abs(x)===112||Math.abs(z)===112).map(z=>({x,z,name:''}))).map((d,i)=>({...d,name:names[i]!}))
+export const COMBAT_ROAD_CENTERS = [-224,-168,-112,-48,0,48,112,168,224]
+const existing = [-112,-48,0,48,112].flatMap(x=>[-112,-48,0,48,112].filter(z=>Math.abs(x)===112||Math.abs(z)===112).map(z=>({x,z,name:''}))).map((d,i)=>({...d,name:names[i]!}))
+// Keep existing district IDs and landmarks stable as the city grows outwards.
+const outer = COMBAT_ROAD_CENTERS.flatMap(x=>COMBAT_ROAD_CENTERS
+ .filter(z=>Math.abs(x)>112||Math.abs(z)>112)
+ .map(z=>({x,z,name:`${z<0?'SOUTH':z>0?'NORTH':'CENTRAL'} ${x<0?'WEST':x>0?'EAST':'MERCER'} / ${Math.abs(x)}-${Math.abs(z)}`})))
+export const CITY_DISTRICTS = [...existing,...outer]
 export const CITY_BUILDINGS: Building[]=[]
 export const CITY_SOLIDS: Solid[]=[]
 export const CITY_NAV: {x:number;y:number;z:number}[]=[]
@@ -10,7 +16,8 @@ export const CITY_ROOFS: {x:number;y:number;z:number}[]=[]
 function box(id:string,x:number,y:number,z:number,width:number,height:number,depth:number,material:Solid['material']){CITY_SOLIDS.push({id,x,y,z,width,height,depth,material})}
 for(const [i,d] of CITY_DISTRICTS.entries())for(const wing of [0,1]) {
  const x=d.x+(wing===0?-18:18),z=d.z+(wing===0?18:-18),id=`city-${i}-${wing}`
- const floors=wing===1?1:i===14?6:i===0?4:2+i%2,material=i%3===0?'brick':'plaster'
+ // Low-rise outer blocks add playable streets without multiplying tower interiors.
+ const floors=i>=existing.length||wing===1?1:i===14?6:i===0?4:2+i%2,material=i%3===0?'brick':'plaster'
  CITY_BUILDINGS.push({id,name:`${d.name} / ${wing===0?'HALL':'SUPPLY'}`,x,z,width:18,depth:16,height:floors*3.2,material,doors:['north','south']})
  for(let f=0;f<floors;f++) {
   const y=f*3.2

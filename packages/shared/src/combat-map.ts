@@ -1,4 +1,4 @@
-import { CITY_DISTRICTS, CITY_BUILDINGS, CITY_SOLIDS, CITY_NAV, CITY_ROOFS } from './city-expansion.ts'
+import { COMBAT_ROAD_CENTERS, CITY_DISTRICTS, CITY_BUILDINGS, CITY_SOLIDS, CITY_NAV, CITY_ROOFS } from './city-expansion.ts'
 import { LANDMARK_BUILDINGS, LANDMARK_SOLIDS, LANDMARK_NAV, LANDMARK_SPAWNS } from './landmarks.ts'
 import { BUILDINGS, MAP_SOLIDS, PARKED_CARS, type Building, type Solid, type ParkedCar, type WorldGeometry } from './urban-map.ts'
 
@@ -61,12 +61,13 @@ for(const [i,d] of CITY_DISTRICTS.entries()) {
   box(`city-pallet-${i}`,d.x-12,d.z-12,2.2,2,1.2,'wood')
   box(`city-lamp-${i}`,d.x+5.5,d.z+5.5,.16,.16,4.6,'metal')
 }
-for(const [x,z,w,d] of [[0,150.6,301.2,.4],[0,-150.6,301.2,.4],[-150.6,0,.4,301.2],[150.6,0,.4,301.2]])
+const limit = 260, boundary = limit + .6
+for(const [x,z,w,d] of [[0,boundary,boundary*2,.4],[0,-boundary,boundary*2,.4],[-boundary,0,.4,boundary*2],[boundary,0,.4,boundary*2]])
   box(`combat-boundary-${x}-${z}`,x!,z!,w!,d!,2.4,'concrete')
 buildings.push(...LANDMARK_BUILDINGS,...CITY_BUILDINGS);solids.push(...LANDMARK_SOLIDS,...CITY_SOLIDS)
 export const COMBAT_WORLD: WorldGeometry = {
   navigationPoints:[...LANDMARK_NAV,...CITY_NAV],
-  id:'mercer-districts',name:'MERCER DISTRICTS',limit:150,buildings,solids,cars,roadCenters:[-112,-48,0,48,112],
+  id:'mercer-districts',name:'MERCER DISTRICTS',limit,buildings,solids,cars,roadCenters:COMBAT_ROAD_CENTERS,
   colliders:[...solids,...cars.map(car=>({id:car.id,x:car.x,y:.78,z:car.z,width:car.sideways?4.5:2,height:1.56,depth:car.sideways?2:4.5,material:'metal' as const}))],
 }
 const spawnCandidates = [

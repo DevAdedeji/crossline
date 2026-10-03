@@ -47,7 +47,9 @@ Online drop/reload reconnect reserves the same session and vulnerable body for 2
 
 ## Map and presentation
 
-Solo and Online share **Mercer Districts, 300 × 300m (90,000m²)**, compared with **52 × 52m** Practice. Twenty-five districts contain 45 enterable buildings, 46 cars, connected roads, cover and 27 distributed supply pickups. This is 3.70 times the previous combat area; Practice and the five-minute Solo duration remain unchanged.
+Solo and Online share **Mercer Districts, 520 × 520m (270,400m²)**, compared with **52 × 52m** Practice. Eighty-one districts contain connected roads, enterable buildings, cover and 83 distributed supply pickups. Low-rise outer blocks expand the previous 300 × 300m combat map to approximately three times its area. Practice and the five-minute Solo duration remain unchanged. Solo ends with personal results; ranked standings and public leaderboards belong to Online.
+
+Solo bots keep stable paths, turn into corners and hold an engagement position instead of repeatedly strafing or backtracking to old waypoints. Both combat modes share charcoal uniforms, two-handed rifle poses with barrel-origin shot effects, smooth camera movement over stair risers, and stair/landing surfaces rendered without duplicate overlapping tops. Collision and Online hit validation still use the authoritative geometry.
 
 - **Outer city:** 16 new districts, 32 halls/supply buildings, interior switchback stairs and accessible roofs. Civic Heights reaches six floors / 19.2m; Archive Quarter reaches four.
 - **North Ironworks:** 34 × 26m factory, 8m hall, loading bays, machinery, crane, mezzanine, roof stairs/opening and 16m chimney.

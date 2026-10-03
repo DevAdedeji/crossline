@@ -57,8 +57,8 @@ test('crowded respawn preserves the selected safe location with at most one visi
  let calls=0;const original=g['worldHit'].bind(g)
  g['worldHit']=(origin,ray)=>{calls++;return original(origin,ray)}
  const actor=g.actors.get('p0')!;g['respawn'](actor)
- // Captured from the uncached ranking for this crowded fixture.
- assert.deepEqual({x:actor.x,y:actor.y,z:actor.z},{x:0,y:8,z:45})
+ // Golden safe location for this crowded fixture on the expanded city map.
+ assert.deepEqual({x:actor.x,y:actor.y,z:actor.z},{x:-69,y:0,z:165})
  assert.ok(calls>0&&calls<=COMBAT_SPAWNS.length*15,`visibility calls: ${calls}`)
  assert.equal(isBlocked(actor,COMBAT_WORLD),false)
 })
