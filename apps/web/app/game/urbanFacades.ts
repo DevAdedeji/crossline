@@ -132,7 +132,7 @@ export function addFacades(scene: Scene, assets: TrainingAssets, _shadows: Shado
   }
   // Two coherent street elevations outside the arena provide depth without changing walkable area.
   tone = 0
-  for (const side of [-1, 1]) {
+  if (world.legacyRamp !== false) for (const side of [-1, 1]) {
     for (let bay = -12; bay <= 12; bay += 3) {
       for (let floor = 0; floor < 4; floor++)
         module(

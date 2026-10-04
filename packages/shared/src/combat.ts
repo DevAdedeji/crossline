@@ -94,6 +94,7 @@ export interface ShotEvent {
   eliminated: boolean
 }
 export type GameEvent =
+  | { type: 'explosion'; position: Position }
   | { type: 'heal'; targetId: string; pickupId: string; amount: number; health: number }
   | ShotEvent
   | { type: 'damage'; targetId: string; sourceId: string; damage: number; health: number }
@@ -144,6 +145,7 @@ export function worldHit(origin: Position, ray: Position, range: number = RIFLE.
   // Ray/convex-wedge clipping includes the ramp's slope and side faces.
   let enter = 0
   let exit = distance
+  if (world.legacyRamp === false) return distance
   const slope = RAMP.height / (RAMP.maxZ - RAMP.minZ)
   const planes: [Position, number][] = [
     [{ x: -1, y: 0, z: 0 }, -RAMP.minX],

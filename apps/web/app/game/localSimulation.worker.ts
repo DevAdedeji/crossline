@@ -11,7 +11,7 @@ function publish() {
 }
 onmessage=({data})=>{
  if(data.type==='init'){
-  game=data.mode==='campaign' ? new CampaignGame(data.id,data.progress) : new TrainingGame(data.id,data.mode==='solo'?QUICK_MATCH_MS:TRAINING.durationMs,Math.random,data.mode)
+  game=data.mode==='campaign' ? new CampaignGame(data.id,data.progress,Math.random,data.progress?.missionId) : new TrainingGame(data.id,data.mode==='solo'?QUICK_MATCH_MS:TRAINING.durationMs,Math.random,data.mode)
   game.actors.get(data.id)!.name=String(data.name||'Player').slice(0,24)
  }else if(game){
   if(data.type==='input')game.acceptInput(data.value)

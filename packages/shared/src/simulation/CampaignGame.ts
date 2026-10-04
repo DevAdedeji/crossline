@@ -1,35 +1,42 @@
+import { clearGrenadeArc, grenadeDamage, GRENADE_FUSE_MS } from '../campaignGrenades.js'
 import { TICK_MS, move, type Position } from '@crossline/shared'
 import { worldHit } from '@crossline/shared/combat'
 import { TrainingGame } from './TrainingGame.js'
-import { CAMPAIGN_WORLD, CAMPAIGN_GUARDS, EXTRACTION_MISSION as mission, parseCampaignProgress, type CampaignState } from '../campaign.js'
+import { getCampaignMission, type CampaignMission, parseCampaignProgress, type CampaignState } from '../campaign.js'
 
 /** Mission rules stay in the simulation, never in UI proximity checks. */
 export class CampaignGame extends TrainingGame {
+  readonly mission: CampaignMission
   campaign: CampaignState
   private escortPath: Position[] = []
   private nextEscortPlan = 0
-  constructor(id: string, progress: unknown = undefined, random: () => number = Math.random) {
+  private nextGrenadeAt = 10000
+  constructor(id: string, progress: unknown = undefined, random: () => number = Math.random, missionId = 'last-signal') {
+    const mission = getCampaignMission(missionId)
     super(id, 0, random, 'solo', {
       botProfile: { sightRange: 68, nearAwareness: 28, halfFov: 2.1, reactionMs: 550, reactionJitterMs: 200,
         shotIntervalMs: 600, burstShots: 3, burstRestMs: 1100, burstRestJitterMs: 350,
         maxAttackers: 3, bodyDamage: 8, headDamage: 12, damageGraceMs: 650, searchMs: 9000, patrolRadius: 12 },
-      world: CAMPAIGN_WORLD, spawns: [mission.spawn, ...CAMPAIGN_GUARDS], botCount: CAMPAIGN_GUARDS.length, respawn: false,
-      healthPacks: [{ id: 'relay-supplies', x: 3, y: 0, z: 26, availableAt: 0 }, { id: 'south-supplies', x: -24, y: 0, z: -28, availableAt: 0 }, { id: 'office-supplies', x: 56, y: 0, z: 44, availableAt: 0 }, { id: 'west-supplies', x: -50, y: 0, z: -48, availableAt: 0 }],
+      world: mission.world, spawns: [mission.spawn, ...mission.guards], botCount: mission.guards.length, respawn: false,
+      healthPacks: [mission.spawn, mission.rescueSpawn, mission.escortSpawn].map((p,i)=>({id:`mission-supplies-${i}`,...p,availableAt:0})),
     })
-    const save = parseCampaignProgress(progress)
-    this.campaign = { stage: save.checkpoint, checkpoint: save.checkpoint, outcome: 'active', progressMs: 0, canInteract: false,
-      captive: { ...mission.captive, yaw: Math.PI }, following: save.checkpoint === 'extract', waiting: false,
-      radio: 'CONTROL: Get to the relay. Finch is counting on us.', save }
+    this.mission = mission
+    const save = parseCampaignProgress(progress, mission.id)
+    this.campaign = { missionId: mission.id, grenades: [], stage: save.checkpoint, checkpoint: save.checkpoint, outcome: 'active', progressMs: 0, canInteract: false,
+      captive: { ...mission.captive, yaw: Math.PI }, following: mission.kind === 'extraction' && save.checkpoint === 'extract', waiting: false,
+      radio: '', save }
     this.restoreCheckpoint()
   }
   private restoreCheckpoint() {
+    const mission = this.mission
     const state = this.campaign, save = state.save
     state.stage = save.checkpoint; state.checkpoint = save.checkpoint; state.outcome = 'active'
-    state.progressMs = 0; state.canInteract = false; state.following = save.checkpoint === 'extract'; state.waiting = false
+    state.progressMs = 0; state.canInteract = false; state.following = mission.kind === 'extraction' && save.checkpoint === 'extract'; state.waiting = false
     state.captive = { ...mission.captive, yaw: Math.PI }
-    state.radio = state.following ? 'FINCH: I’m with you. Keep me close and get us to the vehicle.' : state.stage === 'rescue' ? 'CONTROL: Alarm is down. Finch is inside the relay office.' : 'CONTROL: Get to the relay. Finch is counting on us.'
+    state.radio = `CONTROL: ${mission.objectives[state.stage].instruction}`
     this.escortPath = []; this.nextEscortPlan = 0
     this.elapsed = save.elapsedMs ?? 0
+    state.grenades = []; this.nextGrenadeAt = this.elapsed + 10000
     const spawn = state.stage === 'extract' ? mission.escortSpawn : state.stage === 'rescue' ? mission.rescueSpawn : mission.spawn
     Object.assign(this.actors.get(this.humanId)!, spawn, { protectedUntil: this.elapsed + 4000, yaw: 0 })
     for (const id of save.cleared) { const guard = this.actors.get(id); if (guard) guard.health = 0 }
@@ -56,25 +63,62 @@ export class CampaignGame extends TrainingGame {
     const dx = target.x-point.x, dz = target.z-point.z, length = Math.hypot(dx,dz)
     return length < .01 || worldHit({ ...point, y: point.y + 1 }, {x:dx/length,y:0,z:dz/length}, length, this.world) >= length - .05
   }
+  private updateGrenades(dt: number) {
+    const player = this.actors.get(this.humanId)!, state = this.campaign
+    for (const grenade of state.grenades) {
+      const previous = grenade.remainingMs
+      grenade.remainingMs -= dt
+      if (grenade.remainingMs > 0 || previous <= 0) continue
+      this.events.push({type:'explosion',position:grenade.target})
+      const damage = player.protectedUntil > this.elapsed ? 0 : grenadeDamage(player, grenade.target, this.world)
+      if (damage > 0 && player.health > 0) {
+        player.health = Math.max(0, player.health - damage); player.lastDamage = this.elapsed
+        this.events.push({type:'damage',sourceId:grenade.sourceId,targetId:player.id,damage,health:player.health})
+        if (!player.health) {
+          player.deaths++; player.reloadUntil=0
+          const guard=this.actors.get(grenade.sourceId)!
+          guard.kills++;guard.score+=100
+          this.events.push({type:'kill',killerId:guard.id,victimId:player.id,killer:guard.name,victim:player.name,humanKill:false})
+        }
+      }
+    }
+    state.grenades=state.grenades.filter(grenade=>grenade.remainingMs > -350)
+    if (state.grenades.length || this.elapsed<this.nextGrenadeAt || player.health<=0 || player.protectedUntil>this.elapsed) return
+    this.nextGrenadeAt=this.elapsed+1500
+    for(const guard of this.actors.values()) {
+      const distance=Math.hypot(guard.x-player.x,guard.z-player.z)
+      if(!guard.bot||guard.health<=0||distance<10||distance>28||Math.abs(guard.y-player.y)>1)continue
+      const start={x:guard.x,y:guard.y+1.5,z:guard.z},target={x:player.x,y:player.y,z:player.z}
+      const dx=target.x-start.x,dz=target.z-start.z
+      // Throw only at a visible player, never using hidden position through cover.
+      if(worldHit(start,{x:dx/distance,y:0,z:dz/distance},distance,this.world)<distance-.05)continue
+      const grenade={sourceId:guard.id,start,target,remainingMs:GRENADE_FUSE_MS}
+      if(!clearGrenadeArc(grenade,this.world))continue
+      state.grenades.push(grenade);this.nextGrenadeAt=this.elapsed+16000
+      break
+    }
+  }
   override step(delta = TICK_MS) {
     if (this.phase !== 'playing') return
+    const mission = this.mission
     super.step(delta)
     const dt = Math.max(0, Math.min(delta, TICK_MS)), player = this.actors.get(this.humanId)!, state = this.campaign
+    this.updateGrenades(dt)
     if (player.health <= 0) { this.finish(); state.radio = 'CONTROL: We lost contact. Regroup at the last checkpoint.'; return }
     if (state.stage !== 'extract') {
       const target = state.stage === 'relay' ? mission.relay : mission.captive
       state.canInteract = this.near(player, target, mission.interactionRadius)
       state.progressMs = state.canInteract ? state.progressMs + dt : 0
       if (state.progressMs >= mission.interactMs) {
-        if (state.stage === 'relay') { this.checkpoint('rescue'); state.radio = 'CONTROL: Alarm disabled. Checkpoint saved. Find Finch in the relay office.' }
-        else { this.checkpoint('extract'); state.following = true; state.radio = 'FINCH: You came back for me. Lead the way. I’ll follow you to extraction.' }
+        if (state.stage === 'relay') { this.checkpoint('rescue'); state.radio = `CONTROL: Checkpoint saved. ${mission.objectives.rescue.instruction}` }
+        else { this.checkpoint('extract'); state.following = mission.kind === 'extraction'; state.radio = state.following ? `${mission.companion.toUpperCase()}: I’m with you. Lead the way to extraction.` : 'CONTROL: Charge armed. Reach the safe zone for remote detonation.' }
       }
       return
     }
     const distance = Math.hypot(player.x-state.captive.x, player.z-state.captive.z)
-    state.waiting = distance > 18
+    state.waiting = state.following && distance > 18
     state.canInteract = false
-    if (!state.waiting && distance > 2.5) {
+    if (state.following && !state.waiting && distance > 2.5) {
       if (this.elapsed >= this.nextEscortPlan || !this.escortPath.length) {
         this.escortPath = this.navigation.findPath(state.captive, player)
         this.nextEscortPlan = this.elapsed + 1200
@@ -90,12 +134,13 @@ export class CampaignGame extends TrainingGame {
         }
       }
     } else this.escortPath = []
-    const extracting = this.near(player, mission.extraction, mission.extractionRadius) && this.near(state.captive, mission.extraction, mission.extractionRadius)
+    const extracting = this.near(player, mission.extraction, mission.extractionRadius) && (!state.following || this.near(state.captive, mission.extraction, mission.extractionRadius))
     state.progressMs = extracting ? state.progressMs + dt : 0
     if (state.progressMs >= mission.extractMs) {
+      if (mission.kind === 'sabotage') this.events.push({type:'explosion',position:mission.captive})
       state.outcome = 'success'; state.radio = mission.debrief
       const bestTimeMs = Math.min(state.save.bestTimeMs ?? Infinity, this.elapsed)
-      state.save = { version: 1, checkpoint: 'relay', cleared: [], completed: true, bestTimeMs }
+      state.save = { missionId: mission.id, version: 1, checkpoint: 'relay', cleared: [], completed: true, bestTimeMs }
       super.finish()
     }
   }

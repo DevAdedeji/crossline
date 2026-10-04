@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { campaignWaypoints, type MissionWaypoint } from '~/game/campaignWaypoint'
-import { CAMPAIGN_WORLD, CAMPAIGN_OBJECTIVES, EXTRACTION_MISSION, type CampaignState } from '@crossline/shared/campaign'
+import { CAMPAIGN_MISSIONS, getCampaignMission, type CampaignState } from '@crossline/shared/campaign'
 import { readCampaignProgress, saveCampaignProgress } from '~/game/campaignProgress'
 import { campaignPresentation } from '~/game/campaignPresentation'
 import { attackBearing, relativeBearing } from '~/game/combatFeedback'
@@ -36,7 +36,9 @@ import { selectController, controllerActivity, controllerButtons, controllerFire
 const entry=takeEntry()
 let pendingLaunch=Boolean(entry), recordedRound=''
 const personalBest=ref(0), newBest=ref(false)
-const props = withDefaults(defineProps<{ mode?: GameMode }>(), { mode: 'training' })
+const props = withDefaults(defineProps<{ mode?: GameMode; missionId?: string }>(), { mode: 'training' })
+const mission = computed(() => getCampaignMission(props.missionId))
+const nextMission = computed(() => CAMPAIGN_MISSIONS[CAMPAIGN_MISSIONS.findIndex(item => item.id === mission.value.id) + 1])
 const isCampaign = computed(() => props.mode === 'campaign')
 const waypoints = ref<MissionWaypoint[]>([])
 const campaign = ref<CampaignState>(), checkpointSaved = ref(true)
@@ -46,7 +48,7 @@ const leaders=ref<Leaderboard>(),leadersUnavailable=ref(false),joinError=ref('')
 const networkStalled=ref(false), networkNotice=ref('')
 const onlineEntered = ref(false), onlinePaused = ref(false), onlineCapacity = ref(ONLINE_CAPACITY_TARGET), roomCode = ref('')
 const isSolo = computed(() => props.mode === 'solo')
-const world = computed(() => isCampaign.value ? CAMPAIGN_WORLD : props.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD)
+const world = computed(() => isCampaign.value ? mission.value.world : props.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD)
 const radarRadius = computed(() => props.mode === 'training' ? 28 : 42)
 const radarBox = computed(() => { const r = radarRadius.value; return `${(self.value?.x ?? 0)-r} ${-(self.value?.z ?? 0)-r} ${r*2} ${r*2}` })
 const modeTitle = computed(() => isCampaign.value ? 'Campaign' : isOnline.value ? 'Online Free-for-All' : isSolo.value ? 'Solo vs Bots' : 'Training')
@@ -141,7 +143,7 @@ const accuracy = computed(() =>
 const reloadLeft = computed(() => Math.max(0, (self.value?.reloadUntil ?? 0) - elapsed.value))
 const menuItems = computed(() =>
   phase.value === 'finished'
-    ? isCampaign.value ? [campaign.value?.outcome === 'success' ? 'Replay mission' : 'Retry checkpoint', 'Mission briefing'] : ['Play again', 'Return to menu']
+    ? isCampaign.value ? [...(campaign.value?.outcome === 'success' && nextMission.value ? ['Next mission'] : []), campaign.value?.outcome === 'success' ? 'Replay mission' : 'Retry checkpoint', 'Mission briefing'] : ['Play again', 'Return to menu']
     : isOnline.value ? [onlineEntered.value ? 'Resume match' : 'Enter arena', 'Return to menu']
     : phase.value === 'paused'
       ? [`Resume ${sessionWord.value}`, isCampaign.value ? 'Retry checkpoint' : `Restart ${sessionWord.value}`, isCampaign.value ? 'Abort mission' : 'Finish session', 'Return to menu']
@@ -244,7 +246,8 @@ async function start(usePad = false) {
 }
 function choose(index: number, usePad = false) {
   const label = menuItems.value[index]
-  if (label === 'Mission briefing') { void navigateTo('/campaign'); return }
+  if (label === 'Next mission' && nextMission.value) { void navigateTo(`/campaign?mission=${nextMission.value.id}`); return }
+  if (label === 'Mission briefing') { void navigateTo(`/campaign?mission=${mission.value.id}`); return }
   if (label === 'Return to menu') {
     void navigateTo('/')
     return
@@ -446,7 +449,7 @@ onMounted(async () => {
       return
     }
     arena.addVehicles(assets)
-    const missionVisuals = isCampaign.value ? campaignPresentation(scene, assets, arena.shadows) : undefined
+    const missionVisuals = isCampaign.value ? campaignPresentation(scene, assets, arena.shadows, mission.value) : undefined
     const supplies = props.mode!=='training' ? healthPickups(scene) : undefined
     const labels=isOnline.value?playerLabels(scene,camera,world.value):undefined
     const visuals = combatPresentation(scene, camera, assets, arena.shadows, props.mode)
@@ -538,7 +541,7 @@ onMounted(async () => {
       Object.assign(onlineRoom.reconnection,{enabled:true,minUptime:0,minDelay:300,maxDelay:2000,maxRetries:12})
       try { sessionStorage.setItem('crossline.ffa.reconnect',onlineRoom!.reconnectionToken) } catch {}
       roomCode.value=joined.roomId
-    } else joined = localSession(isCampaign.value ? 'campaign' : isSolo.value ? 'solo' : 'training',name,isCampaign.value ? readCampaignProgress() : undefined)
+    } else joined = localSession(isCampaign.value ? 'campaign' : isSolo.value ? 'solo' : 'training',name,isCampaign.value ? readCampaignProgress(mission.value.id) : undefined)
     if (stopped) {
       await joined.leave()
       return
@@ -612,7 +615,7 @@ onMounted(async () => {
         const building = world.value.buildings.find(
           (b) => Math.abs(player.x - b.x) < b.width / 2 && Math.abs(player.z - b.z) < b.depth / 2,
         )
-        const district = isCampaign.value ? 'HARBOUR DEPOT' : props.mode !== 'training' ? [...COMBAT_DISTRICTS].sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0]?.name : 'MERCER STREET'
+        const district = isCampaign.value ? mission.value.world.name : props.mode !== 'training' ? [...COMBAT_DISTRICTS].sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0]?.name : 'MERCER STREET'
         area.value = building ? player.y>=(building.height ?? 4.1)-.2 ? 'ROOFTOPS' : `${building.name}${building.height ? ` / LEVEL ${Math.floor(player.y/3.2)+1}` : ''}` : player.y>3.8 ? 'UPPER WALKWAY' : district ?? 'MERCER STREET'
       }
       labels?.sync(values.filter(a=>a.id!==joined.sessionId))
@@ -621,7 +624,9 @@ onMounted(async () => {
       if (phaseChanged && (state.phase === 'finished' || state.phase === 'paused')) release()
     })
     room.onMessage('event', (event: GameEvent) => {
-      if (event.type === 'shot') {
+      if (event.type === 'explosion') {
+        audio.sound('explosion', false, event.position, self.value, look.yaw)
+      } else if (event.type === 'shot') {
         const own = event.shooterId === joined.sessionId
         visuals.shot(event, own, !own)
         if(!own)audio.sound('shot', false, event.start, self.value, look.yaw)
@@ -748,7 +753,7 @@ onBeforeUnmount(() => {
         {{ world.name }}<small>{{ area }}</small>
       </div>
       <div class="timer" data-testid="timer">
-        {{ time }}<small>{{ modeTitle.toUpperCase() }} / {{ isCampaign ? 'CHAPTER 01 / EXTRACTION' : isOnline ? 'SHARED ARENA' : `ROUND ${round}` }}</small>
+        {{ time }}<small>{{ modeTitle.toUpperCase() }} / {{ isCampaign ? `CHAPTER ${mission.chapter} / ${mission.kind.toUpperCase()}` : isOnline ? 'SHARED ARENA' : `ROUND ${round}` }}</small>
       </div>
     </header>
     <button v-if="isOnline" class="leaderboard-launch" @click="openLeaders">LEADERBOARD <span v-if="!touchDevice">· TAB / VIEW / SHARE</span></button>
@@ -770,8 +775,8 @@ onBeforeUnmount(() => {
         />
         <rect v-for="p in packs" :key="p.id" :x="p.x-1.6" :y="-p.z-1.6" width="3.2" height="3.2" :fill="p.availableAt<=elapsed ? '#80ffc2' : '#53675d'"
           :data-pack="p.id" :data-ready="p.availableAt<=elapsed" :data-x="p.x" :data-z="p.z" :data-available-at="p.availableAt"><title>{{ p.availableAt<=elapsed ? '+35 HP' : 'Health pack cooling down' }}</title></rect>
-        <circle v-if="campaign" :cx="CAMPAIGN_OBJECTIVES[campaign.stage].position.x" :cy="-CAMPAIGN_OBJECTIVES[campaign.stage].position.z" r="2" fill="#ffd090"><title>Mission objective</title></circle>
-        <circle v-if="campaign" :cx="campaign.captive.x" :cy="-campaign.captive.z" r="1.5" fill="#92e6ce"><title>Finch</title></circle>
+        <circle v-if="campaign" :cx="mission.objectives[campaign.stage].position.x" :cy="-mission.objectives[campaign.stage].position.z" r="2" fill="#ffd090"><title>Mission objective</title></circle>
+        <circle v-if="campaign && mission.kind === 'extraction'" :cx="campaign.captive.x" :cy="-campaign.captive.z" r="1.5" fill="#92e6ce"><title>{{ mission.companion }}</title></circle>
         <circle
           v-for="a in actors"
           :key="a.id"
@@ -822,22 +827,22 @@ onBeforeUnmount(() => {
             ? isCampaign ? campaign?.outcome === 'success' ? 'OPERATION COMPLETE' : 'OPERATION FAILED' : 'SESSION COMPLETE'
             : phase === 'paused'
               ? 'TAKE A BREATHER'
-              : `${world.name} / ${isOnline ? 'SHARED ARENA' : isCampaign ? 'CHAPTER 01' : isSolo ? 'SOLO MATCH' : 'LIVE PRACTICE'}`
+              : `${world.name} / ${isOnline ? 'SHARED ARENA' : isCampaign ? `CHAPTER ${mission.chapter}` : isSolo ? 'SOLO MATCH' : 'LIVE PRACTICE'}`
         }}</span>
         <h1>
           {{
             phase === 'finished'
-              ? isCampaign ? campaign?.outcome === 'success' ? 'Finch is safe.' : 'Contact lost.' : `${modeTitle} complete.`
+              ? isCampaign ? campaign?.outcome === 'success' ? mission.successTitle : 'Contact lost.' : `${modeTitle} complete.`
               : phase === 'paused'
                 ? isOnline ? 'Match continues.' : `${modeTitle} paused.`
-                : isCampaign ? EXTRACTION_MISSION.title + '.' : isOnline ? 'Join the free-for-all.' : isSolo ? 'Every angle is live.' : 'Learn the block.'
+                : isCampaign ? mission.title + '.' : isOnline ? 'Join the free-for-all.' : isSolo ? 'Every angle is live.' : 'Learn the block.'
           }}
         </h1>
         <p v-if="phase === 'ready'">
-          {{ isCampaign ? EXTRACTION_MISSION.briefing : isOnline ? 'Human players only. One ongoing arena. Quick respawns. Join friends on the same match server.' : isSolo ? 'Five minutes. Twelve bots targeting you. Use cover and crouch. Walk over green supply cases for +35 HP; they return after 25 seconds. Health does not regenerate in Solo.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
+          {{ isCampaign ? mission.briefing : isOnline ? 'Human players only. One ongoing arena. Quick respawns. Join friends on the same match server.' : isSolo ? 'Five minutes. Twelve bots targeting you. Use cover and crouch. Walk over green supply cases for +35 HP; they return after 25 seconds. Health does not regenerate in Solo.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
         </p>
-        <p v-if="isCampaign && phase === 'ready'" class="controls">{{ campaign ? CAMPAIGN_OBJECTIVES[campaign.stage].instruction : '' }}<br />Enter the objective circle to interact automatically.</p>
-        <p v-if="isCampaign && phase === 'finished'" role="status">{{ campaign?.outcome === 'success' ? EXTRACTION_MISSION.debrief : 'Your last checkpoint is ready. Retry to continue the operation.' }}</p>
+        <p v-if="isCampaign && phase === 'ready'" class="controls">{{ campaign ? mission.objectives[campaign.stage].instruction : '' }}<br />Enter the objective circle to interact automatically.</p>
+        <p v-if="isCampaign && phase === 'finished'" role="status">{{ campaign?.outcome === 'success' ? mission.debrief : 'Your last checkpoint is ready. Retry to continue the operation.' }}</p>
         <p v-if="isCampaign && !checkpointSaved" role="status">Device storage unavailable. Progress is available for this session only.</p>
         <p v-if="phase === 'paused'">
           {{ isOnline ? 'Your controls are paused. The shared match continues and your character stays vulnerable.' : 'The whole session is paused. Your timer and opponents will wait.' }}

@@ -8,6 +8,7 @@
     "./proxy": "./src/proxy.ts",
     "./TrainingGame": "./src/simulation/TrainingGame.ts",
     "./navigation": "./src/simulation/navigation.ts",
+    "./campaignGrenades": "./src/campaignGrenades.ts",
     "./campaign": "./src/campaign.ts",
     "./CampaignGame": "./src/simulation/CampaignGame.ts"
   },

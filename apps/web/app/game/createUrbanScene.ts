@@ -1,3 +1,4 @@
+import { campaignEnvironment } from './campaignEnvironment'
 import { interiorDetails, detailedFurniture } from './interiorDetails'
 import { solidTopSurfaces, type SurfaceRect } from './solidSurfaces'
 import { addFacades } from './urbanFacades'
@@ -51,6 +52,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   const skyDome = MeshBuilder.CreateSphere('sky dome', { diameter: world.limit > 26 ? 1500 : 500, segments: 24 }, scene)
   skyDome.material = skySurface; skyDome.infiniteDistance = true; skyDome.isPickable = false
 
+  campaignEnvironment(scene, world)
   const camera = new UniversalCamera('player-camera', new Vector3(-3, 1.7, -22), scene)
   camera.minZ = 0.12
   camera.maxZ = world.limit > 26 ? 850 : 300
@@ -165,7 +167,14 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   const cityFloors = material('city-interior-floor', '#a58f70')
   cityFloors.albedoTexture = surfaceTexture('interior-floor', scene)
   const buildingWalls = new Map(BUILDINGS.map(building => [building.id, wallFinishes[buildingFinishIndex(building.id)]!]))
+  const freightPaint = ['#547b80','#9c6048','#818d58','#485b6d'].map((color,i)=>material(`freight-paint-${i}`,color))
   function solidMaterial(solid: (typeof MAP_SOLIDS)[number]) {
+    if (solid.id.startsWith('container-')) return freightPaint[Math.abs(Math.round(solid.x / 22)) % freightPaint.length]!
+    if (solid.id.startsWith('crane-')) return material('crane-ochre', '#bd9450')
+    if (world.legacyRamp === false && solid.material !== 'roof') {
+      const building = BUILDINGS.find(b => solid.id.startsWith(b.id + '-'))
+      if (building) return buildingWalls.get(building.id)!
+    }
     if (solid.id.startsWith('city-')) {
       const buildingId = solid.id.match(/^city-\d+-[01](?=-)/)?.[0]
       if (buildingId && ['plaster', 'brick'].includes(solid.material)) return buildingWalls.get(buildingId)!
@@ -267,6 +276,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     )
 
   // Solid sloped wedge uses exactly the authoritative ramp's extent and height.
+  if (world.legacyRamp !== false) {
   const { minX: a, maxX: b, minZ: c, maxZ: d, height: h } = RAMP
   const ramp = new Mesh('west-rooftop-ramp', scene)
   const vertices = new VertexData()
@@ -294,6 +304,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     tread.rotation.x = -Math.atan(h / (d - c))
   }
 
+  }
   const glass = material('window-glass', '#325f6a')
   glass.metallic = 0.15; glass.roughness = 0.16
   if(world.id === 'mercer-districts') {
@@ -322,7 +333,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     sign('NORTH IRONWORKS',0,7.65,33.95,0,17,1.3)
     sign('LOADING HALL / ENTER',0,3.85,33.95,0,5.5,.55)
     sign('MEZZANINE / ROOF ↑',13,1.4,43,0,3,.6)
-    sign('ROOF ACCESS ↑',-14,5.3,56,Math.PI,3,.6)
+    if (world.legacyRamp !== false) sign('ROOF ACCESS ↑',-14,5.3,56,Math.PI,3,.6)
     sign('FOUNDRY / OPERATIONS',48,11.3,38.95,0,12,1)
     sign('STAIRS / ALL FLOORS ↑',58,1.4,36.8,0,5,.65)
     for(let floor=0;floor<4;floor++)sign(`LEVEL 0${floor+1}`,48,floor*3.2+2.3,40.3,Math.PI,3,.55)
@@ -385,7 +396,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   // Cars are game-ready meshes, fitted to the existing conservative authoritative colliders.
   function addVehicles(assets: TrainingAssets) {
     addFacades(scene, assets, shadows, world)
-    interiorDetails(scene, shadows, world)
+    if (world.legacyRamp !== false) interiorDetails(scene, shadows, world)
     for (const solid of MAP_SOLIDS.filter(s => s.id.startsWith('planter') || s.id.startsWith('street-bench-'))) {
       const tree = solid.id.startsWith('planter')
       const instance = (tree ? assets.tree : assets.bench).instantiateModelsToScene(n => `${solid.id}:${n}`, false)
@@ -459,10 +470,10 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   }
   // Unreachable skyline gives the small block context without adding traversable world size.
   const skyline = material('skyline', '#687d7b')
-  sign('ROOF ACCESS  /  ↑', -20, 1.2, 5, 0, 2.4, 0.55)
+  if (world.legacyRamp !== false) sign('ROOF ACCESS  /  ↑', -20, 1.2, 5, 0, 2.4, 0.55)
   sign(world.name, 0, 3, world.limit + .35, 0, 6, .9)
   if(world.id === 'mercer-districts') for(const d of COMBAT_DISTRICTS) sign(d.name,d.x+7,2.9,d.z+6,0,4.5,.65)
-  sign('LOADING / 03', 21, 1.8, -15, -Math.PI / 2, 3, 0.8)
+  if (world.legacyRamp !== false) sign('LOADING / 03', 21, 1.8, -15, -Math.PI / 2, 3, 0.8)
 
   function sign(
     text: string,

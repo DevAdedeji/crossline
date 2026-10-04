@@ -8,6 +8,7 @@ export function trainingAudio(preparedContext?: AudioContext) {
     muted = false
   let shots: AudioBuffer[] = [],
     healBuffer: AudioBuffer | undefined,
+    explosionBuffer: AudioBuffer | undefined,
     reloadBuffer: AudioBuffer | undefined
   let reloadVoice: AudioBufferSourceNode | undefined,
     reloadKey = 0
@@ -34,6 +35,10 @@ export function trainingAudio(preparedContext?: AudioContext) {
     healBuffer=context.createBuffer(1,Math.ceil(context.sampleRate*.22),context.sampleRate)
     const chime=healBuffer.getChannelData(0)
     for(let i=0;i<chime.length;i++){const t=i/context.sampleRate;chime[i]=Math.sin(2*Math.PI*(t<.1?660:880)*t)*Math.sin(Math.PI*i/chime.length)*.15}
+    explosionBuffer=context.createBuffer(1,Math.ceil(context.sampleRate*.8),context.sampleRate)
+    const boom=explosionBuffer.getChannelData(0)
+    let low=0
+    for(let i=0;i<boom.length;i++){const t=i/context.sampleRate;low=low*.88+(Math.random()*2-1)*.12;boom[i]=(low*1.8+Math.sin(t*2*Math.PI*55)*.3)*Math.exp(-t*7)*Math.min(1,t*200)}
     shots = buffers.slice(0, 2)
     reloadBuffer = buffers[2]
   }
@@ -63,14 +68,14 @@ export function trainingAudio(preparedContext?: AudioContext) {
     return voice
   }
   function sound(
-    kind: 'shot' | 'hit' | 'death' | 'heal',
+    kind: 'shot' | 'hit' | 'death' | 'heal' | 'explosion',
     own = true,
     source?: Position,
     listener?: Position,
     yaw = 0,
   ) {
     if(kind==='heal'){if(healBuffer)play(healBuffer,1);return}
-    if (kind !== 'shot' || !shots.length) return
+    if (kind !== 'explosion' && (kind !== 'shot' || !shots.length)) return
     const dx = (source?.x ?? 0) - (listener?.x ?? 0),
       dz = (source?.z ?? 0) - (listener?.z ?? 0),
       distance = Math.hypot(dx, dz)
@@ -78,6 +83,7 @@ export function trainingAudio(preparedContext?: AudioContext) {
     const pan = own
       ? 0
       : Math.max(-1, Math.min(1, (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / Math.max(distance, 1)))
+    if(kind==='explosion'){if(explosionBuffer)play(explosionBuffer,volume,pan);return}
     play(shots[Math.floor(Math.random() * shots.length)]!, volume, pan)
   }
   function stopReload() {

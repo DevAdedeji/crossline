@@ -80,6 +80,7 @@ export const CAR_COLLIDERS: readonly Solid[] = PARKED_CARS.map((car) => ({ id: c
 export const COLLIDERS: readonly Solid[] = [...MAP_SOLIDS, ...CAR_COLLIDERS]
 
 export interface WorldGeometry {
+  legacyRamp?: boolean
   navigationPoints?: readonly {x:number;y:number;z:number}[]
   id: string
   name: string

@@ -1,3 +1,5 @@
+import type { CampaignGrenade } from './campaignGrenades.js'
+import { FREIGHT_PORT, HILL_VILLAGE } from './campaignArenas.js'
 import { TRAINING_WORLD, type Building, type Solid, type WorldGeometry } from './urban-map.ts'
 import type { Position } from './index.ts'
 
@@ -11,6 +13,7 @@ export const EXTRACTION_MISSION = {
 } as const
 export type CampaignStage = 'relay' | 'rescue' | 'extract'
 export interface CampaignProgress {
+  missionId?: string
   version: 1
   checkpoint: CampaignStage
   cleared: string[]
@@ -19,6 +22,8 @@ export interface CampaignProgress {
   bestTimeMs?: number
 }
 export interface CampaignState {
+  missionId: string
+  grenades: CampaignGrenade[]
   stage: CampaignStage
   outcome: 'active' | 'success' | 'failed'
   checkpoint: CampaignStage
@@ -35,13 +40,15 @@ export const CAMPAIGN_OBJECTIVES: Record<CampaignStage, { title: string; instruc
   rescue: { title: 'Recover Finch', instruction: 'Find Finch inside the blue relay office. Step into their circle to release them automatically.', position: EXTRACTION_MISSION.captive },
   extract: { title: 'Escort Finch to extraction', instruction: 'Keep Finch close. Reach the southwest extraction zone together and stay inside for five seconds.', position: EXTRACTION_MISSION.extraction },
 }
-export function parseCampaignProgress(value: unknown): CampaignProgress {
-  const empty: CampaignProgress = { version: 1, checkpoint: 'relay', cleared: [], completed: false }
+export function parseCampaignProgress(value: unknown, missionId: string = EXTRACTION_MISSION.id): CampaignProgress {
+  const mission = getCampaignMission(missionId)
+  const empty: CampaignProgress = { missionId: mission.id, version: 1, checkpoint: 'relay', cleared: [], completed: false }
   if (!value || typeof value !== 'object' || !('version' in value) || value.version !== 1) return empty
   const data = value as Partial<CampaignProgress>
+  if (data.missionId && data.missionId !== mission.id) return empty
   if (!['relay', 'rescue', 'extract'].includes(data.checkpoint ?? '') || typeof data.completed !== 'boolean') return empty
   return { ...empty, checkpoint: data.checkpoint!, completed: data.completed,
-    cleared: Array.isArray(data.cleared) ? [...new Set(data.cleared.filter(id => typeof id === 'string' && /^bot-\d+$/.test(id) && Number(id.slice(4)) < CAMPAIGN_GUARDS.length))] : [],
+    cleared: Array.isArray(data.cleared) ? [...new Set(data.cleared.filter(id => typeof id === 'string' && /^bot-\d+$/.test(id) && Number(id.slice(4)) < mission.guards.length))] : [],
     ...(typeof data.elapsedMs === 'number' && Number.isFinite(data.elapsedMs) && data.elapsedMs >= 0 ? { elapsedMs: Math.min(data.elapsedMs, 3600000) } : {}),
     ...(typeof data.bestTimeMs === 'number' && Number.isFinite(data.bestTimeMs) && data.bestTimeMs > 0 ? { bestTimeMs: data.bestTimeMs } : {}),
   }
@@ -105,3 +112,37 @@ export const CAMPAIGN_GUARDS: Position[] = [
   { x: 50, y: 0, z: 63 }, { x: 71, y: 0, z: 62 }, { x: 44, y: 0, z: 28 },
   { x: -56, y: 0, z: -28 }, { x: -26, y: 0, z: -54 }, { x: 15, y: 0, z: -44 },
 ]
+
+export interface CampaignMission {
+  id: string; chapter: string; title: string; operation: string; kind: 'extraction' | 'sabotage'
+  briefing: string; debrief: string; companion: string; successTitle: string
+  relay: Position; captive: Position; extraction: Position
+  spawn: Position; rescueSpawn: Position; escortSpawn: Position
+  interactMs: number; extractMs: number; interactionRadius: number; extractionRadius: number
+  world: WorldGeometry; guards: readonly Position[]
+  objectives: typeof CAMPAIGN_OBJECTIVES
+}
+const freightRelay = {x:0,y:0,z:-23}, freightCharge={x:62,y:0,z:49}, freightExit={x:-76,y:0,z:-78}
+const villageRelay={x:-48,y:0,z:21}, villageCaptive={x:40,y:0,z:44}, villageExit={x:58,y:0,z:-64}
+export const CAMPAIGN_MISSIONS: readonly CampaignMission[] = [
+  { ...EXTRACTION_MISSION, kind:'extraction', companion:'Finch', successTitle:'Finch is safe.', world:CAMPAIGN_WORLD, guards:CAMPAIGN_GUARDS, objectives:CAMPAIGN_OBJECTIVES },
+  { id:'dead-freight',chapter:'02',title:'Dead freight',operation:'Operation Breakwater',kind:'sabotage',companion:'',successTitle:'Shipment destroyed.',
+    briefing:'Finch’s routes lead to North Quay. Slip through the container lanes, recover the shipment manifest from customs, then arm a charge inside Freight 07. Reach the western safe zone to trigger the demolition.',
+    debrief:'The shipment is destroyed. The manifest names Kite Ridge as the next target. A field medic there needs an evacuation before the hostile unit arrives.',
+    relay:freightRelay,captive:freightCharge,extraction:freightExit,spawn:{x:0,y:0,z:-82},rescueSpawn:{x:0,y:0,z:-24},escortSpawn:{x:62,y:0,z:46},
+    interactMs:2800,extractMs:5000,interactionRadius:2.8,extractionRadius:5,world:FREIGHT_PORT,
+    guards:[[-10,-54],[10,-40],[-5,-22],[12,-8],[-18,10],[18,20],[58,40],[66,46],[58,52],[72,38],[36,50],[-66,44],[-48,40],[-74,-44]].map(([x,z])=>({x:x!,y:0,z:z!})),
+    objectives:{relay:{title:'Recover the manifest',instruction:'Enter the customs terminal circle and stay there to download the manifest.',position:freightRelay},rescue:{title:'Arm the demolition charge',instruction:'Reach Freight 07. Enter the marked circle to arm the charge automatically.',position:freightCharge},extract:{title:'Reach the safe zone',instruction:'Leave the freight shed. Stay in the western safe zone for five seconds to detonate the shipment.',position:freightExit}},
+  },
+  { id:'safe-passage',chapter:'03',title:'Safe passage',operation:'Operation Breakwater',kind:'extraction',companion:'Iris',successTitle:'Iris is safe.',
+    briefing:'The clinic at Kite Ridge is surrounded. Open an evacuation channel at the western watch post, reach medic Iris in the northeast clinic, then escort her through the village gardens to the southern pickup.',
+    debrief:'Iris and the evacuation records are safe. With the harbour shipment stopped and the ridge route open, Breakwater has bought the district another day.',
+    relay:villageRelay,captive:villageCaptive,extraction:villageExit,spawn:{x:-58,y:0,z:-64},rescueSpawn:{x:-48,y:0,z:20},escortSpawn:{x:40,y:0,z:41},
+    interactMs:2200,extractMs:5000,interactionRadius:2.8,extractionRadius:5,world:HILL_VILLAGE,
+    guards:[[-58,-42],[-40,-18],[-42,14],[-50,24],[-10,0],[16,24],[32,34],[46,34],[38,46],[46,48],[20,56],[56,4],[54,-32],[-18,40]].map(([x,z])=>({x:x!,y:0,z:z!})),
+    objectives:{relay:{title:'Open the evacuation channel',instruction:'Enter the watch post radio circle to contact the evacuation team.',position:villageRelay},rescue:{title:'Recover Iris',instruction:'Find Iris in the field clinic. Enter her circle to start the rescue.',position:villageCaptive},extract:{title:'Escort Iris to the pickup',instruction:'Keep Iris within 18 metres. Stay together in the southern pickup circle for five seconds.',position:villageExit}},
+  },
+]
+export function getCampaignMission(id: unknown = 'last-signal'): CampaignMission {
+  return CAMPAIGN_MISSIONS.find(mission=>mission.id===id) ?? CAMPAIGN_MISSIONS[0]!
+}

@@ -40,7 +40,7 @@ function supportHeight(position: Position, world: WorldGeometry): number {
     const top = solid.y + solid.height / 2
     if (top <= position.y + STEP_HEIGHT && top > height && overlapsFootprint(position.x, position.z, solid)) height = top
   }
-  if (onRamp(position.x, position.z)) {
+  if (world.legacyRamp !== false && onRamp(position.x, position.z)) {
     const ramp = rampHeight(position.z)
     if (ramp <= position.y + STEP_HEIGHT) height = Math.max(height, ramp)
   }
@@ -55,7 +55,7 @@ export function isBlocked(position: Position, world: WorldGeometry = TRAINING_WO
   const rampX = Math.max(RAMP.minX, Math.min(RAMP.maxX, position.x))
   const rampZ = Math.max(RAMP.minZ, Math.min(RAMP.maxZ, position.z))
   const touchesRamp = (position.x - rampX) ** 2 + (position.z - rampZ) ** 2 < PLAYER_RADIUS ** 2 - 0.000001
-  if (touchesRamp && position.y < rampHeight(rampZ) - 0.001) return true
+  if (world.legacyRamp !== false && touchesRamp && position.y < rampHeight(rampZ) - 0.001) return true
   return false
 }
 export function move(position: Position, input: MoveInput, dt: number, world: WorldGeometry = TRAINING_WORLD, height = PLAYER_HEIGHT): Position {
