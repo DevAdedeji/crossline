@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { campaignWaypoints, type MissionWaypoint } from '~/game/campaignWaypoint'
-import { CAMPAIGN_MISSIONS, getCampaignMission, type CampaignState } from '@crossline/shared/campaign'
+import { CAMPAIGN_MISSIONS, activeCampaignTask, getMissionTasks, getCampaignMission, type CampaignState } from '@crossline/shared/campaign'
 import { readCampaignProgress, saveCampaignProgress } from '~/game/campaignProgress'
 import { campaignPresentation } from '~/game/campaignPresentation'
 import { attackBearing, relativeBearing } from '~/game/combatFeedback'
@@ -42,6 +42,7 @@ const nextMission = computed(() => CAMPAIGN_MISSIONS[CAMPAIGN_MISSIONS.findIndex
 const isCampaign = computed(() => props.mode === 'campaign')
 const waypoints = ref<MissionWaypoint[]>([])
 const campaign = ref<CampaignState>(), checkpointSaved = ref(true)
+const campaignObjective = computed(() => campaign.value ? activeCampaignTask(campaign.value) : getMissionTasks(mission.value)[0]!)
 let lastCampaignSave = ''
 const isOnline = computed(() => props.mode === 'online')
 const leaders=ref<Leaderboard>(),leadersUnavailable=ref(false),joinError=ref(''),showLeaders=ref(false)
@@ -625,6 +626,7 @@ onMounted(async () => {
     })
     room.onMessage('event', (event: GameEvent) => {
       if (event.type === 'explosion') {
+        missionVisuals?.explosion(event.position)
         audio.sound('explosion', false, event.position, self.value, look.yaw)
       } else if (event.type === 'shot') {
         const own = event.shooterId === joined.sessionId
@@ -775,7 +777,7 @@ onBeforeUnmount(() => {
         />
         <rect v-for="p in packs" :key="p.id" :x="p.x-1.6" :y="-p.z-1.6" width="3.2" height="3.2" :fill="p.availableAt<=elapsed ? '#80ffc2' : '#53675d'"
           :data-pack="p.id" :data-ready="p.availableAt<=elapsed" :data-x="p.x" :data-z="p.z" :data-available-at="p.availableAt"><title>{{ p.availableAt<=elapsed ? '+35 HP' : 'Health pack cooling down' }}</title></rect>
-        <circle v-if="campaign" :cx="mission.objectives[campaign.stage].position.x" :cy="-mission.objectives[campaign.stage].position.z" r="2" fill="#ffd090"><title>Mission objective</title></circle>
+        <circle v-if="campaign" :cx="campaignObjective.position.x" :cy="-campaignObjective.position.z" r="2" fill="#ffd090"><title>Mission objective</title></circle>
         <circle v-if="campaign && mission.kind === 'extraction'" :cx="campaign.captive.x" :cy="-campaign.captive.z" r="1.5" fill="#92e6ce"><title>{{ mission.companion }}</title></circle>
         <circle
           v-for="a in actors"
@@ -841,8 +843,8 @@ onBeforeUnmount(() => {
         <p v-if="phase === 'ready'">
           {{ isCampaign ? mission.briefing : isOnline ? 'Human players only. One ongoing arena. Quick respawns. Join friends on the same match server.' : isSolo ? 'Five minutes. Twelve bots targeting you. Use cover and crouch. Walk over green supply cases for +35 HP; they return after 25 seconds. Health does not regenerate in Solo.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
         </p>
-        <p v-if="isCampaign && phase === 'ready'" class="controls">{{ campaign ? mission.objectives[campaign.stage].instruction : '' }}<br />Enter the objective circle to interact automatically.</p>
-        <p v-if="isCampaign && phase === 'finished'" role="status">{{ campaign?.outcome === 'success' ? mission.debrief : 'Your last checkpoint is ready. Retry to continue the operation.' }}</p>
+        <p v-if="isCampaign && phase === 'ready'" class="controls">{{ campaign ? campaignObjective.instruction : '' }}<br />Enter the objective circle to interact automatically.</p>
+        <p v-if="isCampaign && phase === 'finished'" role="status">{{ campaign?.outcome === 'success' ? mission.debrief : (campaign?.radio ?? 'Your last checkpoint is ready. Retry to continue the operation.') }}</p>
         <p v-if="isCampaign && !checkpointSaved" role="status">Device storage unavailable. Progress is available for this session only.</p>
         <p v-if="phase === 'paused'">
           {{ isOnline ? 'Your controls are paused. The shared match continues and your character stays vulnerable.' : 'The whole session is paused. Your timer and opponents will wait.' }}

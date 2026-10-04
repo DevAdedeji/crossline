@@ -1,4 +1,4 @@
-import { getCampaignMission, type CampaignState } from '@crossline/shared/campaign'
+import { activeCampaignTask, getCampaignMission, type CampaignState } from '@crossline/shared/campaign'
 import type { Position } from '@crossline/shared'
 
 export interface MissionWaypoint {
@@ -16,7 +16,10 @@ interface View extends Position { yaw: number; pitch: number; fov: number }
 export function campaignWaypoints(state: CampaignState, view: View, width: number, height: number, mobile: boolean): MissionWaypoint[] {
   if (state.outcome !== 'active' || width <= 0 || height <= 0) return []
   const mission = getCampaignMission(state.missionId), objectives = mission.objectives
-  const targets = state.stage === 'extract'
+  const task=activeCampaignTask(state)
+  const markedEnemy=state.operation?.targets.slice().sort((a,b)=>Math.hypot(a.x-view.x,a.z-view.z)-Math.hypot(b.x-view.x,b.z-view.z))[0]
+  const targets = mission.tasks ? [{id:'objective',label:markedEnemy?'MARKED SQUAD':task.title.toUpperCase(),position:markedEnemy??task.position,secondary:false},
+    ...(state.waiting?[{id:'companion',label:mission.companion.toUpperCase(),position:state.captive,secondary:true}]:[])] : state.stage === 'extract'
     ? [{ id: 'extraction', label: 'EXTRACTION', position: objectives.extract.position, secondary: false },
       ...(state.waiting ? [{ id: 'finch', label: `${mission.companion.toUpperCase()} · REGROUP`, position: state.captive, secondary: true }] : [])]
     : state.stage === 'rescue'

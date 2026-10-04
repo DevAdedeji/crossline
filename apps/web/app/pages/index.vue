@@ -10,8 +10,8 @@ const touchDevice=ref(false)
 const arenaCapacity=ref(ONLINE_CAPACITY_TARGET)
 const modes = reactive([
   { id: 'campaign', number: '01', title: 'Campaign', subtitle: 'OPERATION BREAKWATER',
-    description: 'Three chapters across a guarded depot, freight port and hill village. Rescue allies, sabotage a shipment and open an evacuation route.',
-    available: true, players: '3 CHAPTERS · RESCUE / SABOTAGE' },
+    description: 'Twenty chapters across ports, forest posts, airfields and command sites. Rescue allies, disarm bombs and hold against counterattacks.',
+    available: true, players: '20 CHAPTERS · OPERATION BREAKWATER' },
   {
     id: 'solo',
     number: '02',

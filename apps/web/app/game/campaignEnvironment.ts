@@ -10,9 +10,11 @@ import type { WorldGeometry } from '@crossline/shared'
 
 /** Distant scenery lives outside the playable boundary; cover stays in shared geometry. */
 export function campaignEnvironment(scene: Scene, world: WorldGeometry) {
-  if (!['freight-port','hill-village'].includes(world.id)) return
+  const coastal=world.id==='freight-port'||world.environment==='coastal'
+  const hills=world.id==='hill-village'||world.environment==='forest'||world.environment==='desert'
+  if (!coastal && !hills) return
   const mat = (name:string,color:string) => { const m=new PBRMaterial(name,scene);m.albedoColor=Color3.FromHexString(color);m.roughness=.95;m.metallic=0;return m }
-  if (world.id === 'freight-port') {
+  if (coastal) {
     const water=MeshBuilder.CreateGround('open harbour water',{width:600,height:260,subdivisions:1},scene)
     water.position.set(0,-.35,230);water.material=mat('harbour blue','#356d7a');water.isPickable=false;water.freezeWorldMatrix()
     const ship=mat('distant freighter','#374b54'), containers=mat('distant cargo','#98754f')
@@ -21,7 +23,7 @@ export function campaignEnvironment(scene: Scene, world: WorldGeometry) {
       for(let i=-2;i<=2;i++){const cargo=MeshBuilder.CreateBox('freighter cargo',{width:9,height:6,depth:11},scene);cargo.position.set(x+i*11,8,170);cargo.material=containers;cargo.freezeWorldMatrix()}
     }
   } else {
-    const mountain=mat('ridge stone','#697361'), roof=mat('village clay roofs','#9e684d')
+    const mountain=mat('ridge stone',world.environment==='desert'?'#a18c70':'#697361'), roof=mat('village clay roofs','#9e684d')
     mountain.albedoTexture=new Texture('/textures/concrete-color.jpg',scene)
     for(let i=0;i<12;i++) {
       const angle=i*Math.PI/6, height=35+(i%4)*12
@@ -31,7 +33,7 @@ export function campaignEnvironment(scene: Scene, world: WorldGeometry) {
       VertexData.ComputeNormals(positions,hill.getIndices()!,normals);hill.updateVerticesData(VertexBuffer.PositionKind,positions);hill.updateVerticesData(VertexBuffer.NormalKind,normals)
       hill.refreshBoundingInfo();hill.position.set(Math.sin(angle)*155,-1,Math.cos(angle)*155);hill.rotation.y=angle;hill.material=mountain;hill.freezeWorldMatrix()
     }
-    for(const b of world.buildings) {
+    if(world.id==='hill-village') for(const b of world.buildings) {
       const tile=MeshBuilder.CreateCylinder('pitched village roof',{diameterTop:b.width+1,diameterBottom:b.width+1,height:b.depth+1,tessellation:3},scene)
       tile.rotation.x=Math.PI/2;tile.rotation.y=Math.PI;tile.scaling.z=.24
       tile.position.set(b.x,4.2,b.z);tile.material=roof;tile.isPickable=false;tile.freezeWorldMatrix()

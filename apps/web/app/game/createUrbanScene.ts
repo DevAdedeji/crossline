@@ -1,3 +1,4 @@
+import { campaignStructures, detailedCampaignSolid } from './campaignStructures'
 import { campaignEnvironment } from './campaignEnvironment'
 import { interiorDetails, detailedFurniture } from './interiorDetails'
 import { solidTopSurfaces, type SurfaceRect } from './solidSurfaces'
@@ -169,11 +170,17 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   const buildingWalls = new Map(BUILDINGS.map(building => [building.id, wallFinishes[buildingFinishIndex(building.id)]!]))
   const freightPaint = ['#547b80','#9c6048','#818d58','#485b6d'].map((color,i)=>material(`freight-paint-${i}`,color))
   function solidMaterial(solid: (typeof MAP_SOLIDS)[number]) {
+    if (solid.id.startsWith('aircraft-')) return material('aircraft paint','#bec5bd')
+    if (solid.id.startsWith('reservoir-water-')) return material('reservoir-water', '#427883')
+    if (solid.id.startsWith('field-tent-')) return material('canvas-tent', '#a79776')
+    if (solid.id.startsWith('medical-supplies-')) return material('medical-cases', '#65877b')
+    if (solid.id.startsWith('market-canopy-')) return material('market-awning', '#a77851')
+    if (solid.id.startsWith('rail-car-')) return material('rail-car', '#645c4d')
     if (solid.id.startsWith('container-')) return freightPaint[Math.abs(Math.round(solid.x / 22)) % freightPaint.length]!
     if (solid.id.startsWith('crane-')) return material('crane-ochre', '#bd9450')
     if (world.legacyRamp === false && solid.material !== 'roof') {
       const building = BUILDINGS.find(b => solid.id.startsWith(b.id + '-'))
-      if (building) return buildingWalls.get(building.id)!
+      if (building) return world.environment==='airfield'||world.environment==='industrial' ? material('hall cladding','#637878') : buildingWalls.get(building.id)!
     }
     if (solid.id.startsWith('city-')) {
       const buildingId = solid.id.match(/^city-\d+-[01](?=-)/)?.[0]
@@ -239,13 +246,14 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     return mesh
   }
   const span = world.limit * 2 + 2
-  box('neighbourhood-ground', 0, -0.13, 0, span, 0.25, span, material('paving', '#a7977a'))
+  const groundTone=world.environment==='forest'?'#777a52':world.environment==='desert'?'#b69a72':world.environment==='airfield'?'#8c8b7a':'#a7977a'
+  box('neighbourhood-ground', 0, -0.13, 0, span, 0.25, span, material('paving', groundTone))
   const asphalt = material('asphalt', '#414e50'), paint = material('road-paint', '#e0dfd5'), curb = material('curb', '#acb4b9')
   for (const center of world.roadCenters) {
-    box('north-south-street', center, .003, 0, 9, .014, span, asphalt)
+    box('north-south-street', center, .003, 0, world.environment==='airfield'?15:9, .014, span, asphalt)
     // Split crossing roads at intersections: overlapping near-coplanar asphalt caused flicker.
     let edge=-span/2
-    for(const cross of [...world.roadCenters,span/2+4.5]) {
+    if(world.environment!=='airfield') for(const cross of [...world.roadCenters,span/2+4.5]) {
       const end=cross-4.5
       if(end>edge)box('east-west-street',(edge+end)/2,.003,center,end-edge,.014,8,asphalt)
       edge=cross+4.5
@@ -253,14 +261,16 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     for (let n=-world.limit+2;n<world.limit;n+=4) {
       if(world.roadCenters.some(c=>Math.abs(n-c)<5))continue
       box('lane-dash',center,.02,n,.1,.02,1.8,paint)
-      box('lane-dash',n,.02,center,1.8,.02,.1,paint)
-      for(const edge of [-4.6,4.6])box('curb-inlay',center+edge,.02,n,.24,.03,3.8,curb)
+      if(world.environment!=='airfield') box('lane-dash',n,.02,center,1.8,.02,.1,paint)
+      for(const edge of world.environment==='airfield'?[-7.1,7.1]:[-4.6,4.6])box('curb-inlay',center+edge,.02,n,.24,.03,3.8,curb)
     }
   }
-  for (const x of world.roadCenters) for(const z of world.roadCenters)
+  if(world.environment==='airfield') for(const center of world.roadCenters)for(const end of [-1,1])for(let stripe=-5;stripe<=5;stripe+=2)
+    box('runway threshold',center+stripe,.025,end*(world.limit-10),.8,.02,9,paint)
+  if(world.environment !== 'airfield') for (const x of world.roadCenters) for(const z of world.roadCenters)
     for(let stripe=-3.6;stripe<=3.7;stripe+=1.2)for(const side of [-5.1,5.1])
       box('crosswalk',x+stripe,.025,z+side,.65,.015,1.5,paint)
-  const renderedSolids = MAP_SOLIDS.filter(s=>!detailedFurniture(s) && !['landmark-factory-crane','landmark-factory-hoist'].includes(s.id) && !s.id.startsWith('street-bench-') && !/hospital-bed-\d/.test(s.id))
+  const renderedSolids = MAP_SOLIDS.filter(s=>!detailedFurniture(s) && !detailedCampaignSolid(s) && !s.id.startsWith('aircraft-engine-') && !['landmark-factory-crane','landmark-factory-hoist'].includes(s.id) && !s.id.startsWith('street-bench-') && !/hospital-bed-\d/.test(s.id))
   const topSurfaces = solidTopSurfaces(renderedSolids)
   for (const solid of renderedSolids)
     box(
@@ -274,6 +284,33 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
       solidMaterial(solid),
       topSurfaces.get(solid.id),
     )
+
+  if (world.legacyRamp === false) for (const solid of MAP_SOLIDS) {
+    const {x,y,z,width:w,height:h,depth:d,id}=solid
+    if (/^(container-|rail-car-|port-cargo-trailer-|airfield-service-trailer-)/.test(id) && !id.includes('rib')) {
+      for(const side of [-1,1])for(let rib=-d/2+.3;rib<d/2;rib+=1.2)
+        box('cargo stiffener',x+side*(w/2+.015),y,z+rib,.045,h-.15,.055,palette.metal)
+      for(const side of [-1,1])box('cargo door lock',x+side*w*.22,y,z-d/2-.025,.055,h*.8,.055,palette.metal)
+    }
+    if (/^port-.*rack/.test(id)) {
+      for(const side of [-1,1])box('rack upright',x+side*(w/2-.07),y,z-d/2-.02,.14,h,.06,material('rack paint','#b9834c'))
+      for(let level=.15;level<h;level+=.95){
+        box('rack shelf',x,level,z-d/2-.025,w,.09,.07,material('rack paint','#b9834c'))
+        for(let col=-w/2+.5;col<w/2-.25;col+=.9)box('stored supply case',x+col,level+.4,z-d/2-.015,.75,.65,.045,freightPaint[Math.round(level)%freightPaint.length]!)
+      }
+    }
+    if (/terminal|signal-console|customs-desk/.test(id)) {
+      box('terminal display',x,y+h/2-.22,z-d/2-.025,Math.min(.6,w*.7),.32,.035,material('terminal screen','#4f998f'))
+      box('terminal keys',x,y+h/2-.46,z-d/2-.03,Math.min(.6,w*.7),.06,.04,palette.metal)
+    }
+    if (id.startsWith('medical-supplies')) {
+      const label=material('aid marking','#dfded0')
+      box('aid cross horizontal',x,y,z-d/2-.025,.6,.15,.04,label)
+      box('aid cross vertical',x,y,z-d/2-.03,.15,.6,.04,label)
+    }
+  }
+
+  campaignStructures(scene,world,box,material,staticMeshes)
 
   // Solid sloped wedge uses exactly the authoritative ramp's extent and height.
   if (world.legacyRamp !== false) {
@@ -359,17 +396,13 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   }
   for (const building of BUILDINGS) {
     if(building.id.startsWith('city-'))continue
-    if(building.height && building.height>4.5)continue
-    const doorSide = building.doors[0] === 'east' ? 1 : -1
-    sign(
-      building.name,
-      building.x + doorSide * (building.width / 2 + 0.23),
-      3.3,
-      building.z,
-      (-doorSide * Math.PI) / 2,
-      4.6,
-      0.7,
-    )
+    if(world.legacyRamp !== false && building.height && building.height>4.5)continue
+    const door = building.doors[0], horizontal = door === 'north' || door === 'south'
+    const doorSide = door === 'east' || door === 'north' ? 1 : -1
+    const doorX = building.x + (horizontal ? 0 : doorSide * (building.width / 2 + .23))
+    const doorZ = building.z + (horizontal ? doorSide * (building.depth / 2 + .23) : 0)
+    sign(building.name, doorX, (building.height ?? 3.8) > 5 ? 5.15 : 3.3, doorZ,
+      horizontal ? (doorSide > 0 ? Math.PI : 0) : (-doorSide * Math.PI) / 2, 4.6, .7)
     // Floor inset and contrasting entrance threshold help read the interiors.
     box(
       'interior-tile',
@@ -383,12 +416,12 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     )
     box(
       'entrance-threshold',
-      building.x + (doorSide * building.width) / 2,
+      doorX,
       0.025,
-      building.z,
-      0.7,
+      doorZ,
+      horizontal ? (building.doorWidth ?? 2.3) : .7,
       0.03,
-      2.3,
+      horizontal ? .7 : (building.doorWidth ?? 2.3),
       paint,
     )
   }
@@ -402,7 +435,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
       const instance = (tree ? assets.tree : assets.bench).instantiateModelsToScene(n => `${solid.id}:${n}`, false)
       const root = new TransformNode(`street-prop:${solid.id}`, scene)
       root.position.set(solid.x, tree ? solid.y + solid.height / 2 : 0, solid.z)
-      if (tree) root.rotation.y = solid.x * .71
+      if (tree) { root.rotation.y = solid.x * .71; if(world.environment==='forest')root.scaling.setAll(2.2) }
       for (const node of instance.rootNodes) node.parent = root
       for (const mesh of root.getChildMeshes()) {
         mesh.isPickable = false; mesh.receiveShadows = true; mesh.freezeWorldMatrix()

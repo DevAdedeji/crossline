@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import type { MissionWaypoint } from '~/game/campaignWaypoint'
-import { getCampaignMission, type CampaignState } from '@crossline/shared/campaign'
+import { activeCampaignTask, getMissionTasks, getCampaignMission, type CampaignState } from '@crossline/shared/campaign'
 import type { Combatant } from '@crossline/shared/combat'
 const props = defineProps<{ state: CampaignState; player?: Combatant; touch: boolean; heading: number; saved: boolean; waypoints: MissionWaypoint[] }>()
 const mission = computed(() => getCampaignMission(props.state.missionId))
-const objective = computed(() => props.state.waiting ? { ...mission.value.objectives.extract, title: `Return to ${mission.value.companion}`, position: props.state.captive } : mission.value.objectives[props.state.stage])
+const task = computed(() => activeCampaignTask(props.state))
+const tasks = computed(() => getMissionTasks(mission.value))
+const objective = computed(() => props.state.waiting ? { ...task.value, title: `Return to ${mission.value.companion}`, position: props.state.captive } : task.value)
 const distance = computed(() => props.player ? Math.round(Math.hypot(props.player.x-objective.value.position.x, props.player.z-objective.value.position.z)) : 0)
 const bearing = computed(() => props.player ? Math.atan2(objective.value.position.x-props.player.x, objective.value.position.z-props.player.z)*180/Math.PI-props.heading : 0)
 const grenade = computed(() => props.state.grenades.find(g => g.remainingMs > 0 && props.player && Math.hypot(g.target.x-props.player.x,g.target.z-props.player.z)<10))
-const progress = computed(() => Math.min(100, props.state.progressMs / (props.state.stage === 'extract' ? mission.value.extractMs : mission.value.interactMs) * 100))
+const progress = computed(() => Math.min(100, props.state.progressMs / task.value.durationMs * 100))
 </script>
 <template>
   <div v-for="point in waypoints" :key="point.id" class="mission-waypoint" :class="{ secondary: point.secondary, mobile: touch, edge: point.edge }"
@@ -18,14 +20,17 @@ const progress = computed(() => Math.min(100, props.state.progressMs / (props.st
       <path v-else d="M8 2H16L22 8V16L16 22H8L2 16V8Z" />
     </svg>
   </div>
-  <section class="mission-hud" :class="{ mobile: touch }" aria-label="Mission objective" :data-stage="state.stage">
-    <div class="objective-heading"><span>CHAPTER {{ mission.chapter }} / {{ state.stage === 'relay' ? '01' : state.stage === 'rescue' ? '02' : '03' }} OF 03</span><span><i :style="{ transform: `rotate(${bearing}deg)` }">↑</i> {{ distance }} m</span></div>
+  <section class="mission-hud" :class="{ mobile: touch }" aria-label="Mission objective" :data-stage="state.stage" :data-objective="task.id">
+    <div class="objective-heading"><span>CHAPTER {{ mission.chapter }} / {{ (state.operation?.index ?? (state.stage === 'relay' ? 0 : state.stage === 'rescue' ? 1 : 2)) + 1 }} OF {{ tasks.length }}</span><span><i :style="{ transform: `rotate(${bearing}deg)` }">↑</i> {{ distance }} m</span></div>
     <strong>{{ objective.title }}</strong>
     <p v-if="state.waiting" class="waiting">{{ mission.companion }} is waiting. Return to them to continue.</p>
     <p v-else-if="state.following">{{ mission.companion }} is following · Keep within 18 m</p>
-    <p v-else>{{ mission.objectives[state.stage].instruction }}</p>
+    <p v-else>{{ task.instruction }}</p>
+    <p v-if="state.operation?.enemiesRemaining" class="waiting">{{ state.operation.enemiesRemaining }} marked enemies remaining</p>
+    <p v-if="state.operation?.contested" class="waiting">ZONE CONTESTED · Eliminate nearby hostiles</p>
+    <p v-if="task.timeLimitMs && state.operation" class="deadline" role="timer">DEVICE TIMER {{ Math.floor(Math.ceil(state.operation.remainingMs / 1000) / 60) }}:{{ String(Math.ceil(state.operation.remainingMs / 1000) % 60).padStart(2, '0') }}</p>
     <div v-if="state.progressMs > 0" class="progress" role="progressbar" aria-label="Objective progress" :aria-valuenow="Math.round(progress)" aria-valuemin="0" aria-valuemax="100"><i :style="{ width: `${progress}%` }" /></div>
-    <p v-if="state.progressMs > 0 && state.stage === 'extract'">{{ mission.kind === 'sabotage' ? 'Detonation' : 'Extraction' }} in {{ Math.ceil((mission.extractMs-state.progressMs)/1000) }}s</p>
+    <p v-if="state.progressMs > 0 && (task.kind === 'extract' || task.kind === 'defend')">{{ task.kind === 'defend' ? 'Hold remaining' : 'Extraction in' }} {{ Math.ceil((task.durationMs-state.progressMs)/1000) }}s</p>
     <p v-if="!saved" class="waiting">Device storage unavailable. This checkpoint lasts until you leave.</p>
   </section>
   <div v-if="grenade" class="grenade-warning" :class="{ mobile: touch }" role="alert">GRENADE · MOVE TO COVER <span>{{ (grenade.remainingMs/1000).toFixed(1) }}s</span></div>
@@ -35,6 +40,7 @@ const progress = computed(() => Math.min(100, props.state.progressMs / (props.st
   </div>
 </template>
 <style scoped>
+.deadline{color:#ff9f88!important;font-weight:700;letter-spacing:.08em}
 .grenade-warning{position:absolute;top:30%;left:50%;transform:translateX(-50%);padding:8px 12px;background:#481f20e8;border:1px solid #ff8971;border-radius:4px;color:#ffd4c8;font:bold 11px Arial;pointer-events:none;z-index:5}.grenade-warning span{margin-left:10px}.grenade-warning.mobile{top:38%;font-size:9px;padding:6px 8px}
 .mission-waypoint{position:absolute;transform:translate(-50%,-50%);z-index:4;pointer-events:none;color:#ffce87;opacity:.8}.waypoint-icon{display:block;width:24px;height:24px;overflow:visible;filter:drop-shadow(0 1px 2px #000)}.waypoint-icon path{stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}.mission-waypoint.secondary{color:#9be4cd;opacity:.65}.mission-waypoint.secondary .waypoint-icon,.mission-waypoint.mobile .waypoint-icon{width:20px;height:20px}
 

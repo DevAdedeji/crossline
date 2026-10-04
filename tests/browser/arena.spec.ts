@@ -69,6 +69,8 @@ test('real mouse target practice, reload, pause, results, replay and exit', asyn
   await page.goto('/')
   await expect(page.locator('main.lobby')).toHaveAttribute('data-ready','true')
   await page.keyboard.press('ArrowRight')
+  await expect(page.getByRole('button', {name:'Solo vs Bots',exact:true})).toBeFocused()
+  await page.keyboard.press('ArrowRight')
   await expect(
     page.getByRole('button', { name: 'Online Free-for-All' }),
   ).toBeFocused()
@@ -149,7 +151,7 @@ test('standard controller can play, aim/fire/reload, turn 360, pause/menu and di
   await padSetup(page)
   await page.goto('/')
   await expect(page.getByTestId('menu-controller')).toContainText('GAMEPAD CONNECTED')
-  await pulse(page,13);await pulse(page,13)
+  await pulse(page,13);await pulse(page,13);await pulse(page,13)
   await pulse(page, 0)
   await expect(page).toHaveURL('/play')
   await connected(page)

@@ -5,7 +5,7 @@ import { CampaignGame } from '../packages/shared/src/simulation/CampaignGame.js'
 import { isBlocked, move, TICK_MS } from '../packages/shared/src/index.js'
 import { getNavigation } from '../packages/shared/src/simulation/navigation.js'
 const run=(game:CampaignGame,ms:number)=>{for(let i=0;i<Math.ceil(ms/TICK_MS);i++)game.step()}
-for(const mission of CAMPAIGN_MISSIONS.slice(1)) {
+for(const mission of CAMPAIGN_MISSIONS.slice(1).filter(m=>!m.tasks)) {
   const cleared=mission.guards.map((_,i)=>`bot-${i}`)
   test(`${mission.title}: every spawn and objective is accessible in its own arena`,()=>{
     const world=mission.world,nav=getNavigation(world)

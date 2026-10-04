@@ -379,6 +379,12 @@ export class TrainingGame {
     }
   }
 
+  protected investigate(ids: readonly string[], position: Position) {
+    for (const id of ids) {
+      const memory = this.memories.get(id)
+      if (memory) { memory.lastSeen = {...position}; memory.lastSeenId=undefined; memory.seenAt=this.elapsed; memory.nextPlan=0 }
+    }
+  }
   private canSee(bot: Combatant, target: Combatant): boolean {
     const dx = target.x - bot.x, dz = target.z - bot.z
     const distance = Math.hypot(dx, dz)
