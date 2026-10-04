@@ -164,34 +164,37 @@ onBeforeUnmount(() => {
         <button data-ui-action class="border border-white/25 px-3 py-2 transition hover:border-[#ffb15c] focus-visible:outline-2 focus-visible:outline-[#ffb15c]" @click="showControls = true">CONTROLS</button>
       </div>
     </header>
-    <section class="lobby-content">
-      <div class="lobby-heading">
-        <p class="lobby-eyebrow"><span /> MERCER DISTRICTS · URBAN COMBAT</p>
-        <h1>Every angle.<br /><em>Your arena.</em></h1>
-        <p class="lobby-intro">Take the rooftops. Hold your ground. Make your next move count.</p>
-      </div>
-      <div class="mode-picker">
-        <div class="section-caption"><span>CHOOSE YOUR MODE</span><span>01 — 03</span></div>
-        <nav aria-label="Game modes" class="mode-grid">
-          <button v-for="(mode, index) in modes" :id="`mode-${mode.id}`" :key="mode.id"
-            class="mode-card" :class="{ 'is-selected': active === index }"
-            :aria-label="mode.title" :aria-pressed="active === index" @focus="setFocus(index)" @click="setFocus(index)">
-            <span class="mode-top"><span>{{ mode.number }}</span><span class="mode-check" aria-hidden="true">{{ active === index ? '●' : '○' }}</span></span>
-            <strong>{{ mode.title }}</strong>
-            <span class="mode-players">{{ mode.players }}</span>
-            <span class="mode-description">{{ mode.description }}</span>
-          </button>
-        </nav>
-        <div class="launch-row">
-          <label class="callsign-field">{{ account ? 'GUEST CALLSIGN' : 'YOUR CALLSIGN' }}<input v-model="callsign" data-ui-action maxlength="16" placeholder="OPERATOR" aria-label="Nickname" /></label>
-          <p class="launch-note">{{ selected.id === 'online' ? 'A shared arena. Every player for themselves.' : selected.id === 'solo' ? 'Your next personal best starts here.' : 'Find your aim. Learn the streets.' }}</p>
-          <button data-ui-action class="play-button" :disabled="launching" @click="selectMode(active)">Play {{ selected.title }} <span aria-hidden="true">↗</span></button>
-        </div>
-        <p v-if="message" role="status" class="launch-message">{{ message }}</p>
+    <section class="flex w-full flex-1 flex-col justify-center px-6 py-10 sm:px-12 lg:max-w-[720px] lg:px-16">
+      <p class="mb-3 text-[11px] font-bold tracking-[.35em] text-[#ffb15c]">PLAY / MERCER BLOCK</p>
+      <h1 class="display-type mb-8 text-5xl leading-none font-black uppercase tracking-[-.035em] sm:text-7xl">Choose your<br />battleground.</h1>
+      <label class="callsign-field mb-5 flex flex-wrap items-center gap-3 text-xs tracking-widest text-white/65">GUEST NICKNAME
+        <input v-model="callsign" data-ui-action maxlength="16" placeholder="OPERATOR" class="min-w-0 max-w-full border border-white/25 bg-black/40 px-3 py-2 text-white" aria-label="Nickname" />
+      </label>
+      <nav aria-label="Game modes" class="space-y-1">
+        <button v-for="(mode, index) in modes" :id="`mode-${mode.id}`" :key="mode.id"
+          class="group relative flex w-full items-center gap-5 border-l-4 px-5 py-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[#ffb15c]"
+          :class="[active === index ? 'border-[#ffb15c] bg-white/10' : 'border-transparent bg-black/10 hover:bg-white/5', mode.id === 'training' ? 'practice-option' : '']"
+          :aria-label="mode.available ? mode.title : `${mode.title} — in development`"
+          :aria-pressed="active === index" @mousemove="setFocus(index)" @focus="setFocus(index)" @click="selectMode(index)">
+          <span class="text-xs tabular-nums text-white/35">{{ mode.number }}</span>
+          <span class="flex-1"><strong class="display-type block text-2xl leading-none font-black uppercase tracking-wide sm:text-3xl">{{ mode.title }}</strong>
+            <span class="mt-2 block text-[10px] tracking-[.2em] text-white/45">{{ mode.players }}</span></span>
+          <span v-if="!mode.available" class="text-[9px] tracking-widest text-white/40">COMING LATER</span>
+          <span v-else class="text-xl" :class="active === index ? 'text-[#ffb15c]' : 'text-white/25'">↗</span>
+        </button>
+      </nav>
+      <div class="mt-6 min-h-[105px] border-t border-white/15 pt-5">
+        <p class="mb-4 max-w-md text-sm leading-relaxed text-white/65">{{ selected.description }}</p>
+        <p v-if="message" role="status" class="mt-3 text-xs text-[#ffb15c]">{{ message }}</p>
       </div>
     </section>
+    <div class="pointer-events-none absolute right-12 bottom-28 hidden text-right lg:block">
+      <p class="text-[10px] tracking-[.3em] text-white/50">URBAN COMBAT / LOCAL OPERATIONS</p>
+      <p class="display-type mt-2 text-4xl font-black tracking-tight">MERCER BLOCK</p>
+      <div class="mt-3 ml-auto h-px w-28 bg-[#ffb15c]" />
+    </div>
     <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-6 py-4 text-[10px] font-bold tracking-[.1em] text-white/50 sm:px-12">
-      <span v-if="controlsReady && touchDevice">CHOOSE A MODE · TAP PLAY</span>
+      <span v-if="controlsReady && touchDevice">TAP A MODE TO PLAY</span>
       <span v-else-if="controlsReady">← → / D-PAD SELECT <span class="mx-3 text-white/20">|</span> ENTER / A / × PLAY</span>
       <div class="flex gap-6"><button data-ui-action @click="loadLeaders">LEADERBOARD</button><span v-if="controlsReady && !touchDevice" data-testid="menu-controller">{{ controller }}</span><NuxtLink to="/credits" class="hover:text-white">CREDITS</NuxtLink></div>
     </footer>
@@ -212,17 +215,9 @@ onBeforeUnmount(() => {
   </main>
 </template>
 <style scoped>
-.display-type,.brand-word{font-family:'Arial Narrow','Helvetica Neue',Arial,sans-serif;font-stretch:condensed}
-.lobby{color:var(--cl-text);background:var(--cl-bg)}
-.lobby-content{width:100%;max-width:1440px;margin:auto;flex:1;display:flex;flex-direction:column;justify-content:center;gap:42px;padding:48px 64px}
-.lobby-heading{max-width:680px}.lobby-eyebrow{display:flex;align-items:center;gap:9px;color:var(--cl-accent);font-size:11px;letter-spacing:.12em;font-weight:700}.lobby-eyebrow span{width:6px;height:6px;background:var(--cl-accent);border-radius:50%}
-h1{font-size:clamp(44px,6.5vw,88px);font-weight:850;letter-spacing:-.055em;line-height:.98;margin:22px 0}h1 em{font-style:normal;color:var(--cl-accent)}.lobby-intro{color:#d4d8d8;font-size:15px;line-height:1.6;max-width:390px}
-.mode-picker{width:100%}.section-caption{display:flex;justify-content:space-between;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--cl-muted);margin-bottom:12px}.section-caption span:last-child{opacity:.55}
-.mode-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.mode-card{position:relative;display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:14px;padding:22px;border:1px solid var(--cl-line);border-radius:8px;background:#111519d9;backdrop-filter:blur(12px);transition:border-color .15s,background .15s;min-width:0}.mode-card:hover{background:#242a2fe8;border-color:#ffffff66}.mode-card.is-selected{border-color:var(--cl-accent);background:linear-gradient(140deg,#443529e8,#1c2024f5);box-shadow:inset 0 3px var(--cl-accent)}.mode-top{display:flex;justify-content:space-between;width:100%;color:var(--cl-muted);font-size:11px}.mode-check{color:var(--cl-accent)}.mode-card strong{font-size:clamp(18px,2.2vw,28px);font-weight:750;letter-spacing:-.035em}.mode-players{font-size:10px;font-weight:650;color:var(--cl-accent);letter-spacing:.025em}.mode-description{font-size:12px;line-height:1.6;color:var(--cl-muted);max-width:330px}
-.launch-row{display:flex;align-items:center;gap:24px;margin-top:22px}.callsign-field{font-size:9px;letter-spacing:.09em;color:var(--cl-muted);width:180px;flex-shrink:0}.callsign-field input{display:block;width:100%;border-bottom:1px solid #ffffff50;margin-top:5px;padding:8px 0;font-size:14px;font-weight:600;letter-spacing:.04em;color:var(--cl-text);background:transparent}.launch-note{font-size:12px;color:var(--cl-muted);flex:1}.play-button{display:flex;justify-content:space-between;align-items:center;gap:32px;min-width:245px;padding:18px 22px;border-radius:6px;background:var(--cl-accent);color:#17191c;font-size:15px;font-weight:750;box-shadow:0 5px 28px #0003}.play-button:hover{background:#ffd19d}.play-button:disabled{opacity:.6}.play-button span{font-size:23px;line-height:1}.launch-message{color:var(--cl-accent);margin-top:12px;font-size:13px}
-.lobby-scene{background:#162026 url('/images/mercer-menu.jpg') center/cover}
-@media(min-width:761px) and (max-height:850px) and (min-height:551px){.lobby-content{padding:24px 48px;gap:24px}h1{font-size:clamp(48px,5vw,68px);margin:14px 0}.lobby-intro{max-width:none;font-size:13px}.mode-card{padding:18px;gap:10px}.launch-row{margin-top:16px}.play-button{padding:14px 20px}}
-@media(max-width:760px){.lobby-content{padding:30px 24px;gap:30px}.mode-card{padding:16px;gap:12px}.mode-description{display:none}.mode-card strong{font-size:19px}.mode-players{font-size:9px;line-height:1.5}.launch-row{flex-wrap:wrap;gap:20px}.launch-note{display:none}.play-button{flex:1;min-width:200px}.callsign-field{width:130px}.lobby-intro{font-size:13px}.lobby-eyebrow{font-size:9px}}
-@media(max-width:480px){.mode-grid{grid-template-columns:1fr}.mode-card{display:grid;grid-template-columns:22px 1fr;gap:7px 12px;padding:16px}.mode-top{grid-row:1/3;display:block}.mode-check{display:none}.mode-card strong{font-size:22px}.mode-players{grid-column:2}.launch-row{gap:14px}.play-button{width:100%;flex-basis:100%}.callsign-field{width:100%}}
-@media(max-height:550px) and (orientation:landscape){.lobby>header,.lobby>footer{padding:10px 24px}.lobby-content{padding:18px 24px;gap:18px}.lobby-heading{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;max-width:none;align-items:center}.lobby-eyebrow{grid-column:1/-1;font-size:9px}h1{font-size:34px;margin:4px 0}h1 br{display:none}h1 em{margin-left:8px}.lobby-intro{font-size:12px}.mode-card{padding:12px 16px;gap:8px}.mode-description{display:none}.mode-card strong{font-size:20px}.mode-top{display:none}.mode-players{font-size:9px}.section-caption{margin-bottom:8px;font-size:9px}.launch-row{margin-top:12px;gap:20px}.callsign-field input{padding:4px 0}.play-button{padding:12px 18px;min-width:215px;font-size:13px}.launch-note{font-size:11px}.lobby>footer{font-size:9px}}
+.display-type, .brand-word { font-family: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; font-stretch: condensed; }
+.practice-option { margin-top: 1rem; padding-block: .8rem; opacity: .8; }
+.practice-option strong { font-size: 1.15rem; }
+@media(max-height:500px) and (orientation:landscape) { .lobby header,.lobby footer { padding-block:.55rem; } .lobby section { padding-block:1rem; } .lobby h1 { font-size:2rem; margin-bottom:.8rem; } .lobby nav button { padding-block:.65rem; } .lobby nav strong { font-size:1.2rem; } }
+.lobby-scene { background: linear-gradient(130deg, #162026, #303c3e 55%, #171e21); background-image: url('/images/mercer-menu.jpg'); background-position: center; background-size: cover; }
 </style>

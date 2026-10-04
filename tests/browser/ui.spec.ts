@@ -1,16 +1,20 @@
 import { test, expect } from '@playwright/test'
 
-test('mode selection stays in the lobby until Play and shows one primary action', async ({ page }, info) => {
+test('classic mode list keeps the callsign above it and launches directly', async ({ page }, info) => {
   await page.goto('/')
   await expect(page.locator('main.lobby')).toHaveAttribute('data-ready', 'true')
-  await page.getByRole('button', { name: 'Practice', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Choose your battleground.' })).toBeVisible()
+  const nickname = page.getByRole('textbox', { name: 'Nickname' })
+  await nickname.fill('CLASSIC')
+  const field = (await nickname.boundingBox())!
+  const modes = (await page.getByRole('navigation', { name: 'Game modes' }).boundingBox())!
+  expect(field.y + field.height).toBeLessThan(modes.y)
+  await page.getByRole('button', { name: 'Practice', exact: true }).hover()
   await expect(page).toHaveURL('/')
   await expect(page.getByRole('button', { name: 'Practice', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.locator('.play-button')).toHaveCount(1)
-  await expect(page.locator('.play-button')).toHaveText(/Play Practice/)
   await page.evaluate(() => window.scrollTo(0, 0))
   await page.screenshot({ path: info.outputPath('desktop-lobby.png'), animations: 'disabled' })
-  await page.getByRole('button', { name: 'Play Practice', exact: true }).click()
+  await page.getByRole('button', { name: 'Practice', exact: true }).click()
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase', 'playing', { timeout: 30000 })
   const box = (await page.locator('.radar').getAttribute('viewBox'))!.split(' ').map(Number)
   expect(box[2]).toBe(56)
@@ -32,7 +36,7 @@ test('touch preferences persist and largest controls fit a small landscape phone
     await page.goto('http://127.0.0.1:3001/')
     await page.screenshot({ path: info.outputPath('phone-lobby.png') })
     await page.setViewportSize({ width: 390, height: 844 })
-    await expect(page.getByRole('button', { name: 'Play Solo vs Bots', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Solo vs Bots', exact: true })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await expect(page.locator('main.lobby')).toHaveCount(1)
     await page.screenshot({ path: info.outputPath('portrait-lobby.png') })
@@ -47,7 +51,6 @@ test('touch preferences persist and largest controls fit a small landscape phone
     await expect(page.getByRole('slider', { name: 'Touch control opacity' })).toHaveValue('45')
     await page.getByRole('button', { name: 'CLOSE', exact: true }).tap()
     await page.getByRole('button', { name: 'Practice', exact: true }).tap()
-    await page.getByRole('button', { name: 'Play Practice', exact: true }).tap()
     await expect(page.getByRole('button', { name: 'Fire', exact: true })).toBeVisible({ timeout: 30000 })
     await expect(page.locator('.touch-controls')).toHaveCSS('--touch-scale', '1.2')
     await expect(page.locator('.touch-controls')).toHaveCSS('--touch-opacity', '0.45')

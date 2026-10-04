@@ -57,19 +57,19 @@ for(const scenario of [{width:667,height:375,mode:'training'},{width:932,height:
  }finally{await context.close()}
 })
 
-test('phone Play launches Solo directly, unlocks audio and replays without another Start',async({browser},info)=>{
+test('phone mode tap launches Solo directly, unlocks audio and replays without another Start',async({browser},info)=>{
  const context=await browser.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true,deviceScaleFactor:2}),page=await context.newPage()
  try{
   await page.addInitScript(()=>{const Original=window.AudioContext;const contexts:AudioContext[]=[];(window as unknown as {testAudio:AudioContext[]}).testAudio=contexts;window.AudioContext=class extends Original{constructor(options?:AudioContextOptions){super(options);contexts.push(this)}}})
   await page.goto('http://127.0.0.1:3001/');await page.getByRole('textbox',{name:'Nickname'}).fill('MOBILE')
   await expect(page.getByTestId('menu-controller')).toHaveCount(0)
-  await expect(page.getByText('CHOOSE A MODE · TAP PLAY',{exact:true})).toBeVisible()
+  await expect(page.getByText('TAP A MODE TO PLAY',{exact:true})).toBeVisible()
   await page.getByRole('button',{name:'CONTROLS',exact:true}).tap()
   const guide=page.getByRole('dialog',{name:'Controls'})
   await expect(guide).toContainText('Swipe the right side')
   await expect(guide).not.toContainText(/controller|WASD|Xbox|PlayStation/i)
   await guide.getByRole('button',{name:'CLOSE',exact:true}).tap()
-  await page.getByRole('button',{name:'Solo vs Bots',exact:true}).tap();await page.getByRole('button',{name:'Play Solo vs Bots',exact:true}).tap()
+  await page.getByRole('button',{name:'Solo vs Bots',exact:true}).tap()
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing',{timeout:30000})
   await expect(page.getByRole('button',{name:'Fire',exact:true})).toBeVisible()
   await expect(page.getByTestId('timer')).toContainText(/4:5|5:00/)

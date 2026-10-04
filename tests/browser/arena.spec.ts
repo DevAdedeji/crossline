@@ -73,7 +73,7 @@ test('real mouse target practice, reload, pause, results, replay and exit', asyn
     page.getByRole('button', { name: 'Online Free-for-All' }),
   ).toBeFocused()
   await page.keyboard.press('ArrowRight')
-  await page.getByRole('button', { name: 'Practice', exact: true }).click();await page.getByRole('button',{name:'Play Practice',exact:true}).click()
+  await page.getByRole('button', { name: 'Practice', exact: true }).click()
   await connected(page)
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
   const initial = await page.getByTestId('position').innerText()
@@ -464,7 +464,7 @@ test('Solo is a separate combat match with damage, pause, personal results and r
   page.on('pageerror', error => errors.push(error.message))
   await padSetup(page)
   await page.goto('/')
-  await page.getByRole('button', { name: 'Solo vs Bots', exact: true }).click();await page.getByRole('button',{name:'Play Solo vs Bots',exact:true}).click()
+  await page.getByRole('button', { name: 'Solo vs Bots', exact: true }).click()
   await connected(page, 13)
   await expect(page.locator('main.arena')).toHaveAttribute('data-mode', 'solo')
   await pulse(page, 0)

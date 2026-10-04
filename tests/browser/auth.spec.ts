@@ -3,7 +3,7 @@ import { createTestAccount, TEST_PASSWORD } from '../../scripts/test-account'
 test('compact signup immediately launches Online, persists login and logs out without exposing email',async({page},info)=>{
  test.setTimeout(60000)
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
- await page.goto('/');await page.getByRole('button',{name:'Online Free-for-All',exact:true}).click();await page.getByRole('button',{name:'Play Online Free-for-All',exact:true}).click()
+ await page.goto('/');await page.getByRole('button',{name:'Online Free-for-All',exact:true}).click()
  const dialog=page.getByRole('dialog',{name:'Online account'});await expect(dialog).toBeVisible()
  await page.getByRole('button',{name:'New here? Create an account'}).click()
  await page.getByRole('textbox',{name:'Username',exact:true}).fill('AuthPlayer')
@@ -16,7 +16,7 @@ test('compact signup immediately launches Online, persists login and logs out wi
  expect(await page.locator('body').innerText()).not.toContain('authplayer@example.test')
  await page.keyboard.press('Escape');await page.getByRole('button',{name:'Return to menu',exact:true}).click()
  await page.getByRole('button',{name:'authplayer · LOG OUT'}).click()
- await page.getByRole('button',{name:'Online Free-for-All',exact:true}).click();await page.getByRole('button',{name:'Play Online Free-for-All',exact:true}).click();await expect(dialog).toBeVisible()
+ await page.getByRole('button',{name:'Online Free-for-All',exact:true}).click();await expect(dialog).toBeVisible()
  await page.getByRole('textbox',{name:'Email',exact:true}).fill('authplayer@example.test');await page.getByLabel('Password',{exact:true}).fill('Incorrect-Test-Password')
  await page.getByRole('button',{name:'LOG IN & PLAY',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Unable to continue')
  await page.getByLabel('Password',{exact:true}).fill(TEST_PASSWORD);await page.getByRole('button',{name:'LOG IN & PLAY',exact:true}).click()
