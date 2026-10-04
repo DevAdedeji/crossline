@@ -16,8 +16,7 @@ onmessage=({data})=>{
  }else if(game){
   if(data.type==='input')game.acceptInput(data.value)
   else if(data.type==='action'){
-   if(game instanceof CampaignGame && (data.value==='interact-start'||data.value==='interact-stop'))game.interact(data.value==='interact-start')
-   else if(data.value==='start')game.start()
+   if(data.value==='start')game.start()
    else if(data.value==='pause')game.pause()
    else if(data.value==='reload')game.reload(game.humanId)
    else if(data.value==='finish'&&game.phase!=='ready')game.finish()

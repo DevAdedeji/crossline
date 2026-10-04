@@ -6,13 +6,15 @@ import { CAMPAIGN_WORLD, CAMPAIGN_GUARDS, EXTRACTION_MISSION as mission, parseCa
 /** Mission rules stay in the simulation, never in UI proximity checks. */
 export class CampaignGame extends TrainingGame {
   campaign: CampaignState
-  private interacting = false
   private escortPath: Position[] = []
   private nextEscortPlan = 0
   constructor(id: string, progress: unknown = undefined, random: () => number = Math.random) {
     super(id, 0, random, 'solo', {
+      botProfile: { sightRange: 68, nearAwareness: 28, halfFov: 2.1, reactionMs: 550, reactionJitterMs: 200,
+        shotIntervalMs: 600, burstShots: 3, burstRestMs: 1100, burstRestJitterMs: 350,
+        maxAttackers: 3, bodyDamage: 8, headDamage: 12, damageGraceMs: 650, searchMs: 9000, patrolRadius: 12 },
       world: CAMPAIGN_WORLD, spawns: [mission.spawn, ...CAMPAIGN_GUARDS], botCount: CAMPAIGN_GUARDS.length, respawn: false,
-      healthPacks: [{ id: 'relay-supplies', x: 3, y: 0, z: 26, availableAt: 0 }, { id: 'south-supplies', x: -24, y: 0, z: -28, availableAt: 0 }],
+      healthPacks: [{ id: 'relay-supplies', x: 3, y: 0, z: 26, availableAt: 0 }, { id: 'south-supplies', x: -24, y: 0, z: -28, availableAt: 0 }, { id: 'office-supplies', x: 56, y: 0, z: 44, availableAt: 0 }, { id: 'west-supplies', x: -50, y: 0, z: -48, availableAt: 0 }],
     })
     const save = parseCampaignProgress(progress)
     this.campaign = { stage: save.checkpoint, checkpoint: save.checkpoint, outcome: 'active', progressMs: 0, canInteract: false,
@@ -26,7 +28,7 @@ export class CampaignGame extends TrainingGame {
     state.progressMs = 0; state.canInteract = false; state.following = save.checkpoint === 'extract'; state.waiting = false
     state.captive = { ...mission.captive, yaw: Math.PI }
     state.radio = state.following ? 'FINCH: I’m with you. Keep me close and get us to the vehicle.' : state.stage === 'rescue' ? 'CONTROL: Alarm is down. Finch is inside the relay office.' : 'CONTROL: Get to the relay. Finch is counting on us.'
-    this.interacting = false; this.escortPath = []; this.nextEscortPlan = 0
+    this.escortPath = []; this.nextEscortPlan = 0
     this.elapsed = save.elapsedMs ?? 0
     const spawn = state.stage === 'extract' ? mission.escortSpawn : state.stage === 'rescue' ? mission.rescueSpawn : mission.spawn
     Object.assign(this.actors.get(this.humanId)!, spawn, { protectedUntil: this.elapsed + 4000, yaw: 0 })
@@ -37,19 +39,17 @@ export class CampaignGame extends TrainingGame {
     super.restart()
     this.restoreCheckpoint()
   }
-  override pause() { this.interacting = false; this.campaign.progressMs = 0; super.pause() }
+  override pause() { this.campaign.progressMs = 0; super.pause() }
   override finish() {
     this.campaign.outcome = 'failed'
     this.campaign.radio = 'CONTROL: Operation aborted. Your last checkpoint is available.'
     super.finish()
   }
-  interact(held: boolean) { this.interacting = this.phase === 'playing' && held }
   private checkpoint(stage: CampaignState['stage']) {
     const state = this.campaign
     state.stage = stage; state.checkpoint = stage; state.progressMs = 0; state.canInteract = false
     state.save = { ...state.save, checkpoint: stage, elapsedMs: this.elapsed,
       cleared: [...this.actors.values()].filter(a => a.bot && a.health <= 0).map(a => a.id) }
-    this.interacting = false
   }
   private near(point: Position, target: Position, radius: number) {
     if (Math.abs(point.y - target.y) > 1 || Math.hypot(point.x-target.x, point.z-target.z) > radius) return false
@@ -63,8 +63,8 @@ export class CampaignGame extends TrainingGame {
     if (player.health <= 0) { this.finish(); state.radio = 'CONTROL: We lost contact. Regroup at the last checkpoint.'; return }
     if (state.stage !== 'extract') {
       const target = state.stage === 'relay' ? mission.relay : mission.captive
-      state.canInteract = this.near(player, target, 2.8)
-      state.progressMs = state.canInteract && this.interacting ? state.progressMs + dt : 0
+      state.canInteract = this.near(player, target, mission.interactionRadius)
+      state.progressMs = state.canInteract ? state.progressMs + dt : 0
       if (state.progressMs >= mission.interactMs) {
         if (state.stage === 'relay') { this.checkpoint('rescue'); state.radio = 'CONTROL: Alarm disabled. Checkpoint saved. Find Finch in the relay office.' }
         else { this.checkpoint('extract'); state.following = true; state.radio = 'FINCH: You came back for me. Lead the way. I’ll follow you to extraction.' }
@@ -90,7 +90,7 @@ export class CampaignGame extends TrainingGame {
         }
       }
     } else this.escortPath = []
-    const extracting = this.near(player, mission.extraction, 5) && this.near(state.captive, mission.extraction, 5)
+    const extracting = this.near(player, mission.extraction, mission.extractionRadius) && this.near(state.captive, mission.extraction, mission.extractionRadius)
     state.progressMs = extracting ? state.progressMs + dt : 0
     if (state.progressMs >= mission.extractMs) {
       state.outcome = 'success'; state.radio = mission.debrief

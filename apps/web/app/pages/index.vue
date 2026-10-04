@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
       <div class="flex items-center gap-5 text-[11px] font-bold tracking-[.2em] text-white/65">
         <button v-if="account" data-ui-action @click="logout">{{ account.username }} · LOG OUT</button>
         <span v-else class="hidden sm:block"><i class="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#bed496]" />LOCAL OPERATOR</span>
-        <button data-ui-action class="border border-white/25 px-3 py-2 transition hover:border-[#ffb15c] focus-visible:outline-2 focus-visible:outline-[#ffb15c]" @click="showControls = true">CONTROLS</button>
+        <button data-ui-action class="border border-[#ffb15c] bg-[#ffb15c] px-3 py-2 font-bold text-[#17191c] transition hover:bg-[#ffc584] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#ffb15c]" @click="showControls = true">CONTROLS</button>
       </div>
     </header>
     <section class="flex w-full flex-1 flex-col justify-center px-6 py-10 sm:px-12 lg:max-w-[720px] lg:px-16">

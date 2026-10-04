@@ -8,26 +8,28 @@ const cleared = CAMPAIGN_GUARDS.map((_, i) => `bot-${i}`)
 function run(game: CampaignGame, ms: number) { for(let i=0; i<Math.ceil(ms/TICK_MS); i++) game.step() }
 function quietGame(checkpoint = 'relay') { const game = new CampaignGame('human', { version:1, checkpoint, cleared, completed:false }, () => .5); game.start(); return game }
 
-test('Campaign requires ordered, uninterrupted interactions and rejects interaction through cover', () => {
+test('Campaign circles interact automatically, preserve objective order and reject interaction through cover', () => {
   const game = quietGame(), player = game.actors.get('human')!
-  Object.assign(player, mission.captive); game.interact(true); run(game, 2500)
+  Object.assign(player, mission.captive); run(game, 2500)
   assert.equal(game.campaign.stage, 'relay')
-  Object.assign(player, { x:0, y:0, z:30.5 }); game.interact(true); run(game, 2500)
+  Object.assign(player, { x:0, y:0, z:30.5 }); run(game, 2500)
   assert.equal(game.campaign.canInteract, false)
-  Object.assign(player, mission.relay); game.interact(true); run(game, 1000)
+  Object.assign(player, mission.relay); run(game, 1000)
   assert.ok(game.campaign.progressMs > 0)
-  game.interact(false); game.step(); assert.equal(game.campaign.progressMs, 0)
-  game.interact(true); game.pause(); run(game, 3000); assert.equal(game.campaign.stage, 'relay')
-  game.start(); run(game, 2500); assert.equal(game.campaign.progressMs, 0)
-  game.interact(true); run(game, 2300); assert.equal(game.campaign.stage, 'rescue')
+  Object.assign(player, { x:0, y:0, z:22 }); game.step(); assert.equal(game.campaign.progressMs, 0)
+  Object.assign(player, mission.relay)
+  game.pause(); run(game, 3000); assert.equal(game.campaign.stage, 'relay')
+  assert.equal(game.campaign.progressMs, 0)
+  game.start()
+  run(game, 2300); assert.equal(game.campaign.stage, 'rescue')
   assert.equal(game.campaign.save.checkpoint, 'rescue')
-  Object.assign(player, mission.captive); game.interact(true); run(game,2300)
+  Object.assign(player, mission.captive); run(game,2300)
   assert.equal(game.campaign.stage, 'extract'); assert.equal(game.campaign.following, true)
 })
 
 test('Campaign death restores the saved checkpoint, cleared guards and elapsed time without auto-respawning', () => {
   const game = quietGame(), player = game.actors.get('human')!
-  Object.assign(player, mission.relay); game.interact(true); run(game,2300)
+  Object.assign(player, mission.relay); run(game,2300)
   const saved = structuredClone(game.campaign.save)
   player.health = 0; game.step()
   assert.equal(game.phase, 'finished'); assert.equal(game.campaign.outcome, 'failed')
@@ -35,7 +37,7 @@ test('Campaign death restores the saved checkpoint, cleared guards and elapsed t
   game.restart(); assert.equal(game.phase, 'ready'); assert.equal(game.campaign.stage,'rescue')
   assert.equal(game.actors.get('human')!.health,100)
   assert.equal(game.elapsed,saved.elapsedMs)
-  assert.deepEqual([...game.actors.values()].filter(a=>a.bot).map(a=>a.health),Array(7).fill(0))
+  assert.deepEqual([...game.actors.values()].filter(a=>a.bot).map(a=>a.health),Array(CAMPAIGN_GUARDS.length).fill(0))
   const resumed = new CampaignGame('returning', saved)
   assert.equal(resumed.campaign.stage, 'rescue'); assert.equal(resumed.actors.get('returning')!.z,mission.rescueSpawn.z)
 })
@@ -93,4 +95,36 @@ test('Campaign guards use combat AI and stay eliminated instead of practice beha
   assert.ok(guard.shots > 0);assert.ok(human.health < 100)
   guard.health = 0;guard.respawnUntil=game.elapsed;run(game,7000)
   assert.equal(guard.health,0)
+})
+
+test('Campaign guards detect a silent player from the side and behind before the player fires', () => {
+  for (const yaw of [0,Math.PI/2]) {
+    const game = new CampaignGame('human', undefined, () => .5)
+    const human=game.actors.get('human')!, guard=game.actors.get('bot-0')!
+    for(const actor of game.actors.values()) if(actor.bot && actor !== guard) actor.health=0
+    Object.assign(human,{x:0,y:0,z:-30,protectedUntil:0})
+    Object.assign(guard,{x:0,y:0,z:-20,yaw,protectedUntil:0})
+    game.start();run(game,3000)
+    assert.equal(human.shots,0)
+    assert.ok(guard.shots>0,`guard ignored silent player with yaw ${yaw}`)
+    assert.ok(human.health<100)
+  }
+})
+
+test('Campaign awareness still respects walls and initial player protection', () => {
+  const game=new CampaignGame('human',undefined,()=>.5), human=game.actors.get('human')!, guard=game.actors.get('bot-0')!
+  for(const actor of game.actors.values()) if(actor.bot && actor !== guard) actor.health=0
+  Object.assign(human,{x:-14,y:0,z:-16,protectedUntil:0})
+  Object.assign(guard,{x:-14,y:0,z:-20,yaw:0,protectedUntil:0})
+  game.start();run(game,1000);assert.equal(guard.shots,0);assert.equal(human.health,100)
+  Object.assign(human,{x:0,y:0,z:-30,protectedUntil:game.elapsed+4000})
+  Object.assign(guard,{x:0,y:0,z:-20,yaw:Math.PI})
+  run(game,3000);assert.equal(human.health,100);assert.equal(guard.shots,0)
+})
+
+test('The expanded depot has three times the ground area and a reinforced rescue compound', () => {
+  assert.ok((CAMPAIGN_WORLD.limit/48)**2>=3)
+  assert.equal(CAMPAIGN_GUARDS.length,16)
+  assert.ok(CAMPAIGN_GUARDS.filter(p=>Math.hypot(p.x-mission.captive.x,p.z-mission.captive.z)<18).length>=7)
+  assert.ok(CAMPAIGN_WORLD.buildings.length>=10)
 })

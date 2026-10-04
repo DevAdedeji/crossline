@@ -23,7 +23,7 @@ export function campaignPresentation(scene: Scene, assets: TrainingAssets, shado
   let animation = '', last = root.position.clone(), state: CampaignState | undefined
   const signal = new StandardMaterial('objective amber', scene)
   signal.emissiveColor = Color3.FromHexString('#ffc171'); signal.disableLighting = true
-  const ring = MeshBuilder.CreateTorus('mission objective', { diameter: 3.4, thickness: .045, tessellation: 40 }, scene)
+  const ring = MeshBuilder.CreateTorus('mission objective', { diameter: EXTRACTION_MISSION.interactionRadius * 2, thickness: .045, tessellation: 40 }, scene)
   ring.material = signal; ring.isPickable = false
   const beacon = MeshBuilder.CreatePolyhedron('objective beacon', { type: 1, size: .2 }, scene)
   beacon.material = signal; beacon.isPickable = false
@@ -42,6 +42,8 @@ export function campaignPresentation(scene: Scene, assets: TrainingAssets, shado
     if (next !== animation) { instance.animationGroups.forEach(group => group.stop()); instance.animationGroups.find(group => group.name.endsWith(`|${next}`))?.start(true, next === 'Walk' ? .8 : 1); animation = next }
     last.copyFrom(root.position)
     const objective = CAMPAIGN_OBJECTIVES[state.stage].position
+    const scale = state.stage === 'extract' ? EXTRACTION_MISSION.extractionRadius / EXTRACTION_MISSION.interactionRadius : 1
+    ring.scaling.set(scale, 1, scale)
     ring.position.set(objective.x, objective.y + .045, objective.z)
     beacon.position.set(objective.x, objective.y + 2.4, objective.z); beacon.rotation.y += dt
   })

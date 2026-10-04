@@ -36,7 +36,7 @@ onBeforeUnmount(() => cancelAnimationFrame(frame))
         <p class="eyebrow">CAMPAIGN / {{ mission.operation }}</p>
         <h1>{{ mission.title }}.</h1>
         <p class="brief-text">{{ mission.briefing }}</p>
-        <div class="brief-meta"><span>01 / EXTRACTION</span><span>HARBOUR RELAY</span><span>1 PLAYER</span></div>
+        <div class="brief-meta"><span>01 / EXTRACTION</span><span>HARBOUR RELAY / 168 × 168 M</span><span>1 PLAYER</span></div>
         <ol aria-label="Mission objectives"><li v-for="(objective, index) in Object.values(CAMPAIGN_OBJECTIVES)" :key="objective.title"><span>0{{ index + 1 }}</span><div><strong>{{ objective.title }}</strong><p>{{ objective.instruction }}</p></div></li></ol>
         <p v-if="progress?.completed" class="completion">✓ Mission completed <span v-if="progress.bestTimeMs">· Best {{ Math.floor(progress.bestTimeMs / 60000) }}:{{ String(Math.floor(progress.bestTimeMs / 1000) % 60).padStart(2, '0') }}</span></p>
         <p v-if="progress && progress.checkpoint !== 'relay'" class="checkpoint">Checkpoint available · {{ CAMPAIGN_OBJECTIVES[progress.checkpoint].title }}</p>

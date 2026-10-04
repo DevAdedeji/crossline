@@ -35,7 +35,17 @@ interface BotMemory {
   stalledMs?: number
   pursuing?: boolean
 }
+const DEFAULT_BOT_PROFILE = {
+  sightRange: 44, nearAwareness: 0, halfFov: 1.25, searchMs: 2500, patrolRadius: 32,
+  reactionMs: SOLO.reactionMs, reactionJitterMs: SOLO.reactionJitterMs,
+  shotIntervalMs: SOLO.shotIntervalMs, burstShots: SOLO.burstShots,
+  burstRestMs: SOLO.burstRestMs, burstRestJitterMs: SOLO.burstRestJitterMs,
+  maxAttackers: SOLO.maxAttackers, bodyDamage: SOLO.botBodyDamage,
+  headDamage: SOLO.botHeadDamage, damageGraceMs: SOLO.damageGraceMs,
+}
+type BotProfile = { [Key in keyof typeof DEFAULT_BOT_PROFILE]: number }
 export interface SimulationScenario {
+  botProfile?: Partial<BotProfile>
   world: WorldGeometry
   spawns: readonly Position[]
   botCount: number
@@ -58,6 +68,7 @@ export class TrainingGame {
   private lastNoise?: { id: string; position: Position; at: number }
   private humanInputs = new Map<string, CombatInput>()
   private spawnHistory = new Map<string, string[]>()
+  private readonly botProfile: BotProfile
   private memories = new Map<string, BotMemory>()
   constructor(
     readonly humanId: string,
@@ -66,6 +77,7 @@ export class TrainingGame {
     readonly mode: GameMode = 'training',
     private readonly scenario?: SimulationScenario,
   ) {
+    this.botProfile = { ...DEFAULT_BOT_PROFILE, ...scenario?.botProfile }
     this.reset()
   }
   private actor(id: string, name: string, bot: boolean, position: Position): Combatant {
@@ -110,7 +122,7 @@ export class TrainingGame {
       const id = `bot-${i}`
       this.actors.set(
         id,
-        this.actor(id, ['ROOK', 'MAKO', 'ECHO', 'SABLE', 'VEX', 'ASH', 'NOVA', 'FLINT', 'GHOST', 'ONYX', 'REED', 'VALE'][i]!, true, this.spawns[i + 1]!),
+        this.actor(id, ['ROOK', 'MAKO', 'ECHO', 'SABLE', 'VEX', 'ASH', 'NOVA', 'FLINT', 'GHOST', 'ONYX', 'REED', 'VALE'][i] ?? `GUARD ${i+1}`, true, this.spawns[i + 1]!),
       )
       this.memories.set(id, {
         path: [],
@@ -275,10 +287,10 @@ export class TrainingGame {
     let eliminated = false
     // Friendly bots still block the ray, but Solo bot shots can only damage humans.
     if (victim && victim.protectedUntil <= this.elapsed &&
-        !(this.mode === 'solo' && actor.bot && (victim.bot || this.elapsed-victim.lastDamage<SOLO.damageGraceMs))) {
+        !(this.mode === 'solo' && actor.bot && (victim.bot || this.elapsed-victim.lastDamage<this.botProfile.damageGraceMs))) {
       headshot = end.y >= victim.y + stanceHead(victim)
       damage = this.mode === 'solo' && actor.bot
-        ? headshot ? SOLO.botHeadDamage : SOLO.botBodyDamage
+        ? headshot ? this.botProfile.headDamage : this.botProfile.bodyDamage
         : headshot ? RIFLE.headDamage : RIFLE.damage
       victim.health = Math.max(0, victim.health - damage)
       victim.lastDamage = this.elapsed
@@ -370,10 +382,10 @@ export class TrainingGame {
   private canSee(bot: Combatant, target: Combatant): boolean {
     const dx = target.x - bot.x, dz = target.z - bot.z
     const distance = Math.hypot(dx, dz)
-    if (distance > 44) return false
+    if (distance > this.botProfile.sightRange) return false
     const yaw = Math.atan2(dx, dz)
     const angle = Math.atan2(Math.sin(yaw - bot.yaw), Math.cos(yaw - bot.yaw))
-    if (Math.abs(angle) > 1.25 && this.elapsed - bot.lastDamage > 1200) return false
+    if (distance > this.botProfile.nearAwareness && Math.abs(angle) > this.botProfile.halfFov && this.elapsed - bot.lastDamage > 1200) return false
     const ray = direction(yaw, -Math.atan2(target.y + stanceAim(target) - bot.y - stanceEye(bot), distance))
     return this.worldHit({ x: bot.x, y: bot.y + stanceEye(bot), z: bot.z }, ray) >
       Math.hypot(dx, dz, target.y + stanceAim(target) - bot.y - stanceEye(bot)) - 0.4
@@ -403,9 +415,16 @@ export class TrainingGame {
       const target = candidates[0]
       if (target) {
         if (target.id !== memory.targetId) {
-          memory.reactAt = this.elapsed + SOLO.reactionMs + this.random() * SOLO.reactionJitterMs
+          memory.reactAt = this.elapsed + this.botProfile.reactionMs + this.random() * this.botProfile.reactionJitterMs
           memory.burstLeft = 0
           memory.nextShot = memory.reactAt
+          // A confirmed sighting alerts nearby squadmates to investigate the
+          // last seen position. Every shot still requires individual sight.
+          if (this.scenario) for (const other of this.actors.values()) {
+            if (!other.bot || other.id === bot.id || other.health <= 0 || Math.hypot(other.x-bot.x,other.z-bot.z)>34) continue
+            const squad = this.memories.get(other.id)!
+            if (!squad.targetId) { squad.lastSeenId=target.id; squad.lastSeen={x:target.x,y:target.y,z:target.z}; squad.seenAt=this.elapsed; squad.nextPlan=0 }
+          }
         }
         memory.targetId = target.id
         memory.lastSeenId = target.id
@@ -427,15 +446,15 @@ export class TrainingGame {
       if (this.elapsed >= (memory.reactAt ?? Infinity) && !bot.reloadUntil &&
           Math.abs(delta) < 0.12 && this.elapsed >= (memory.nextShot ?? 0) &&
           [...this.actors.values()].filter(other=>other.bot && other.id!==bot.id && other.health>0 &&
-            this.memories.get(other.id)?.targetId===target.id && this.elapsed-other.lastShot<900).length < SOLO.maxAttackers) {
+            this.memories.get(other.id)?.targetId===target.id && this.elapsed-other.lastShot<900).length < this.botProfile.maxAttackers) {
         if (!memory.burstLeft) {
-          memory.burstLeft = SOLO.burstShots
+          memory.burstLeft = this.botProfile.burstShots
           memory.aimYaw = (this.random() - 0.5) * 0.075
           memory.aimPitch = (this.random() - 0.5) * 0.04
         }
         if (this.fire(bot, bot.yaw + (memory.aimYaw ?? 0), bot.pitch + (memory.aimPitch ?? 0), true)) {
           memory.burstLeft--
-          memory.nextShot = this.elapsed + (memory.burstLeft ? SOLO.shotIntervalMs : SOLO.burstRestMs + this.random() * SOLO.burstRestJitterMs)
+          memory.nextShot = this.elapsed + (memory.burstLeft ? this.botProfile.shotIntervalMs : this.botProfile.burstRestMs + this.random() * this.botProfile.burstRestJitterMs)
         }
       }
       if ((bot.reloadUntil || bot.health < 45) && memory.intent === 'cover' && memory.goal && this.elapsed < (memory.holdUntil ?? 0)) {
@@ -469,7 +488,7 @@ export class TrainingGame {
     } else if (memory.intent === 'cover' && memory.goal && this.elapsed < (memory.holdUntil ?? 0)) {
       destination = memory.goal
       intent = 'cover'
-    } else if (memory.lastSeen && this.elapsed - (memory.seenAt ?? 0) < 2500) {
+    } else if (memory.lastSeen && this.elapsed - (memory.seenAt ?? 0) < this.botProfile.searchMs) {
       destination = memory.lastSeen
       intent = 'search'
     } else {
@@ -479,9 +498,9 @@ export class TrainingGame {
         destination=noise.position
         intent='search'
       } else if(!memory.path.length && this.elapsed >= (memory.holdUntil ?? 0)) {
-        // Keep patrol routes near the active human district without granting sight or firing through cover.
-        const human=this.scenario ? bot : [...this.actors.values()].find(actor=>!actor.bot && actor.participating!==false)
-        const local=human ? this.navigation.points.filter(p=>Math.hypot(p.x-human.x,p.z-human.z)<32 && Math.abs(p.y-human.y)<4.2 && Math.hypot(p.x-bot.x,p.z-bot.z)>8) : []
+        // Campaign patrols stay near their assigned post; Solo patrols follow the active district.
+        const human=this.scenario ? this.scenario.spawns[Number(bot.id.split('-')[1])+1] : [...this.actors.values()].find(actor=>!actor.bot && actor.participating!==false)
+        const local=human ? this.navigation.points.filter(p=>Math.hypot(p.x-human.x,p.z-human.z)<this.botProfile.patrolRadius && Math.abs(p.y-human.y)<4.2 && Math.hypot(p.x-bot.x,p.z-bot.z)>8) : []
         const patrol=local.length?local:this.navigation.points
         destination=patrol[Math.floor(this.random()*patrol.length)]
         intent='patrol'

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { campaignWaypoints, type MissionWaypoint } from '~/game/campaignWaypoint'
 import { CAMPAIGN_WORLD, CAMPAIGN_OBJECTIVES, EXTRACTION_MISSION, type CampaignState } from '@crossline/shared/campaign'
 import { readCampaignProgress, saveCampaignProgress } from '~/game/campaignProgress'
 import { campaignPresentation } from '~/game/campaignPresentation'
@@ -37,9 +38,9 @@ let pendingLaunch=Boolean(entry), recordedRound=''
 const personalBest=ref(0), newBest=ref(false)
 const props = withDefaults(defineProps<{ mode?: GameMode }>(), { mode: 'training' })
 const isCampaign = computed(() => props.mode === 'campaign')
+const waypoints = ref<MissionWaypoint[]>([])
 const campaign = ref<CampaignState>(), checkpointSaved = ref(true)
 let lastCampaignSave = ''
-function interact(held: boolean) { if (isCampaign.value) room?.send('action', held && active.value ? 'interact-start' : 'interact-stop') }
 const isOnline = computed(() => props.mode === 'online')
 const leaders=ref<Leaderboard>(),leadersUnavailable=ref(false),joinError=ref(''),showLeaders=ref(false)
 const networkStalled=ref(false), networkNotice=ref('')
@@ -177,7 +178,6 @@ function readInput():CombatInput {
       }
 }
 function clearInput() {
-  interact(false)
   keys.clear()
   touchMovement={x:0,z:0};touchFiring=false;touchAiming=false
   mouseFire = false
@@ -296,7 +296,6 @@ function keydown(event: KeyboardEvent) {
   if (active.value) {
     if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyC', 'ControlLeft', 'ControlRight', 'Space'].includes(event.code))
       event.preventDefault()
-    if (event.code === 'KeyE' && isCampaign.value) { event.preventDefault(); if (!event.repeat) interact(true) }
     keys.add(event.code)
     if (event.code === 'KeyC' && !event.repeat) crouchToggle.value=!crouchToggle.value
     if (event.code === 'KeyR' && !event.repeat) reload()
@@ -309,7 +308,7 @@ function keydown(event: KeyboardEvent) {
         menuItems.value.length
   }
 }
-const keyup = (event: KeyboardEvent) => { keys.delete(event.code); if(event.code === 'KeyE') interact(false) }
+const keyup = (event: KeyboardEvent) => { keys.delete(event.code) }
 function mouseLook(event: MouseEvent) {
   if (captured.value && active.value && (event.movementX || event.movementY)) {
     padActive.value = false
@@ -400,7 +399,6 @@ function pollPad(dt: number) {
           (selectFireArmed && Boolean(pressed[0]))
         padAim = Boolean(pressed[6])
         if (edge(2)) reload()
-        if (isCampaign.value && Boolean(pressed[3]) !== Boolean(previousButtons[3])) interact(Boolean(pressed[3]))
       }
     } else {
       selectFireArmed = false
@@ -470,6 +468,9 @@ onMounted(async () => {
         feedbackShots.value++
       }
       camera.rotation.set(look.pitch, look.yaw, 0)
+      if (campaign.value && canvas.value) waypoints.value = campaignWaypoints(campaign.value,
+        {x:camera.position.x,y:camera.position.y,z:camera.position.z,...look,fov:camera.fov},
+        canvas.value.clientWidth,canvas.value.clientHeight,touchDevice.value)
       heading.value = ((((look.yaw * 180) / Math.PI) % 360) + 360) % 360
       pitch.value = look.pitch
       const viewer = self.value
@@ -740,7 +741,7 @@ onBeforeUnmount(() => {
       <div><span class="rotate-icon" aria-hidden="true">↻</span><h1>Turn your phone sideways.</h1><p>Crossline uses landscape controls. Rotate your device to continue.</p><NuxtLink to="/">Return to menu</NuxtLink></div>
     </div>
     <TouchControls v-if="touchDevice && active" :crouched="(self?.crouch ?? 0)>.5" @move="touchMove" @look="touchLook" @fire="touchFire" @aim="touchAim" @reload="reload" @crouch="crouchToggle=!crouchToggle" @pause="pause" />
-    <CampaignHud v-if="isCampaign && campaign && active" :state="campaign" :player="self" :touch="touchDevice" :heading="heading" :saved="checkpointSaved" @interact="interact" />
+    <CampaignHud v-if="isCampaign && campaign && active" :state="campaign" :player="self" :touch="touchDevice" :heading="heading" :saved="checkpointSaved" :waypoints="waypoints" />
     <header>
       <NuxtLink to="/" class="brand">CROSSLINE<span>+</span></NuxtLink>
       <div class="location">
@@ -835,7 +836,7 @@ onBeforeUnmount(() => {
         <p v-if="phase === 'ready'">
           {{ isCampaign ? EXTRACTION_MISSION.briefing : isOnline ? 'Human players only. One ongoing arena. Quick respawns. Join friends on the same match server.' : isSolo ? 'Five minutes. Twelve bots targeting you. Use cover and crouch. Walk over green supply cases for +35 HP; they return after 25 seconds. Health does not regenerate in Solo.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
         </p>
-        <p v-if="isCampaign && phase === 'ready'" class="controls">{{ campaign ? CAMPAIGN_OBJECTIVES[campaign.stage].instruction : '' }}<br />{{ touchDevice ? 'Hold the on-screen interaction button near an objective.' : 'Hold E / Y / △ near an objective to interact.' }}</p>
+        <p v-if="isCampaign && phase === 'ready'" class="controls">{{ campaign ? CAMPAIGN_OBJECTIVES[campaign.stage].instruction : '' }}<br />Enter the objective circle to interact automatically.</p>
         <p v-if="isCampaign && phase === 'finished'" role="status">{{ campaign?.outcome === 'success' ? EXTRACTION_MISSION.debrief : 'Your last checkpoint is ready. Retry to continue the operation.' }}</p>
         <p v-if="isCampaign && !checkpointSaved" role="status">Device storage unavailable. Progress is available for this session only.</p>
         <p v-if="phase === 'paused'">
@@ -891,7 +892,7 @@ onBeforeUnmount(() => {
           Reload and reconnect
         </button>
         <p v-if="captureError" role="alert">{{ captureError }}</p>
-        <button class="audio-toggle" @click="showControls = !showControls">{{ showControls ? 'Hide controls' : 'Controls' }}</button>
+        <button class="controls-toggle" @click="showControls = !showControls">{{ showControls ? 'Hide controls' : 'Controls' }}</button>
         <p v-if="showControls && touchDevice" class="controls">Left stick moves · Swipe the right side to look · Hold FIRE · AIM toggles sights · RELOAD · CROUCH · Ⅱ pauses</p>
         <p v-if="showControls && !touchDevice" class="controls">
           WASD move · Mouse look · Left click fire · Right click aim<br />R reload · Esc pause ·
@@ -962,7 +963,7 @@ header{position:absolute;inset:0 0 auto;display:flex;justify-content:space-betwe
 .elimination-confirmation{position:absolute;top:calc(50% + 72px);left:50%;transform:translateX(-50%);background:#151b21dd;border:1px solid #ffbb7066;border-radius:5px;padding:9px 14px;color:var(--cl-text);font-size:12px;pointer-events:none;white-space:nowrap}.elimination-confirmation span{color:var(--cl-accent);font-weight:700;margin-right:6px}.elimination-enter-active,.elimination-leave-active{transition:opacity .18s,margin-top .18s}.elimination-enter-from,.elimination-leave-to{opacity:0;margin-top:5px}@keyframes damage-in{from{opacity:0}to{opacity:1}}
 .overlay{position:absolute;inset:0;z-index:40;display:grid;place-items:center;background:#0b101366;backdrop-filter:blur(5px);padding:20px}
 .menu-card{width:min(500px,94vw);max-height:calc(100dvh - 40px);overflow-y:auto;background:#191f24f5;border:1px solid var(--cl-line);border-top:3px solid var(--cl-accent);border-radius:10px;padding:28px;box-shadow:0 25px 80px #0006}.eyebrow{font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--cl-accent)}.menu-card h1{font-size:32px;font-weight:800;letter-spacing:-1.2px;line-height:1.05;margin:12px 0}.menu-card p{font-size:13px;line-height:1.6;color:var(--cl-muted)}
-.menu-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:22px 0 12px}.menu-actions button{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;border:1px solid var(--cl-line);border-radius:5px;padding:12px 14px;font-size:12px;font-weight:600;min-height:44px;background:#ffffff05}.menu-actions button.primary{grid-column:1/-1;background:var(--cl-accent);color:#17191c;border-color:var(--cl-accent);font-size:14px}.menu-actions button:last-child:nth-child(2){grid-column:1/-1}.menu-actions button.selected:not(.primary),.menu-actions button:hover:not(.primary){border-color:var(--cl-accent);background:#ffbb7015}.menu-actions button:disabled{opacity:.4;cursor:wait}.menu-actions button span{font-size:18px}.menu-card p.controls{font-size:12px;margin-top:12px;line-height:1.65}.menu-card>small{display:block;font-size:11px;color:var(--cl-muted);margin-top:12px}.audio-toggle{font-size:11px;color:var(--cl-muted);text-decoration:underline;text-underline-offset:4px;margin:12px 20px 0 0;min-height:30px}.reconnect{display:block;margin:16px 0 12px;padding:10px 14px;border:1px solid var(--cl-accent);background:var(--cl-panel);color:var(--cl-accent);font-size:12px}
+.menu-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:22px 0 12px}.menu-actions button{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;border:1px solid var(--cl-line);border-radius:5px;padding:12px 14px;font-size:12px;font-weight:600;min-height:44px;background:#ffffff05}.menu-actions button.primary{grid-column:1/-1;background:var(--cl-accent);color:#17191c;border-color:var(--cl-accent);font-size:14px}.menu-actions button:last-child:nth-child(2){grid-column:1/-1}.menu-actions button.selected:not(.primary),.menu-actions button:hover:not(.primary){border-color:var(--cl-accent);background:#ffbb7015}.menu-actions button:disabled{opacity:.4;cursor:wait}.menu-actions button span{font-size:18px}.menu-card p.controls{font-size:12px;margin-top:12px;line-height:1.65}.menu-card>small{display:block;font-size:11px;color:var(--cl-muted);margin-top:12px}.controls-toggle{background:var(--cl-accent);color:#17191c;border:1px solid var(--cl-accent);border-radius:4px;padding:8px 14px;font-size:11px;font-weight:700;min-height:40px;margin:12px 20px 0 0}.controls-toggle:hover{filter:brightness(1.1)}.audio-toggle{font-size:11px;color:var(--cl-muted);text-decoration:underline;text-underline-offset:4px;margin:12px 20px 0 0;min-height:30px}.reconnect{display:block;margin:16px 0 12px;padding:10px 14px;border:1px solid var(--cl-accent);background:var(--cl-panel);color:var(--cl-accent);font-size:12px}
 .results{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:22px 0 16px;font-size:9px;font-weight:600;color:var(--cl-muted)}.results>div{background:#ffffff05;border:1px solid var(--cl-line);border-radius:6px;padding:12px 8px}.results strong{display:block;font-size:24px;font-weight:700;color:var(--cl-text);margin-bottom:6px}.menu-card [data-testid=personal-best]{font-size:11px;color:var(--cl-accent)}.menu-card [data-testid=personal-best] small{display:block;color:var(--cl-muted);font-size:9px;margin-top:2px}.match-standings{max-height:130px;overflow:auto}
 footer{position:absolute;inset:auto 0 0;display:flex;justify-content:space-between;align-items:flex-end;padding:36px 32px 24px;pointer-events:none;background:linear-gradient(transparent,#0b1013c9);text-shadow:0 1px 4px #0006}footer small{display:block;font-size:10px;font-weight:600;letter-spacing:.04em;color:#d0d6d8}footer strong{font-size:54px;font-weight:650;letter-spacing:-.04em;line-height:1.12}footer strong span{font-size:16px;font-weight:400;letter-spacing:0;color:#c8d0d2}.health{width:180px}.health-bar{height:5px;background:#ffffff33;border-radius:4px;margin:8px 0 0;overflow:hidden}.health-bar i{display:block;height:100%;background:var(--cl-text);transition:width .15s}.health.critical strong{color:#ff806a}.health.critical .health-bar i{background:#ff806a}.ammo{text-align:right}.score{text-align:center}.score strong{display:block;font-size:26px}.score small{font-size:10px;margin-top:4px}.health-feedback{position:absolute;top:25%;left:50%;transform:translateX(-50%);color:#a7ffcb;background:#17312ce8;padding:10px 16px;font-size:12px;border:1px solid #75d9a680;border-radius:5px;pointer-events:none}.target-name{position:absolute;top:calc(50% - 40px);left:50%;transform:translateX(-50%);color:var(--cl-accent);font-size:12px;pointer-events:none;text-shadow:0 1px 4px #000}
 .network-notice{position:absolute;top:90px;left:50%;transform:translateX(-50%);z-index:50;background:#191f24ed;color:var(--cl-accent);padding:8px 12px;max-width:80vw;font:12px/1.4 Arial;pointer-events:none;border:1px solid var(--cl-line);border-radius:5px}
