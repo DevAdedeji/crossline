@@ -16,3 +16,17 @@
   .lobby>header { padding-top: max(1rem, env(safe-area-inset-top)); padding-left: max(1.5rem, env(safe-area-inset-left)); padding-right: max(1.5rem, env(safe-area-inset-right)); }
   .lobby>footer { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
 }
+
+:root {
+  --cl-bg: #111519;
+  --cl-panel: #191f24;
+  --cl-text: #f5f2e9;
+  --cl-muted: #b3bbc0;
+  --cl-accent: #ffbb70;
+  --cl-line: #ffffff24;
+}
+button { cursor: pointer; }
+button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--cl-accent); outline-offset: 4px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

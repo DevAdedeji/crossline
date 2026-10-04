@@ -73,7 +73,7 @@ test('real mouse target practice, reload, pause, results, replay and exit', asyn
     page.getByRole('button', { name: 'Online Free-for-All' }),
   ).toBeFocused()
   await page.keyboard.press('ArrowRight')
-  await page.getByRole('button', { name: 'Practice', exact: true }).click()
+  await page.getByRole('button', { name: 'Practice', exact: true }).click();await page.getByRole('button',{name:'Play Practice',exact:true}).click()
   await connected(page)
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
   const initial = await page.getByTestId('position').innerText()
@@ -285,7 +285,7 @@ test('confirmed body hits, misses and animated elimination with non-clipping rec
   await page.waitForTimeout(1950)
   await face(page, 360 - (Math.atan2(1, 16) * 180) / Math.PI, Math.atan2(0.55, Math.hypot(1, 16)))
   await expect(page.locator('.crosshair')).toHaveAttribute('data-target', 'bot-0')
-  await expect(page.locator('.crosshair')).toHaveCSS('color', 'rgb(255, 83, 83)')
+  await expect(page.locator('.crosshair')).toHaveCSS('color', 'rgb(255, 157, 135)')
   await page.mouse.down()
   await page.waitForTimeout(90)
   await page.mouse.up()
@@ -334,6 +334,7 @@ test('confirmed body hits, misses and animated elimination with non-clipping rec
   }
   await page.mouse.up()
   await expect(page.locator('[data-actor="bot-0"]')).toHaveAttribute('data-health', '0')
+  await expect(page.locator('.elimination-confirmation')).toContainText('Eliminated')
   expect(audio.peak).toBeGreaterThan(0.001)
   expect(audio.peak).toBeLessThan(0.99)
   expect(audio.activeBands).toBeGreaterThan(10)
@@ -463,13 +464,14 @@ test('Solo is a separate combat match with damage, pause, personal results and r
   page.on('pageerror', error => errors.push(error.message))
   await padSetup(page)
   await page.goto('/')
-  await page.getByRole('button', { name: 'Solo vs Bots', exact: true }).click()
+  await page.getByRole('button', { name: 'Solo vs Bots', exact: true }).click();await page.getByRole('button',{name:'Play Solo vs Bots',exact:true}).click()
   await connected(page, 13)
   await expect(page.locator('main.arena')).toHaveAttribute('data-mode', 'solo')
   await pulse(page, 0)
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase', 'playing')
   const humanId = await page.locator('main.arena').getAttribute('data-player-id')
   await expect.poll(async () => Number(await page.locator(`[data-actor="${humanId}"]`).getAttribute('data-health')), { timeout: 30000 }).toBeLessThan(100)
+  await expect(page.locator('.damage-direction').first()).toBeVisible()
   // Before the human fires, no bot can have taken friendly damage.
   expect(await page.locator('[data-actor]').evaluateAll((nodes,id)=>nodes.filter(node=>node.getAttribute('data-actor')!==id).every(node=>Number(node.getAttribute('data-health'))===100),humanId)).toBe(true)
   // The player may die during the first burst. Respawn clears input and requires a fresh press.

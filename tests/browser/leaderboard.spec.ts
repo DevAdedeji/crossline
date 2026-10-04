@@ -10,7 +10,7 @@ test('full shared arena explains waiting, admits a freed seat, preserves account
   expect(new Set(seats.map(s=>s.roomId)).size).toBe(1)
   await browserAccount(page,'accountqa')
   await page.goto('/');await page.getByRole('textbox',{name:'Nickname'}).fill('GUESTQA')
-  await page.getByRole('button',{name:'Online Free-for-All',exact:true}).click()
+  await page.getByRole('button',{name:'Online Free-for-All',exact:true}).click();await page.getByRole('button',{name:'Play Online Free-for-All',exact:true}).click()
   await expect(page.getByRole('alert')).toContainText('Arena is full',{timeout:30000})
   const last=seats.pop()!;await last.leave()
   await page.getByRole('button',{name:'Reload and reconnect',exact:true}).click()
@@ -30,7 +30,7 @@ test('full shared arena explains waiting, admits a freed seat, preserves account
    expect(await list.innerText()).not.toMatch(/Circular|undefined/)
   }
   await page.getByRole('button',{name:'CLOSE',exact:true}).click()
-  await page.getByRole('button',{name:'Online Free-for-All',exact:true}).click()
+  await page.getByRole('button',{name:'Online Free-for-All',exact:true}).click();await page.getByRole('button',{name:'Play Online Free-for-All',exact:true}).click()
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing',{timeout:30000})
   await expect(page.getByRole('button',{name:/^LEADERBOARD/})).toBeVisible()
   await page.keyboard.press('Tab')

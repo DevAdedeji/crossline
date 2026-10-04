@@ -12,6 +12,7 @@ for(const scenario of [{width:667,height:375,mode:'training'},{width:932,height:
   await expect(page.locator('.radar-panel')).toContainText('Connected',{timeout:30000})
   await page.setViewportSize({width:scenario.width,height:scenario.height})
   await expect(page.getByRole('dialog',{name:'Rotate phone'})).toBeHidden()
+  await expect(page.getByTestId('gamepad-status')).toHaveCount(0)
   await page.getByRole('button',{name:scenario.mode==='online'?'Enter arena':'Start training',exact:true}).tap()
   await expect(page.getByRole('button',{name:'Fire',exact:true})).toBeVisible()
   expect(await page.evaluate(()=>document.pointerLockElement===null)).toBe(true)
@@ -48,7 +49,7 @@ for(const scenario of [{width:667,height:375,mode:'training'},{width:932,height:
   if(scenario.mode==='online'){
    await page.getByRole('button',{name:/^LEADERBOARD/}).tap()
    await expect(page.getByRole('dialog',{name:'Arena leaders'})).toBeVisible()
-   await page.getByRole('button',{name:'BACK · ESC / B / ○',exact:true}).tap()
+   await page.getByRole('button',{name:'BACK',exact:true}).tap()
    await expect(page.getByRole('dialog',{name:'Arena leaders'})).toBeHidden()
   }
   await page.getByRole('button',{name:'Return to menu',exact:true}).tap();await expect(page).toHaveURL('http://127.0.0.1:3001/')
@@ -56,12 +57,19 @@ for(const scenario of [{width:667,height:375,mode:'training'},{width:932,height:
  }finally{await context.close()}
 })
 
-test('phone mode tap launches Solo directly, unlocks audio and replays without another Start',async({browser},info)=>{
+test('phone Play launches Solo directly, unlocks audio and replays without another Start',async({browser},info)=>{
  const context=await browser.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true,deviceScaleFactor:2}),page=await context.newPage()
  try{
   await page.addInitScript(()=>{const Original=window.AudioContext;const contexts:AudioContext[]=[];(window as unknown as {testAudio:AudioContext[]}).testAudio=contexts;window.AudioContext=class extends Original{constructor(options?:AudioContextOptions){super(options);contexts.push(this)}}})
   await page.goto('http://127.0.0.1:3001/');await page.getByRole('textbox',{name:'Nickname'}).fill('MOBILE')
-  await page.getByRole('button',{name:'Solo vs Bots',exact:true}).tap()
+  await expect(page.getByTestId('menu-controller')).toHaveCount(0)
+  await expect(page.getByText('CHOOSE A MODE · TAP PLAY',{exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'CONTROLS',exact:true}).tap()
+  const guide=page.getByRole('dialog',{name:'Controls'})
+  await expect(guide).toContainText('Swipe the right side')
+  await expect(guide).not.toContainText(/controller|WASD|Xbox|PlayStation/i)
+  await guide.getByRole('button',{name:'CLOSE',exact:true}).tap()
+  await page.getByRole('button',{name:'Solo vs Bots',exact:true}).tap();await page.getByRole('button',{name:'Play Solo vs Bots',exact:true}).tap()
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing',{timeout:30000})
   await expect(page.getByRole('button',{name:'Fire',exact:true})).toBeVisible()
   await expect(page.getByTestId('timer')).toContainText(/4:5|5:00/)

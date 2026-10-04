@@ -119,7 +119,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.pwa-controls{position:fixed;right:calc(18px + env(safe-area-inset-right));bottom:calc(68px + env(safe-area-inset-bottom));z-index:15;max-width:min(320px,calc(100vw - 36px));color:#edf1ef;font:12px/1.5 Arial,sans-serif}
-.offline-download{background:#142026;padding:12px;border:1px solid #ffffff25;margin-bottom:8px}.offline-download p{margin:0 0 8px}.pwa-actions{display:flex;gap:8px;justify-content:flex-end}.pwa-controls button{border:1px solid #ffffff40;background:#142026;padding:9px 14px;color:#ffb15c;font-weight:700;cursor:pointer}.pwa-controls button:focus-visible{outline:2px solid #ffb15c;outline-offset:3px}.pwa-controls button:disabled{opacity:.5;cursor:wait}.pwa-help,.pwa-controls>p{background:#142026;padding:14px;border:1px solid #ffffff25;margin-bottom:8px}.pwa-help p{margin:0 0 12px}.pwa-help{margin-top:8px}
-@media(max-width:900px){.pwa-controls{position:relative;right:auto;bottom:auto;margin:12px max(18px,env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) auto;max-width:calc(100vw - 36px)}}
+.pwa-controls{position:relative;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px;padding:16px max(24px,env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left));border-top:1px solid var(--cl-line);background:var(--cl-bg);color:var(--cl-muted);font:12px/1.5 Arial,sans-serif}
+.offline-download{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}.offline-download p{margin:0}.pwa-actions{display:flex;gap:8px;margin-left:auto}.pwa-controls button{border:1px solid var(--cl-line);border-radius:5px;background:var(--cl-panel);padding:9px 14px;color:var(--cl-accent);font-weight:600;cursor:pointer;white-space:nowrap}.pwa-controls button:disabled{opacity:.5;cursor:wait}.pwa-help,.pwa-controls>p{flex-basis:100%;background:var(--cl-panel);padding:14px;border:1px solid var(--cl-line);border-radius:6px}.pwa-help p{margin:0 0 12px}.pwa-help{max-width:650px;margin-left:auto}
+@media(min-width:1000px){.pwa-controls{padding-inline:48px}}
+@media(max-width:760px){.pwa-controls{font-size:11px;padding-block:12px}.offline-download{flex:1}.offline-download>p{flex-basis:100%}.pwa-controls button{padding:8px 12px;font-size:11px}.pwa-actions{align-self:flex-end}}
 </style>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { attackBearing, relativeBearing } from '~/game/combatFeedback'
 import { localSession, type ArenaState, type ArenaSession } from '~/game/arenaSession'
 import { observeArenaViewport } from '~/game/viewport'
 import { NetworkHealth } from '~/game/networkHealth'
@@ -13,7 +14,7 @@ import type { Engine } from '@babylonjs/core/Engines/engine'
 import { Client, type Room } from '@colyseus/sdk'
 import { ONLINE_CAPACITY_TARGET, SOLO, stanceEye, type HealthPickup, TICK_MS, readStick, TRAINING_WORLD, COMBAT_WORLD, COMBAT_DISTRICTS, COMBAT_BOT_COUNT } from '@crossline/shared'
 import {
-  RIFLE, QUICK_MATCH_MS,
+  RIFLE, QUICK_MATCH_MS, TRAINING,
   aimedTarget,
   direction,
   type CombatInput,
@@ -38,7 +39,8 @@ const networkStalled=ref(false), networkNotice=ref('')
 const onlineEntered = ref(false), onlinePaused = ref(false), onlineCapacity = ref(ONLINE_CAPACITY_TARGET), roomCode = ref('')
 const isSolo = computed(() => props.mode === 'solo')
 const world = computed(() => props.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD)
-const radarBox = computed(() => { const r=world.value.limit+2; return `${-r} ${-r} ${r*2} ${r*2}` })
+const radarRadius = computed(() => props.mode === 'training' ? 28 : 42)
+const radarBox = computed(() => { const r = radarRadius.value; return `${(self.value?.x ?? 0)-r} ${-(self.value?.z ?? 0)-r} ${r*2} ${r*2}` })
 const modeTitle = computed(() => isOnline.value ? 'Online Free-for-All' : isSolo.value ? 'Solo vs Bots' : 'Training')
 const sessionWord = computed(() => props.mode !== 'training' ? 'match' : 'training')
 const showControls = ref(false)
@@ -88,6 +90,10 @@ const position = ref('0.0 / -21.0'),
 const clientPosition=ref(''),feedbackShots=ref(0)
 const weaponFeedback=new WeaponFeedback()
 const targetId = ref<string>()
+const incoming = ref<{ source: string; bearing: number; until: number }[]>([])
+const elimination = ref<{ name: string; until: number }>()
+const hitHeadshot = ref(false)
+const eliminatedBy = ref<string>()
 const hitUntil = ref(0),
   hitKill = ref(false),
   damageUntil = ref(0),
@@ -277,6 +283,7 @@ function keydown(event: KeyboardEvent) {
     pause()
     return
   }
+  if ((event.target as HTMLElement)?.closest('input, [data-ui-action]')) return
   if (active.value) {
     if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyC', 'ControlLeft', 'ControlRight', 'Space'].includes(event.code))
       event.preventDefault()
@@ -536,10 +543,13 @@ onMounted(async () => {
       if (state.round !== round.value) {
         visuals.reset()
         audio.stop()
+        incoming.value=[]; elimination.value=undefined; eliminatedBy.value=undefined
+        hitUntil.value=0; damageUntil.value=0; healUntil.value=0; feed.value=[]
       }
       confirmedPhase.value = state.phase
       const nextPhase = state.phase==='finished' ? 'finished' : isOnline.value ? !onlineEntered.value ? 'ready' : onlinePaused.value ? 'paused' : state.phase : locallyPaused ? 'paused' : state.phase
-      if (phase.value !== nextPhase) menuIndex.value = 0
+      const phaseChanged = phase.value !== nextPhase
+      if (phaseChanged) menuIndex.value = 0
       phase.value = nextPhase
       onlineCapacity.value=state.capacity ?? ONLINE_CAPACITY_TARGET
       const availablePacks:HealthPickup[]=[]
@@ -588,7 +598,8 @@ onMounted(async () => {
       }
       labels?.sync(values.filter(a=>a.id!==joined.sessionId))
       visuals.sync(isOnline.value ? values.filter(a=>a.id !== joined.sessionId) : values)
-      if (state.phase === 'finished' || state.phase === 'paused') release()
+      // Repeated snapshots from the previous pause/result screen must not undo a new Start.
+      if (phaseChanged && (state.phase === 'finished' || state.phase === 'paused')) release()
     })
     room.onMessage('event', (event: GameEvent) => {
       if (event.type === 'shot') {
@@ -597,22 +608,32 @@ onMounted(async () => {
         if(!own)audio.sound('shot', false, event.start, self.value, look.yaw)
         if (own) {
           if (event.damage) {
-            hitUntil.value = performance.now() + 180
+            hitUntil.value = performance.now() + (event.eliminated ? 420 : 260)
+            hitHeadshot.value = event.headshot
             hitKill.value = event.eliminated
             audio.sound('hit')
           }
         }
       } else if (event.type === 'damage' && event.targetId === joined.sessionId) {
         damageUntil.value = performance.now() + 220
+        const source = actors.value.find(actor => actor.id === event.sourceId)
+        const bearing = self.value && source ? attackBearing(self.value, source) : undefined
+        if (bearing !== undefined) incoming.value = [
+          { source: event.sourceId, bearing, until: performance.now() + 1100 },
+          ...incoming.value.filter(item => item.source !== event.sourceId && item.until > performance.now()),
+        ].slice(0, 4)
         if (event.health === 0) audio.sound('death')
       } else if (event.type === 'heal' && event.targetId === joined.sessionId) {
         healAmount.value=event.amount;healUntil.value=performance.now()+2200;audio.sound('heal')
       } else if (event.type === 'spawn' && event.actorId === joined.sessionId) {
         crouchToggle.value=false
+        incoming.value=[]; elimination.value=undefined; hitUntil.value=0; eliminatedBy.value=undefined
         prediction.reset();weaponFeedback.reset();stairCamera.reset()
         Object.assign(look, { yaw: event.yaw, pitch: 0 })
         clearInput()
       } else if (event.type === 'kill') {
+        if (event.victimId === joined.sessionId) eliminatedBy.value = event.killer
+        if (event.killerId === joined.sessionId) elimination.value = { name: event.victim, until: performance.now() + 1800 }
         feed.value = [
           { text: `${event.killer}  ›  ${event.victim}`, until: performance.now() + 5000 },
           ...feed.value,
@@ -712,12 +733,12 @@ onBeforeUnmount(() => {
     </header>
     <button v-if="isOnline" class="leaderboard-launch" @click="openLeaders">LEADERBOARD <span v-if="!touchDevice">· TAB / VIEW / SHARE</span></button>
     <section v-if="showLeaders" class="leaderboard-dialog" role="dialog" aria-modal="true" aria-label="Arena leaders">
-      <div><LeaderboardPanel :board="leaders" :unavailable="leadersUnavailable" /><button class="leaderboard-close" @click="showLeaders=false">BACK · ESC / B / ○</button></div>
+      <div><LeaderboardPanel :board="leaders" :unavailable="leadersUnavailable" /><button class="leaderboard-close" @click="showLeaders=false">{{ touchDevice ? 'BACK' : 'BACK · ESC / B / ○' }}</button></div>
     </section>
     <aside class="radar-panel">
       <svg :viewBox="radarBox" :aria-label="`${modeTitle} radar`" class="radar">
-        <rect :x="-world.limit-1" :y="-world.limit-1" :width="world.limit*2+2" :height="world.limit*2+2" fill="#1d2929" />
-        <path v-for="c in world.roadCenters" :key="c" :d="`M${-world.limit} ${-c}H${world.limit}M${c} ${-world.limit}V${world.limit}`" stroke="#58615b" stroke-width="6" />
+        <rect :x="-world.limit-1" :y="-world.limit-1" :width="world.limit*2+2" :height="world.limit*2+2" fill="#151c22" />
+        <path v-for="c in world.roadCenters" :key="c" :d="`M${-world.limit} ${-c}H${world.limit}M${c} ${-world.limit}V${world.limit}`" stroke="#303d45" stroke-width="6" />
         <rect
           v-for="b in world.buildings"
           :key="b.id"
@@ -725,7 +746,7 @@ onBeforeUnmount(() => {
           :y="-b.z - b.depth / 2"
           :width="b.width"
           :height="b.depth"
-          fill="#85887b"
+          fill="#596269" stroke="#9ca6ac" stroke-width=".3"
         />
         <rect v-for="p in packs" :key="p.id" :x="p.x-1.6" :y="-p.z-1.6" width="3.2" height="3.2" :fill="p.availableAt<=elapsed ? '#80ffc2' : '#53675d'"
           :data-pack="p.id" :data-ready="p.availableAt<=elapsed" :data-x="p.x" :data-z="p.z" :data-available-at="p.availableAt"><title>{{ p.availableAt<=elapsed ? '+35 HP' : 'Health pack cooling down' }}</title></rect>
@@ -734,9 +755,9 @@ onBeforeUnmount(() => {
           :key="a.id"
           :cx="a.x"
           :cy="-a.z"
-          :r="(a.bot ? .9 : 1.3) * (mode !== 'training' ? 2 : 1)"
+          :r="a.bot ? 1.1 : 1.4"
           :fill="a.id === self?.id ? '#d9ff9c' : '#ff9460'"
-          :opacity="a.health > 0 ? 1 : 0.2"
+          :opacity="a.id === self?.id ? 0 : a.health > 0 ? 1 : 0"
           :data-actor="a.id"
           :data-x="a.x"
           :data-y="a.y"
@@ -744,8 +765,11 @@ onBeforeUnmount(() => {
           :data-health="a.health"
         >
           <title>{{ a.name }}</title>
-        </circle></svg
-      ><small>{{ isOnline ? status : status === 'Connected' ? 'Connected · ON DEVICE' : status }} · {{ isOnline ? `${actors.length} / ${onlineCapacity} PLAYERS` : isSolo ? `${COMBAT_BOT_COUNT} COMBAT BOTS` : '3 TARGETS · 2 PATROLS' }}</small>
+        </circle>
+        <path v-if="self" d="M0 -2.8L1.9 1.8 0 1 -1.9 1.8Z" :transform="`translate(${self.x} ${-self.z}) rotate(${heading})`" fill="#fff4de" stroke="#151c22" stroke-width=".6" />
+      </svg>
+      <span class="radar-north" aria-hidden="true">N</span><span class="radar-range">{{ radarRadius * 2 }} m</span>
+      <small class="diagnostics">{{ isOnline ? status : status === 'Connected' ? 'Connected · ON DEVICE' : status }} · {{ isOnline ? `${actors.length} / ${onlineCapacity} PLAYERS` : isSolo ? `${COMBAT_BOT_COUNT} COMBAT BOTS` : '3 TARGETS · 2 PATROLS' }}</small>
     </aside>
     <div v-if="mode !== 'training' && healUntil>now" class="health-feedback" role="status" data-testid="health-feedback">+{{ healAmount }} HP · SUPPLIES COLLECTED</div>
     <div class="kill-feed">
@@ -762,12 +786,13 @@ onBeforeUnmount(() => {
       {{ hitUntil > now ? '×' : '+' }}
     </div>
     <div v-if="isOnline && targetId && active" class="target-name">{{ actors.find(a=>a.id===targetId)?.name }}</div>
-    <div v-if="damageUntil > now" class="damage-flash" />
-    <div v-if="phase === 'playing' && self && self.health <= 0" class="death">
-      <span>ELIMINATED</span>
-      <h2>Back in {{ Math.max(1, Math.ceil((self.respawnUntil - elapsed) / 1000)) }}</h2>
-      <p>New position. Fresh magazine. Keep moving.</p>
+    <div v-if="active && self && self.health > 0" class="damage-directions" aria-hidden="true">
+      <div v-for="item in incoming.filter(item => item.until > now)" :key="item.source" class="damage-direction" :style="{ transform: `rotate(${relativeBearing(item.bearing, heading)}deg)` }"><i /></div>
     </div>
+    <div v-if="active && hitUntil > now && hitHeadshot" class="hit-caption">Headshot</div>
+    <Transition name="elimination"><div v-if="active && elimination && elimination.until > now" :key="elimination.until" class="elimination-confirmation" role="status"><span>Eliminated</span> {{ elimination.name }}</div></Transition>
+    <div v-if="damageUntil > now" class="damage-flash" />
+    <RespawnOverlay v-if="phase === 'playing' && self && self.health <= 0" :remaining-ms="self.respawnUntil - elapsed" :duration-ms="TRAINING.respawnMs" :killer="eliminatedBy" />
     <section v-if="!active && (phase !== 'playing' || status !== 'Connected')" class="overlay">
       <div class="menu-card">
         <span class="eyebrow">{{
@@ -812,7 +837,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <p v-if="phase === 'finished'" data-testid="personal-best">{{ newBest ? 'NEW PERSONAL BEST' : 'PERSONAL BEST' }} · {{ personalBest }} POINTS <small>ON THIS DEVICE</small></p>
-        <ol v-if="isOnline" class="my-5 space-y-2 text-sm" aria-label="Match standings">
+        <ol v-if="isOnline" class="match-standings my-5 space-y-2 text-sm" aria-label="Match standings">
           <li v-for="(actor, index) in [...actors].sort((a,b) => b.score-a.score)" :key="actor.id" class="flex justify-between border-b border-white/10 py-1" :class="{ 'text-[#d9ff9c]': actor.id === self?.id }">
             <span>{{ index + 1 }} · {{ actor.name }}{{ actor.connected === false ? ' · RECONNECTING' : actor.participating === false ? ' · LOBBY' : '' }}</span><span>{{ actor.kills }} K / {{ actor.deaths }} D · {{ actor.score }}</span>
           </li>
@@ -822,7 +847,7 @@ onBeforeUnmount(() => {
           <button
             v-for="(label, i) in menuItems"
             :key="label"
-            :class="{ selected: menuIndex === i }"
+            :class="{ selected: menuIndex === i, primary: i === 0 }"
             :disabled="(status !== 'Connected' || !self) && label !== 'Return to menu'"
             @mousemove="menuIndex = i"
             @click="choose(i)"
@@ -852,8 +877,9 @@ onBeforeUnmount(() => {
           Controller: sticks move/look · A / × or RT / R2 fire · LT / L2 aim · X / □ reload<br />A / × select · Start
           or B / ○ pause/back · D-pad navigate · Right-stick click toggles crouch
         </p>
-        <small data-testid="gamepad-status">{{ padStatus }}</small>
-        <div v-if="showControls && padReady" class="mt-3 space-y-2 text-xs">
+        <TouchSettings v-if="showControls && touchDevice" />
+        <small v-if="!touchDevice" data-testid="gamepad-status">{{ padStatus }}</small>
+        <div v-if="showControls && padReady && !touchDevice" class="mt-3 space-y-2 text-xs">
           <p data-testid="trigger-status">FIRE · {{ fireLabel }} · {{ Math.round(triggerLevel * 100) }}%</p>
           <button class="audio-toggle" @click="bindFire">{{ bindingFire ? 'Press your fire trigger…' : 'Assign fire trigger' }}</button>
           <button v-if="bindingFire" class="audio-toggle" @click="bindingFire = false">Cancel</button>
@@ -863,8 +889,8 @@ onBeforeUnmount(() => {
     </section>
     <footer :class="{ 'touch-menu-hidden': touchDevice && !active }">
       <div class="health" :class="{ critical: (self?.health ?? 100)<=30 }">
-        <small>VITALS</small
-        ><strong data-testid="health">{{ Math.ceil(self?.health ?? 100) }}<span>{{ isSolo ? ' / 100 HP' : ' HP' }}</span></strong>
+        <small>HEALTH</small
+        ><strong data-testid="health">{{ Math.ceil(self?.health ?? 100) }}<span> / 100 HP</span></strong>
         <div class="health-bar" role="progressbar" aria-label="Health" :aria-valuenow="Math.ceil(self?.health ?? 100)" :aria-valuemin="0" :aria-valuemax="100"><i :style="{ width: `${self?.health ?? 100}%` }" /></div>
         <small v-if="self && self.protectedUntil > elapsed && phase === 'playing'"
           >SPAWN PROTECTION</small
@@ -878,12 +904,12 @@ onBeforeUnmount(() => {
         <small>{{ RIFLE.name }}</small
         ><strong data-testid="ammo">{{ self?.ammo ?? 24 }}<span> / ∞</span></strong
         ><small v-if="reloadLeft > 0">RELOADING {{ (reloadLeft / 1000).toFixed(1) }}s</small
-        ><small v-else-if="self?.ammo === 0">R / X TO RELOAD</small
+        ><small v-else-if="self?.ammo === 0">{{ touchDevice ? 'TAP RELOAD' : 'R / X TO RELOAD' }}</small
         ><small v-else>{{ touchDevice ? 'TOUCH RELOAD' : padActive ? 'A / × OR RT FIRE · X / □ RELOAD' : 'R RELOAD' }}</small>
       </div>
     </footer>
-    <div class="telemetry">
-      <span v-if="padReady" data-testid="active-controller">{{ padActive ? 'CONTROLLER ACTIVE' : 'CONTROLLER READY · MOVE A STICK TO USE' }}</span>
+    <div class="telemetry diagnostics" aria-hidden="true">
+      <span v-if="padReady && !touchDevice" data-testid="active-controller">{{ padActive ? 'CONTROLLER ACTIVE' : 'CONTROLLER READY · MOVE A STICK TO USE' }}</span>
       <span v-if="!touchDevice" data-testid="stance">{{ (self?.crouch ?? 0)>.5 ? 'CROUCHED' : 'STANDING' }} · C / CTRL / R3</span>
       <span v-if="isSolo" class="supplies-hint">GREEN SQUARES: +35 HP</span>
       <span data-testid="heading" :data-pitch="pitch.toFixed(4)"
@@ -897,347 +923,28 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.network-notice{position:absolute;top:90px;left:50%;transform:translateX(-50%);z-index:30;background:#142026e8;color:#ffcb82;padding:8px 12px;max-width:80vw;font:12px/1.4 Arial;pointer-events:none}
-.arena {
-  height: 100dvh;
-  min-height: 500px;
-  overflow: hidden;
-  position: relative;
-  background: #151d19;
-  color: #eef2e6;
-  font-family: Arial, sans-serif;
-}
-.arena canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-  outline: none;
-}
-header {
-  position: absolute;
-  inset: 0 0 auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 25px 32px;
-  text-shadow: 0 1px 3px #000, 0 0 8px #0008;
-  pointer-events: none;
-}
-.brand {
-  font-size: 27px;
-  font-weight: 900;
-  letter-spacing: -1.5px;
-  pointer-events: auto;
-}
-.brand span {
-  color: #d9ff9c;
-}
-.location,
-.timer {
-  font: 12px monospace;
-  letter-spacing: 2px;
-  text-align: center;
-}
-.location small,
-.timer small {
-  display: block;
-  font-size: 9px;
-  letter-spacing: 1px;
-  margin-top: 7px;
-  color: #d1d8c5;
-}
-.timer {
-  font-size: 28px;
-  text-align: right;
-}
-.radar-panel {
-  position: absolute;
-  left: 32px;
-  top: 100px;
-  width: 135px;
-}
-.radar {
-  border: 1px solid #c2d2ae88;
-  opacity: 0.88;
-}
-.radar-panel small {
-  font: 9px monospace;
-  display: block;
-  margin-top: 7px;
-}
-.kill-feed {
-  position: absolute;
-  right: 32px;
-  top: 105px;
-  font: 11px monospace;
-  text-align: right;
-}
-.kill-feed p {
-  background: #18241dc9;
-  padding: 7px 12px;
-  margin-bottom: 5px;
-}
-.crosshair {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font: 28px monospace;
-  color: #f2ffdc;
-  pointer-events: none;
-  text-shadow: 0 1px 3px #000;
-}
-.crosshair.target {
-  color: #ff5353;
-}
-.crosshair.hit {
-  font-size: 38px;
-  color: white;
-}
-.crosshair.kill {
-  color: #ff914b;
-}
-.damage-flash {
-  position: absolute;
-  inset: 0;
-  box-shadow: inset 0 0 45px 10px #ac231c70;
-  pointer-events: none;
-}
-.overlay {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: #07101530;
-}
-.menu-card {
-  width: min(540px, 94vw);
-  max-height: 95dvh;
-  overflow: auto;
-  background: #17231ff2;
-  border: 1px solid #7b8c6266;
-  padding: 30px 38px;
-  box-shadow: 0 25px 80px #0006;
-}
-.eyebrow {
-  font: 10px monospace;
-  letter-spacing: 2px;
-  color: #d9ff9c;
-}
-.menu-card h1 {
-  font-size: 36px;
-  font-weight: 800;
-  letter-spacing: -1.5px;
-  margin: 12px 0;
-}
-.menu-card p {
-  font-size: 13px;
-  line-height: 1.6;
-  color: #bfccbb;
-}
-.menu-actions {
-  display: grid;
-  gap: 7px;
-  margin: 22px 0;
-}
-.menu-actions button {
-  display: flex;
-  justify-content: space-between;
-  text-align: left;
-  border: 1px solid #5e6b58;
-  padding: 13px 17px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.menu-actions button.selected {
-  background: #d9ff9c;
-  color: #17231f;
-  border-color: #d9ff9c;
-  font-weight: bold;
-}
-.menu-actions button:disabled {
-  opacity: 0.4;
-  cursor: wait;
-}
-.menu-card p.controls {
-  font-size: 10px;
-  margin-top: 12px;
-  line-height: 1.7;
-}
-.menu-card > small {
-  display: block;
-  font: 9px monospace;
-  color: #9cab98;
-  margin-top: 12px;
-}
-.audio-toggle,
-.reconnect {
-  font-size: 11px;
-  text-decoration: underline;
-  margin-top: 14px;
-  cursor: pointer;
-}
-.results {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  margin: 25px 0;
-  font: 9px monospace;
-  color: #afc4a2;
-}
-.results strong {
-  display: block;
-  font-size: 25px;
-  color: #eaffd6;
-  margin-bottom: 8px;
-}
-.death {
-  position: absolute;
-  inset: 35% 0 auto;
-  text-align: center;
-  pointer-events: none;
-  text-shadow: 0 2px 10px #000;
-}
-.death span {
-  font: 12px monospace;
-  letter-spacing: 4px;
-  color: #ffab89;
-}
-.death h2 {
-  font-size: 40px;
-  font-weight: bold;
-}
-.death p {
-  font-size: 13px;
-}
-footer {
-  position: absolute;
-  inset: auto 0 25px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  padding: 24px 32px 12px;
-  pointer-events: none;
-  text-shadow: 0 1px 3px #000, 0 0 8px #0008;
-}
-footer small {
-  display: block;
-  font: 9px monospace;
-  letter-spacing: 1px;
-  color: #d0dcc3;
-}
-footer strong {
-  font: 40px monospace;
-  line-height: 1.25;
-}
-footer strong span {
-  font-size: 19px;
-  color: #c2ceba;
-}
-.health {
-  width: 160px;
-}
-.health-bar {
-  height: 4px;
-  background: #6d776c;
-  margin: 6px 0;
-}
-.health-bar i {
-  display: block;
-  height: 100%;
-  background: #d9ff9c;
-}
-.ammo {
-  text-align: right;
-}
-.score {
-  text-align: center;
-}
-.score strong {
-  font-size: 26px;
-}
-.telemetry {
-  position: absolute;
-  inset: auto 0 0;
-  display: flex;
-  justify-content: center;
-  gap: 24px;
-  padding: 8px;
-  font: 8px monospace;
-  color: #adbaa3;
-  background: #142018ba;
-  pointer-events: none;
-}
-@media (max-width: 650px) {
-  header {
-    padding: 16px;
-  }
-  .location {
-    display: none;
-  }
-  .radar-panel {
-    left: 16px;
-    top: 80px;
-    width: 95px;
-  }
-  .kill-feed {
-    right: 16px;
-    top: 90px;
-  }
-  .menu-card {
-    padding: 22px;
-  }
-  .menu-card h1 {
-    font-size: 30px;
-  }
-  footer {
-    padding: 15px;
-  }
-  .health {
-    width: 110px;
-  }
-  .score small {
-    max-width: 95px;
-    line-height: 1.5;
-  }
-  .results strong {
-    font-size: 20px;
-  }
-}
-.reconnect{display:block;margin:16px 0 12px;padding:10px 14px;border:1px solid #ffb15c;background:#1c292c;color:#ffb15c}
-.leaderboard-launch{position:absolute;right:32px;top:100px;z-index:30;border:1px solid #ffffff45;background:#152126de;padding:9px 12px;font-size:10px;letter-spacing:.08em;color:#eef1ed;pointer-events:auto}
-.leaderboard-launch span{color:#a0aeac;font-size:8px}.leaderboard-dialog{position:absolute;inset:0;z-index:60;background:#071015e8;display:grid;place-items:center;padding:24px}.leaderboard-dialog>div{width:min(720px,96vw);max-height:90dvh;overflow-y:auto;background:#121f24;border-top:3px solid #ffb15c;padding:24px}.leaderboard-close{display:block;width:100%;padding:12px;background:#ffffff15;margin-top:18px;font-size:11px}.touch-layout .leaderboard-launch{top:56px;right:calc(12px + env(safe-area-inset-right));padding:8px;font-size:9px}.touch-layout .leaderboard-dialog{padding:10px}.touch-layout .leaderboard-dialog>div{padding:16px;max-height:94dvh}
-</style>
-
-<style scoped>
-.arena { font-family: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; }
-
-.menu-card { max-height: calc(100dvh - 100px); overflow-y: auto; border-top: 3px solid #ffb15c; background: rgba(15,23,28,.94); padding: 30px; box-shadow: 0 25px 100px #0007; }
-.menu-card h1 { font-family: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: -.035em; }
-.menu-card .eyebrow { color: #ffb15c; letter-spacing: .22em; }
-.menu-actions button { text-transform: uppercase; font-size: 13px; font-weight: 800; letter-spacing: .12em; }
-.menu-actions button.selected { background: #ffb15c; color: #10171b; border-color: #ffb15c; }
-.controls { font-family: Arial, sans-serif; font-size: 12px; line-height: 1.65; }
-.audio-toggle { text-transform: uppercase; font-size: 10px; letter-spacing: .1em; }
-</style>
-
-<style scoped>
-.health.critical strong { color:#ff806a; }
-.health.critical .health-bar i { background:#ff806a; }
-.health-feedback { position:absolute; top:24%; left:50%; transform:translateX(-50%); color:#a7ffcb; background:#14372de8; padding:12px 18px; font-size:14px; border:1px solid #75d9a6; }
-.target-name { position:absolute; top:55%; left:50%; transform:translateX(-50%); color:#ffb15c; font:12px monospace; pointer-events:none; }
-</style>
-
-<style scoped>
-.rotate-phone{position:fixed;inset:0;z-index:100;background:#101b1b;display:grid;place-items:center;padding:28px;text-align:center;touch-action:manipulation}
-.rotate-phone h1{font-size:27px;margin:18px 0}.rotate-phone p{max-width:300px;line-height:1.6;color:#c3cec6;font-size:14px}.rotate-phone a{display:inline-block;margin-top:24px;color:#ffb15c;padding:12px}.rotate-icon{font-size:64px;color:#ffb15c}
-.touch-layout{min-height:0;height:100dvh;touch-action:none;overscroll-behavior:none}
-.touch-layout header{padding:calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));height:50px}
-.touch-layout .brand{font-size:20px}.touch-layout .location{display:none}.touch-layout .timer{font-size:22px}.touch-layout .timer small{font-size:7px}
-.touch-layout .radar-panel{top:54px;left:calc(12px + env(safe-area-inset-left));width:75px}.touch-layout .radar{width:75px;height:75px}.touch-layout .radar-panel small{font-size:6px}
-.touch-menu-hidden{visibility:hidden}
-.touch-layout footer{padding:8px calc(12px + env(safe-area-inset-right)) calc(9px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));gap:14px;align-items:end}
-.touch-layout footer strong{font-size:23px}.touch-layout footer strong span{font-size:11px}.touch-layout footer small{font-size:7px}.touch-layout .health{width:120px}.touch-layout .health-bar{margin-top:5px}
-.touch-layout .telemetry{display:none}.touch-layout .score{font-size:10px}.touch-layout .kill-feed{top:62px;right:12px;font-size:8px;max-width:180px}.touch-layout .health-feedback{top:20%;padding:8px 12px;font-size:11px}
-.touch-layout .overlay{padding:10px}.touch-layout .menu-card{width:min(540px,94vw);max-height:calc(100dvh - 20px);overflow-y:auto;padding:18px 25px;touch-action:pan-y}.touch-layout .menu-card h1{font-size:28px;margin:10px 0}.touch-layout .menu-card p{font-size:11px;line-height:1.45}.touch-layout .menu-actions button{min-height:38px;padding:10px 16px;font-size:10px}.touch-layout .controls{font-size:10px}.touch-layout .eyebrow{font-size:8px}
+.arena{height:100dvh;min-height:500px;overflow:hidden;position:relative;background:var(--cl-bg);color:var(--cl-text);font-family:'Helvetica Neue',Arial,sans-serif;font-variant-numeric:tabular-nums}
+.arena canvas{width:100%;height:100%;display:block;outline:none}
+header{position:absolute;inset:0 0 auto;display:flex;justify-content:space-between;align-items:flex-start;padding:24px 32px;pointer-events:none;background:linear-gradient(#0b1013a6,transparent);text-shadow:0 2px 6px #0008}
+.brand{font-size:25px;font-weight:900;letter-spacing:-1.5px;pointer-events:auto}.brand span{color:var(--cl-accent)}
+.location{text-align:center;font-size:12px;font-weight:600}.location small,.timer small{display:block;font-size:10px;font-weight:500;margin-top:6px;color:#e0e2dd;letter-spacing:.03em}
+.timer{text-align:right;font-size:32px;font-weight:600;line-height:1}
+.radar-panel{position:absolute;left:32px;top:86px;width:156px;filter:drop-shadow(0 4px 12px #0004);pointer-events:none}.radar{width:100%;display:block;border:1px solid #ffffff50;border-radius:8px;overflow:hidden;background:#151c22;opacity:.94}.radar-north{position:absolute;left:50%;top:4px;transform:translateX(-50%);color:var(--cl-accent);font-size:10px;font-weight:800;text-shadow:0 1px 3px #000}.radar-range{position:absolute;right:6px;bottom:5px;color:#cdd5d8;font-size:9px;padding:1px 4px;background:#111519b3;border-radius:3px}
+.diagnostics{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip-path:inset(50%);white-space:nowrap;border:0!important;pointer-events:none}
+.kill-feed{position:absolute;right:32px;top:146px;font-size:11px;text-align:right;pointer-events:none}.kill-feed p{background:#151b21c9;border-right:2px solid #ffbb7080;padding:7px 12px;margin-bottom:5px;border-radius:4px}
+.crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font:28px monospace;color:#f5f2e9;pointer-events:none;text-shadow:0 1px 3px #000}.crosshair.target{color:#ff9d87}.crosshair.hit{font-size:38px;color:white}.crosshair.kill{color:var(--cl-accent)}
+.hit-caption{position:absolute;top:calc(50% + 28px);left:50%;transform:translateX(-50%);font-size:10px;font-weight:700;color:var(--cl-accent);text-shadow:0 1px 4px #000;pointer-events:none}
+.damage-flash{position:absolute;inset:0;box-shadow:inset 0 0 65px 12px #ac231c55;pointer-events:none}.damage-directions{position:absolute;inset:0;pointer-events:none}.damage-direction{position:absolute;left:calc(50% - 75px);top:calc(50% - 75px);width:150px;height:150px}.damage-direction i{position:absolute;top:0;left:48px;width:54px;height:18px;border-top:4px solid #ff806a;border-radius:50%;filter:drop-shadow(0 1px 3px #5b1717);animation:damage-in .12s ease-out}
+.elimination-confirmation{position:absolute;top:calc(50% + 72px);left:50%;transform:translateX(-50%);background:#151b21dd;border:1px solid #ffbb7066;border-radius:5px;padding:9px 14px;color:var(--cl-text);font-size:12px;pointer-events:none;white-space:nowrap}.elimination-confirmation span{color:var(--cl-accent);font-weight:700;margin-right:6px}.elimination-enter-active,.elimination-leave-active{transition:opacity .18s,margin-top .18s}.elimination-enter-from,.elimination-leave-to{opacity:0;margin-top:5px}@keyframes damage-in{from{opacity:0}to{opacity:1}}
+.overlay{position:absolute;inset:0;z-index:40;display:grid;place-items:center;background:#0b101366;backdrop-filter:blur(5px);padding:20px}
+.menu-card{width:min(500px,94vw);max-height:calc(100dvh - 40px);overflow-y:auto;background:#191f24f5;border:1px solid var(--cl-line);border-top:3px solid var(--cl-accent);border-radius:10px;padding:28px;box-shadow:0 25px 80px #0006}.eyebrow{font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--cl-accent)}.menu-card h1{font-size:32px;font-weight:800;letter-spacing:-1.2px;line-height:1.05;margin:12px 0}.menu-card p{font-size:13px;line-height:1.6;color:var(--cl-muted)}
+.menu-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:22px 0 12px}.menu-actions button{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;border:1px solid var(--cl-line);border-radius:5px;padding:12px 14px;font-size:12px;font-weight:600;min-height:44px;background:#ffffff05}.menu-actions button.primary{grid-column:1/-1;background:var(--cl-accent);color:#17191c;border-color:var(--cl-accent);font-size:14px}.menu-actions button:last-child:nth-child(2){grid-column:1/-1}.menu-actions button.selected:not(.primary),.menu-actions button:hover:not(.primary){border-color:var(--cl-accent);background:#ffbb7015}.menu-actions button:disabled{opacity:.4;cursor:wait}.menu-actions button span{font-size:18px}.menu-card p.controls{font-size:12px;margin-top:12px;line-height:1.65}.menu-card>small{display:block;font-size:11px;color:var(--cl-muted);margin-top:12px}.audio-toggle{font-size:11px;color:var(--cl-muted);text-decoration:underline;text-underline-offset:4px;margin:12px 20px 0 0;min-height:30px}.reconnect{display:block;margin:16px 0 12px;padding:10px 14px;border:1px solid var(--cl-accent);background:var(--cl-panel);color:var(--cl-accent);font-size:12px}
+.results{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:22px 0 16px;font-size:9px;font-weight:600;color:var(--cl-muted)}.results>div{background:#ffffff05;border:1px solid var(--cl-line);border-radius:6px;padding:12px 8px}.results strong{display:block;font-size:24px;font-weight:700;color:var(--cl-text);margin-bottom:6px}.menu-card [data-testid=personal-best]{font-size:11px;color:var(--cl-accent)}.menu-card [data-testid=personal-best] small{display:block;color:var(--cl-muted);font-size:9px;margin-top:2px}.match-standings{max-height:130px;overflow:auto}
+footer{position:absolute;inset:auto 0 0;display:flex;justify-content:space-between;align-items:flex-end;padding:36px 32px 24px;pointer-events:none;background:linear-gradient(transparent,#0b1013c9);text-shadow:0 1px 4px #0006}footer small{display:block;font-size:10px;font-weight:600;letter-spacing:.04em;color:#d0d6d8}footer strong{font-size:54px;font-weight:650;letter-spacing:-.04em;line-height:1.12}footer strong span{font-size:16px;font-weight:400;letter-spacing:0;color:#c8d0d2}.health{width:180px}.health-bar{height:5px;background:#ffffff33;border-radius:4px;margin:8px 0 0;overflow:hidden}.health-bar i{display:block;height:100%;background:var(--cl-text);transition:width .15s}.health.critical strong{color:#ff806a}.health.critical .health-bar i{background:#ff806a}.ammo{text-align:right}.score{text-align:center}.score strong{display:block;font-size:26px}.score small{font-size:10px;margin-top:4px}.health-feedback{position:absolute;top:25%;left:50%;transform:translateX(-50%);color:#a7ffcb;background:#17312ce8;padding:10px 16px;font-size:12px;border:1px solid #75d9a680;border-radius:5px;pointer-events:none}.target-name{position:absolute;top:calc(50% - 40px);left:50%;transform:translateX(-50%);color:var(--cl-accent);font-size:12px;pointer-events:none;text-shadow:0 1px 4px #000}
+.network-notice{position:absolute;top:90px;left:50%;transform:translateX(-50%);z-index:50;background:#191f24ed;color:var(--cl-accent);padding:8px 12px;max-width:80vw;font:12px/1.4 Arial;pointer-events:none;border:1px solid var(--cl-line);border-radius:5px}
+.leaderboard-launch{position:absolute;right:32px;top:98px;z-index:45;border:1px solid var(--cl-line);border-radius:5px;background:#191f24e8;padding:10px 12px;font-size:10px;color:var(--cl-text);pointer-events:auto}.leaderboard-launch span{color:var(--cl-muted);font-size:9px}.leaderboard-dialog{position:absolute;inset:0;z-index:60;background:#0b1013e8;display:grid;place-items:center;padding:24px}.leaderboard-dialog>div{width:min(720px,96vw);max-height:90dvh;overflow-y:auto;background:var(--cl-panel);border:1px solid var(--cl-line);border-top:3px solid var(--cl-accent);border-radius:8px;padding:24px}.leaderboard-close{display:block;width:100%;padding:12px;background:#ffffff15;margin-top:18px;font-size:12px;border-radius:5px}
+.rotate-phone{position:fixed;inset:0;z-index:100;background:var(--cl-bg);display:grid;place-items:center;padding:28px;text-align:center;touch-action:manipulation}.rotate-phone h1{font-size:27px;margin:18px 0}.rotate-phone p{max-width:300px;line-height:1.6;color:var(--cl-muted);font-size:14px}.rotate-phone a{display:inline-block;margin-top:24px;color:var(--cl-accent);padding:12px}.rotate-icon{font-size:64px;color:var(--cl-accent)}
+.touch-layout{min-height:0;touch-action:none;overscroll-behavior:none}.touch-layout header{padding:calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));height:50px}.touch-layout .brand{font-size:20px}.touch-layout .location{display:none}.touch-layout .timer{font-size:24px}.touch-layout .timer small{font-size:8px;margin-top:4px}.touch-layout .radar-panel{top:54px;left:calc(12px + env(safe-area-inset-left));width:84px}.touch-layout .radar-north{font-size:8px;top:2px}.touch-layout .radar-range{font-size:7px;right:3px;bottom:3px}.touch-menu-hidden{visibility:hidden}.touch-layout footer{padding:22px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));gap:14px}.touch-layout footer strong{font-size:34px}.touch-layout footer strong span{font-size:11px}.touch-layout footer small{font-size:8px}.touch-layout .health{width:130px}.touch-layout .health-bar{margin-top:5px;height:4px}.touch-layout .score strong{font-size:23px}.touch-layout .score small{font-size:8px}.touch-layout .kill-feed{top:54px;right:calc(50% - 90px);font-size:9px;max-width:180px}.touch-layout .kill-feed p{padding:5px 8px}.touch-layout .health-feedback{top:20%;padding:8px 12px;font-size:11px}.touch-layout .overlay{padding:10px}.touch-layout .menu-card{width:min(500px,94vw);max-height:calc(100dvh - 20px);padding:18px 24px;touch-action:pan-y}.touch-layout .menu-card h1{font-size:26px;margin:8px 0}.touch-layout .menu-card p{font-size:11px;line-height:1.5}.touch-layout .menu-actions{margin-top:16px}.touch-layout .menu-actions button{min-height:40px;padding:10px 14px;font-size:11px}.touch-layout .results{margin:14px 0;gap:6px}.touch-layout .results>div{padding:10px 7px}.touch-layout .results strong{font-size:22px}.touch-layout .leaderboard-launch{top:54px;right:calc(12px + env(safe-area-inset-right));padding:8px;font-size:9px}.touch-layout .leaderboard-dialog{padding:10px}.touch-layout .leaderboard-dialog>div{padding:16px;max-height:94dvh}
+@media(max-width:650px){.location{display:none}.menu-card h1{font-size:28px}.results strong{font-size:20px}}
+@media(max-height:400px){.touch-layout .radar-panel{width:70px}.touch-layout .kill-feed p:nth-child(n+3){display:none}}
 </style>
