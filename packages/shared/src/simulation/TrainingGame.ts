@@ -495,7 +495,8 @@ export class TrainingGame {
     if (waypoint && (!visible || destination)) {
       const dx = waypoint.x - bot.x, dz = waypoint.z - bot.z, distance = Math.hypot(dx, dz)
       if (distance > .001) {
-        let speed = .5
+        // 1.8 m/s: a deliberate combat walk, rather than the old 3 m/s jog.
+        let speed = .3
         if (!visible) {
           const delta = Math.atan2(Math.sin(Math.atan2(dx, dz) - bot.yaw), Math.cos(Math.atan2(dx, dz) - bot.yaw))
           bot.yaw += Math.max(-dt * 0.0025, Math.min(dt * 0.0025, delta))

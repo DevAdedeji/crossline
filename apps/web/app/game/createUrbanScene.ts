@@ -2,6 +2,8 @@ import { interiorDetails, detailedFurniture } from './interiorDetails'
 import { solidTopSurfaces, type SurfaceRect } from './solidSurfaces'
 import { addFacades } from './urbanFacades'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
+import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
+import { SharpenPostProcess } from '@babylonjs/core/PostProcesses/sharpenPostProcess'
 import { ReflectionProbe } from '@babylonjs/core/Probes/reflectionProbe'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
@@ -22,33 +24,36 @@ import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent'
+import { BUILDING_FINISHES, buildingFinishIndex } from './buildingFinishes'
 import { TRAINING_WORLD, COMBAT_DISTRICTS, type WorldGeometry, RAMP, ROOF_HEIGHT } from '@crossline/shared'
 
 /** Shared collider geometry with locally licensed facade and surface artwork. */
 export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry = TRAINING_WORLD, options: {mobile?:boolean} = {}) {
   const BUILDINGS = world.buildings, MAP_SOLIDS = world.solids, PARKED_CARS = world.cars
   const engine = new Engine(canvas, true, { stencil: true })
-  engine.setHardwareScalingLevel(options.mobile ? 1 / Math.min(window.devicePixelRatio || 1, 1.5) : Math.max(1, window.devicePixelRatio / 1.5))
+  // Babylon uses the reciprocal of render density. The previous desktop formula
+  // rendered Retina displays below CSS resolution, softening every surface.
+  engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 1.5))
   const scene = new Scene(engine)
   scene.skipPointerMovePicking=true
-  scene.clearColor = new Color4(0.52, 0.61, 0.67, 1)
+  scene.clearColor = new Color4(0.57, 0.72, 0.83, 1)
   scene.fogMode = Scene.FOGMODE_EXP2
-  scene.fogDensity = world.limit > 26 ? 0.005 : 0.007
-  scene.fogColor = new Color3(0.66, 0.71, 0.73)
+  scene.fogDensity = world.limit > 26 ? 0.0026 : 0.003
+  scene.fogColor = Color3.FromHexString('#a9c3d2')
   const skyTexture = new DynamicTexture('daylight sky', { width: 16, height: 256 }, scene, false)
   const skyInk = skyTexture.getContext() as CanvasRenderingContext2D
   const gradient = skyInk.createLinearGradient(0, 0, 0, 256)
-  gradient.addColorStop(0, '#39688b'); gradient.addColorStop(.5, '#c6d0cd'); gradient.addColorStop(1, '#778987')
+  gradient.addColorStop(0, '#346a9a'); gradient.addColorStop(.32, '#79add1'); gradient.addColorStop(.5, '#c0d6df'); gradient.addColorStop(1, '#7e8f9c')
   skyInk.fillStyle = gradient; skyInk.fillRect(0, 0, 16, 256); skyTexture.update()
   const skySurface = new StandardMaterial('daylight sky', scene)
   skySurface.emissiveTexture = skyTexture; skySurface.disableLighting = true
   skySurface.backFaceCulling = false; skySurface.fogEnabled = false
-  const skyDome = MeshBuilder.CreateSphere('sky dome', { diameter: world.limit > 26 ? 480 : 240, segments: 24 }, scene)
+  const skyDome = MeshBuilder.CreateSphere('sky dome', { diameter: world.limit > 26 ? 1500 : 500, segments: 24 }, scene)
   skyDome.material = skySurface; skyDome.infiniteDistance = true; skyDome.isPickable = false
 
   const camera = new UniversalCamera('player-camera', new Vector3(-3, 1.7, -22), scene)
   camera.minZ = 0.12
-  camera.maxZ = world.limit > 26 ? 260 : 160
+  camera.maxZ = world.limit > 26 ? 850 : 300
   camera.fov = 1.2
   camera.keysUp = []
   camera.keysDown = []
@@ -58,41 +63,59 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   camera.inputs.clear()
   camera.inertia = 0
   const ambient = new HemisphericLight('sky', new Vector3(0, 1, 0), scene)
-  ambient.intensity = 0.7
-  ambient.groundColor = Color3.FromHexString('#626058')
+  ambient.intensity = 0.62
+  ambient.diffuse = Color3.FromHexString('#dce9f3')
+  ambient.groundColor = Color3.FromHexString('#62696a')
   const sun = new DirectionalLight('afternoon-sun', new Vector3(-0.6, -1, 0.4), scene)
   sun.position.set(25, 45, -25)
-  sun.intensity = 0.9
-  sun.diffuse = Color3.FromHexString('#ffe2b1')
+  sun.intensity = 1.65
+  sun.diffuse = Color3.FromHexString('#fff0d8')
   sun.autoUpdateExtends = false
-  sun.orthoLeft = world.limit>26 ? -92 : -38
-  sun.orthoRight = world.limit>26 ? 92 : 38
-  sun.orthoTop = world.limit>26 ? 92 : 38
-  sun.orthoBottom = world.limit>26 ? -92 : -38
+  const shadowRadius = options.mobile ? 32 : 48
+  const shadowSize = options.mobile ? 1024 : 2048
+  sun.orthoLeft = -shadowRadius
+  sun.orthoRight = shadowRadius
+  sun.orthoTop = shadowRadius
+  sun.orthoBottom = -shadowRadius
   sun.shadowMinZ = 1
-  sun.shadowMaxZ = 110
-  const shadows = new ShadowGenerator(options.mobile ? 1024 : 2048, sun)
-  shadows.usePercentageCloserFiltering = !options.mobile
-  shadows.bias = 0.01
-  shadows.normalBias = 0.12
+  sun.shadowMaxZ = 140
+  const shadows = new ShadowGenerator(shadowSize, sun)
+  shadows.usePercentageCloserFiltering = engine.webGLVersion > 1
+  shadows.filteringQuality = options.mobile ? ShadowGenerator.QUALITY_LOW : ShadowGenerator.QUALITY_MEDIUM
+  shadows.bias = 0.001
+  shadows.normalBias = 0.035
+  shadows.setDarkness(0.12)
+  const processing = scene.imageProcessingConfiguration
+  processing.toneMappingEnabled = true
+  processing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES
+  processing.exposure = 1.12
+  processing.contrast = 1.08
+  // Keep the aiming view sharp; no depth of field, motion blur or bloom.
+  if (!options.mobile) {
+    const sharpen = new SharpenPostProcess('surface clarity', 1, camera)
+    sharpen.edgeAmount = 0.16
+    sharpen.colorAmount = 1
+  }
 
-  const materials = new Map<string, StandardMaterial>()
+  const materials = new Map<string, PBRMaterial>()
   function material(name: string, color: string) {
     const existing = materials.get(name)
     if (existing) return existing
-    const value = new StandardMaterial(name, scene)
-    value.diffuseColor = Color3.FromHexString(color)
-    value.specularColor = Color3.Black()
+    const value = new PBRMaterial(name, scene)
+    value.albedoColor = Color3.FromHexString(color)
+    value.metallic = 0
+    value.roughness = 0.88
+    value.environmentIntensity = 0.65
     const photo =
       name === 'brick'
         ? 'brick'
         : name === 'asphalt'
           ? 'asphalt'
-          : ['plaster', 'concrete', 'roof', 'paving'].includes(name)
+          : ['concrete', 'roof', 'paving'].includes(name)
             ? 'concrete'
             : null
     if (photo) {
-      value.diffuseTexture = new Texture(
+      value.albedoTexture = new Texture(
         `/textures/${photo}-color.jpg`,
         scene,
         false,
@@ -106,32 +129,56 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
         false,
         Texture.TRILINEAR_SAMPLINGMODE,
       )
-      value.diffuseTexture.anisotropicFilteringLevel = 8
+      value.albedoTexture.anisotropicFilteringLevel = 8
       value.bumpTexture.anisotropicFilteringLevel = 8
-      value.bumpTexture.level = photo === 'asphalt' ? 0.2 : 0.45
-      if (photo === 'brick') value.diffuseColor = new Color3(0.88, 0.88, 0.88)
-      if (photo === 'asphalt') value.diffuseColor = new Color3(0.72, 0.74, 0.75)
-    } else if (['wood', 'interior-floor'].includes(name))
-      value.diffuseTexture = surfaceTexture(name, scene)
+      value.bumpTexture.gammaSpace = false
+      value.bumpTexture.level = photo === 'asphalt' ? 0.3 : 0.4
+      if (photo === 'brick') value.albedoColor = new Color3(0.88, 0.88, 0.88)
+      if (photo === 'asphalt') value.albedoColor = new Color3(0.48, 0.51, 0.54)
+    } else if (['wood', 'interior-floor', 'paving', 'plaster'].includes(name))
+      value.albedoTexture = surfaceTexture(name, scene)
     materials.set(name, value)
     return value
   }
   const palette = {
-    plaster: material('plaster', '#c9bea1'),
+    plaster: material('plaster', '#b9ab91'),
     brick: material('brick', '#985d46'),
-    concrete: material('concrete', '#919b92'),
-    roof: material('roof', '#727d76'),
-    metal: material('metal', '#4d615e'),
+    concrete: material('concrete', '#aaa392'),
+    roof: material('roof', '#929da5'),
+    metal: material('metal', '#536674'),
     wood: material('wood', '#977a4e'),
   }
-  const hospitalWall=material('hospital-wall','#d4e1d8'),hospitalTiles=material('hospital-tile','#c4d0cb'),hospitalLinen=material('hospital-linen','#e2ebe7'),hospitalSteel=material('hospital-enamel','#789b99')
-  hospitalWall.emissiveColor=new Color3(.17,.19,.18)
-  hospitalTiles.diffuseTexture=surfaceTexture('interior-floor',scene);hospitalTiles.emissiveColor=new Color3(.13,.15,.14)
+  palette.metal.metallic = 0.65; palette.metal.roughness = 0.45
+  const hospitalWall=material('hospital-wall','#afb9aa'),hospitalTiles=material('hospital-tile','#aaa48e'),hospitalLinen=material('hospital-linen','#e2ebe7'),hospitalSteel=material('hospital-enamel','#789b99')
+  hospitalWall.emissiveColor=new Color3(.055,.06,.05)
+  hospitalTiles.albedoTexture=surfaceTexture('interior-floor',scene);hospitalTiles.emissiveColor=new Color3(.04,.035,.025)
   hospitalLinen.emissiveColor=new Color3(.22,.24,.23)
   const hospitalLight=material('hospital-light','#e5f0e9');hospitalLight.emissiveColor=new Color3(.75,.85,.8)
-  const cityWall=material('city-plaster','#b5b7aa'),cityBrick=material('city-brick','#a29682'),cityConcrete=material('city-concrete','#9ba59e')
-  cityWall.diffuseTexture=surfaceTexture('plaster',scene);cityBrick.diffuseTexture=palette.brick.diffuseTexture;cityConcrete.diffuseTexture=palette.concrete.diffuseTexture
-  for(const m of [cityWall,cityBrick,cityConcrete])m.emissiveColor=new Color3(.12,.14,.13)
+  const cityConcrete=material('city-concrete','#b5a68c')
+  cityConcrete.albedoTexture=palette.concrete.albedoTexture
+  cityConcrete.bumpTexture=palette.concrete.bumpTexture
+  const wallFinishes = BUILDING_FINISHES.map((finish, index) => {
+    const surface = material(`building-wall-${index}`, finish.wall)
+    surface.albedoTexture = surfaceTexture('plaster', scene)
+    return surface
+  })
+  const cityFloors = material('city-interior-floor', '#a58f70')
+  cityFloors.albedoTexture = surfaceTexture('interior-floor', scene)
+  const buildingWalls = new Map(BUILDINGS.map(building => [building.id, wallFinishes[buildingFinishIndex(building.id)]!]))
+  function solidMaterial(solid: (typeof MAP_SOLIDS)[number]) {
+    if (solid.id.startsWith('city-')) {
+      const buildingId = solid.id.match(/^city-\d+-[01](?=-)/)?.[0]
+      if (buildingId && ['plaster', 'brick'].includes(solid.material)) return buildingWalls.get(buildingId)!
+      if (['roof', 'concrete'].includes(solid.material)) return cityConcrete
+    }
+    if (solid.id.startsWith('landmark-hospital')) {
+      if (solid.id.includes('mattress')) return hospitalLinen
+      if (/hospital-(floor|roof$)/.test(solid.id)) return hospitalTiles
+      if (solid.material === 'plaster') return hospitalWall
+      if (/bedhead|locker|nurses/.test(solid.id)) return hospitalSteel
+    }
+    return palette[solid.material]
+  }
   const staticMeshes: Mesh[] = []
   function box(
     name: string,
@@ -141,7 +188,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     width: number,
     height: number,
     depth: number,
-    surface: StandardMaterial,
+    surface: PBRMaterial,
     topFaces?: SurfaceRect[],
   ) {
     const mesh = MeshBuilder.CreateBox(name, { width, height, depth }, scene)
@@ -163,7 +210,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
       }
       data.positions=positions;data.normals=normals;data.indices=indices;data.uvs=uvs;data.applyToMesh(mesh)
     }
-    if (surface.diffuseTexture) {
+    if (surface.albedoTexture) {
       const positions = mesh.getVerticesData(VertexBuffer.PositionKind)!,
         normals = mesh.getVerticesData(VertexBuffer.NormalKind)!,
         uvs: number[] = []
@@ -183,8 +230,8 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     return mesh
   }
   const span = world.limit * 2 + 2
-  box('neighbourhood-ground', 0, -0.13, 0, span, 0.25, span, material('paving', '#91988e'))
-  const asphalt = material('asphalt', '#414e50'), paint = material('road-paint', '#d7ceaa'), curb = material('curb', '#d1ccba')
+  box('neighbourhood-ground', 0, -0.13, 0, span, 0.25, span, material('paving', '#a7977a'))
+  const asphalt = material('asphalt', '#414e50'), paint = material('road-paint', '#e0dfd5'), curb = material('curb', '#acb4b9')
   for (const center of world.roadCenters) {
     box('north-south-street', center, .003, 0, 9, .014, span, asphalt)
     // Split crossing roads at intersections: overlapping near-coplanar asphalt caused flicker.
@@ -215,7 +262,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
       solid.width,
       solid.height,
       solid.depth,
-      solid.id.startsWith('city-') ? solid.material==='plaster'?cityWall:solid.material==='brick'?cityBrick:['roof','concrete'].includes(solid.material)?cityConcrete:palette[solid.material] : solid.id.startsWith('landmark-hospital') ? solid.id.includes('mattress') ? hospitalLinen : /hospital-(floor|roof$)/.test(solid.id) ? hospitalTiles : solid.material==='plaster' ? hospitalWall : /bedhead|locker|nurses/.test(solid.id) ? hospitalSteel : palette[solid.material] : palette[solid.material],
+      solidMaterial(solid),
       topSurfaces.get(solid.id),
     )
 
@@ -248,8 +295,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   }
 
   const glass = material('window-glass', '#325f6a')
-  glass.specularColor = Color3.FromHexString('#9fbab4')
-  glass.specularPower = 64
+  glass.metallic = 0.15; glass.roughness = 0.16
   if(world.limit>26) {
     const medical=material('hospital white','#dbe3dc'),teal=material('hospital teal','#367c78')
     box('hospital ground floor',-48,.05,-48,29.5,.02,25.5,hospitalTiles)
@@ -297,7 +343,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   for(const b of BUILDINGS.filter(b=>b.id.startsWith('city-'))) {
     const floors=Math.round((b.height ?? 3.2)/3.2)
     for(let f=0;f<floors;f++)box('city ceiling light',b.x+3.5,f*3.2+2.98,b.z,2.4,.06,.5,hospitalLight)
-    box('city entry floor',b.x,.015,b.z,17.5,.02,15.5,hospitalTiles)
+    box('city entry floor',b.x,.015,b.z,17.5,.02,15.5,cityFloors)
     sign(b.name,b.x,2.55,b.z-8.25,0,6,.45)
   }
   for (const building of BUILDINGS) {
@@ -359,12 +405,14 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     const reflection = new ReflectionProbe('street reflection', 128, scene)
     reflection.position.set(0, 2, 0)
     scene.environmentTexture = reflection.cubeTexture
-    reflection.renderList = scene.meshes.filter((mesh) => mesh.getTotalVertices() > 0)
+    // A sky-only capture gives consistent daylight across the large arena and
+    // avoids rendering the entire city six times during mobile startup.
+    reflection.renderList = [skyDome]
     reflection.refreshRate = 0
     glass.unfreeze()
     glass.reflectionTexture = reflection.cubeTexture
     glass.reflectionTexture.level = 0.45
-    glass.diffuseColor = Color3.FromHexString('#36434a')
+    glass.albedoColor = Color3.FromHexString('#36434a')
     glass.freeze()
 
     const carSurfaces = new Map<string, PBRMaterial>()
@@ -426,7 +474,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     height: number,
   ) {
     const texture = new DynamicTexture(text, { width: 1024, height: 256 }, scene, false)
-    texture.drawText(text, null, 155, 'bold 66px sans-serif', '#dcecba', '#243c35', true)
+    texture.drawText(text, null, 155, 'bold 66px sans-serif', '#f1eee3', '#26333c', true)
     const surface = new StandardMaterial(text, scene)
     surface.diffuseTexture = texture
     surface.emissiveColor = new Color3(0.25, 0.25, 0.25)
@@ -442,7 +490,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   // Batch immutable geometry by material. Rendering never performs gameplay collision.
   const groups = new Map<string, Mesh[]>()
   for (const mesh of staticMeshes) {
-    const surface = mesh.material as StandardMaterial
+    const surface = mesh.material as PBRMaterial
     const key=`${surface.uniqueId}/${Math.floor(mesh.position.x/32)}/${Math.floor(mesh.position.z/32)}`
     const group = groups.get(key) ?? []
     group.push(mesh)
@@ -453,7 +501,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     if (merged) {
       merged.receiveShadows = true
       merged.freezeWorldMatrix()
-      const surface = merged.material as StandardMaterial
+      const surface = merged.material as PBRMaterial
       if (
         ![
           asphalt,
@@ -468,8 +516,11 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     }
   }
   for (const surface of materials.values()) surface.freeze()
-  if(world.limit > 26) scene.onBeforeRenderObservable.add(() => {
-    sun.position.set(camera.position.x+25,45,camera.position.z-25)
+  const shadowTexel = shadowRadius * 2 / shadowSize
+  scene.onBeforeRenderObservable.add(() => {
+    const x = Math.round(camera.position.x / shadowTexel) * shadowTexel
+    const z = Math.round(camera.position.z / shadowTexel) * shadowTexel
+    sun.position.set(x + 27, camera.position.y + 45, z - 18)
   })
   const avatarMaterial = material('players', '#d9f99b')
   return { engine, scene, camera, shadows, avatarMaterial, addVehicles, roofHeight: ROOF_HEIGHT }

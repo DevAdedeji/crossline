@@ -293,7 +293,7 @@ export function combatPresentation(
         const animation = bot.animations.find((group) => group.name.endsWith(`|${action}`))
         animation?.start(
           action !== 'Death' && action !== 'HitRecieve',
-          action === 'HitRecieve' ? 2.5 : action === 'Walk' ? 0.7 : 1,
+          action === 'HitRecieve' ? 2.5 : action === 'Walk' ? (actor.bot && mode === 'solo' ? 0.5 : 0.7) : 1,
         )
         bot.action = action
       }

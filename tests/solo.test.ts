@@ -26,9 +26,9 @@ test('Solo pursuit advances along a street without reversing toward old graph an
     const before={x:bot.x,z:bot.z}
     game.step()
     assert.ok(bot.z<=before.z+.001,`bot reversed at tick ${i}: ${before.z} -> ${bot.z}`)
-    assert.ok(Math.hypot(bot.x-before.x,bot.z-before.z)<=.101,'movement stays within walking speed')
+    assert.ok(Math.hypot(bot.x-before.x,bot.z-before.z)<=1.8*TICK_MS/1000+.001,'movement stays within 1.8 m/s walking speed')
   }
-  assert.ok(bot.z < -85,`bot makes sustained progress, ended at ${bot.z}`)
+  assert.ok(bot.z < -77,`bot makes sustained progress, ended at ${bot.z}`)
 })
 test('Solo bots hold an engagement position instead of shuffling between shots', () => {
   const game=setup(),bot=game.actors.get('bot-0')!,human=game.actors.get('human')!

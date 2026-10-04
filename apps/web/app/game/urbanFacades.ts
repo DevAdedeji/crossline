@@ -1,3 +1,6 @@
+import { BUILDING_FINISHES, buildingFinishIndex } from './buildingFinishes'
+import { surfaceTexture } from './surfaceTexture'
+import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import '@babylonjs/core/Meshes/thinInstanceMesh'
@@ -11,7 +14,8 @@ import { TRAINING_WORLD, type WorldGeometry } from '@crossline/shared'
 export function addFacades(scene: Scene, assets: TrainingAssets, _shadows: ShadowGenerator, world: WorldGeometry = TRAINING_WORLD) {
   // One shared geometry buffer per source mesh, spatial tile and material. Avoid
   // instantiating the entire module kit (including disabled parts) for every window.
-  const batches = new Map<string, {source: Mesh; matrices: number[]}>()
+  const batches = new Map<string, {source: Mesh; matrices: number[]; tone: number}>()
+  let tone = 0
   function module(kit: 'apartment' | 'factory', part: 'panel' | 'blank' | 'trim',
     x: number, y: number, z: number, yaw: number, width = 3, height = 3) {
     const placement = Matrix.Compose(new Vector3(width / 3, height / 3, 1), Quaternion.RotationYawPitchRoll(yaw, 0, 0), new Vector3(x, y, z))
@@ -20,13 +24,14 @@ export function addFacades(scene: Scene, assets: TrainingAssets, _shadows: Shado
       let node = source.parent
       while (node && node.name !== part) node = node.parent
       if (!node) continue
-      const key = `${kit}/${part}/${source.uniqueId}/${Math.floor(x / 32)}/${Math.floor(z / 32)}`
-      const batch = batches.get(key) ?? {source, matrices: []}
+      const key = `${kit}/${part}/${source.uniqueId}/${tone}/${Math.floor(x / 32)}/${Math.floor(z / 32)}`
+      const batch = batches.get(key) ?? {source, matrices: [], tone}
       batch.matrices.push(...source.computeWorldMatrix(true).multiply(placement).asArray())
       batches.set(key, batch)
     }
   }
   for (const building of world.buildings) {
+    tone = buildingFinishIndex(building.id)
     if(building.id.startsWith('city-')) {
       const kit = building.material === 'brick' ? 'factory' : 'apartment'
       const floors = Math.round((building.height ?? 3.2) / 3.2)
@@ -126,6 +131,7 @@ export function addFacades(scene: Scene, assets: TrainingAssets, _shadows: Shado
     }
   }
   // Two coherent street elevations outside the arena provide depth without changing walkable area.
+  tone = 0
   for (const side of [-1, 1]) {
     for (let bay = -12; bay <= 12; bay += 3) {
       for (let floor = 0; floor < 4; floor++)
@@ -147,15 +153,41 @@ export function addFacades(scene: Scene, assets: TrainingAssets, _shadows: Shado
       )
     }
   }
-  for (const [key, {source, matrices}] of batches) {
+  const surfaces = new Map<string, PBRMaterial>()
+  const paintedPlaster = surfaceTexture('plaster', scene)
+  for (const [key, {source, matrices, tone}] of batches) {
     const mesh = source.clone(`facade-batch:${key}`, null, true)!
     mesh.parent = null; mesh.position.setAll(0); mesh.scaling.setAll(1)
     mesh.rotationQuaternion = Quaternion.Identity(); mesh.rotation.setAll(0)
     mesh.setEnabled(true); mesh.isVisible = true; mesh.isPickable = false
     mesh.receiveShadows = true
     if (mesh.material instanceof PBRMaterial) {
-      mesh.material.environmentIntensity = .65
-      mesh.material.backFaceCulling = false
+      const sourceMaterial = mesh.material
+      const surfaceKey = `${sourceMaterial.uniqueId}/${tone}`
+      let surface = surfaces.get(surfaceKey)
+      if (!surface) {
+        surface = sourceMaterial.clone(`facade finish:${surfaceKey}`)!
+        surface.environmentIntensity = .7
+        surface.backFaceCulling = false
+        if (sourceMaterial.name.includes('glass')) {
+          surface.roughness = .18
+          surface.metallic = .18
+        } else {
+          const finish = BUILDING_FINISHES[tone]!
+          const masonry = /plaster|brick/.test(sourceMaterial.name)
+          if (masonry && !(sourceMaterial.name.includes('brick') && finish.brick)) {
+            // Tinting the original brown albedo only makes darker brown. Painted
+            // masonry needs a neutral albedo; retain the asset's relief and wear.
+            surface.albedoTexture = paintedPlaster
+            surface.albedoColor = Color3.FromHexString(finish.wall)
+            surface.roughness = .9
+          } else if (sourceMaterial.name.includes('trim')) {
+            surface.albedoColor = Color3.FromHexString(finish.trim)
+          }
+        }
+        surfaces.set(surfaceKey, surface)
+      }
+      mesh.material = surface
     }
     // Babylon stores instance vertex buffers on Geometry; tiles need independent
     // buffer bindings even though all copies within a tile share one mesh.
