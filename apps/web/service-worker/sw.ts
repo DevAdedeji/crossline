@@ -33,7 +33,7 @@ registerRoute(({request,url})=>request.method==='GET' && url.origin===self.locat
  })
 registerRoute(({request, url}) => request.mode === 'navigate' && url.origin === self.location.origin
   && !/^\/api(?:\/|$)/.test(url.pathname), async ({request,url}) => {
-  if((url.pathname==='/'||url.pathname==='/play'||url.pathname==='/offline-shell') && await ready())
+  if((url.pathname==='/'||url.pathname==='/play'||url.pathname==='/campaign'||url.pathname==='/offline-shell') && await ready())
    return (await (await caches.open(packCache)).match('/offline-shell/index.html'))!
   try { return await fetch(request) }
   catch { return (await matchPrecache('/offline.html')) ?? Response.error() }

@@ -9,6 +9,7 @@ export const BUILDING_FINISHES = [
 ] as const
 
 export function buildingFinishIndex(id: string) {
+  if (id === 'relay-office') return 3
   if (id === 'mercer-hospital') return 2
   let hash = 0
   for (const character of id) hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0

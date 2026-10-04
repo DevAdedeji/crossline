@@ -20,7 +20,7 @@ export const RIFLE = {
   headDamage: 50,
 } as const
 export const EYE_HEIGHT = 1.6
-export type GameMode = 'training' | 'solo' | 'online'
+export type GameMode = 'training' | 'solo' | 'online' | 'campaign'
 export type Phase = 'ready' | 'playing' | 'paused' | 'finished'
 export interface CombatInput extends MoveInput {
   seq?: number

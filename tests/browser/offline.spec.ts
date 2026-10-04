@@ -5,7 +5,7 @@ async function download(page:Page){
  await page.getByRole('button',{name:'Download offline play',exact:true}).click()
  await expect(page.getByTestId('offline-ready')).toBeVisible({timeout:60000})
 }
-for(const mobile of [false,true])test(`downloaded Practice and Solo survive offline reload (${mobile?'phone':'desktop'})`,async({browser},info)=>{
+for(const mobile of [false,true])test(`downloaded Campaign, Practice and Solo survive offline reload (${mobile?'phone':'desktop'})`,async({browser},info)=>{
  test.setTimeout(150000)
  const context=await browser.newContext(mobile?{viewport:{width:844,height:390},deviceScaleFactor:3,isMobile:true,hasTouch:true}:{}),page=await context.newPage(),errors:string[]=[],sockets:string[]=[]
  page.on('pageerror',error=>errors.push(error.message));page.on('websocket',socket=>sockets.push(socket.url()))
@@ -16,10 +16,10 @@ for(const mobile of [false,true])test(`downloaded Practice and Solo survive offl
   expect(cache.bytes).toBeLessThanOrEqual(64*1024*1024);expect(cache.urls.length).toBeLessThanOrEqual(97)
   expect(cache.urls.some(url=>url.startsWith('/api/'))).toBe(false)
   const cdp=await context.newCDPSession(page);await cdp.send('Network.setCacheDisabled',{cacheDisabled:true});await context.setOffline(true)
-  for(const mode of ['training','solo']){
+  for(const mode of ['training','solo','campaign']){
    await page.goto(`http://127.0.0.1:3001/play?mode=${mode}`)
    await expect(page.locator('.radar-panel')).toContainText('ON DEVICE',{timeout:30000})
-   await page.getByRole('button',{name:mode==='solo'?'Start match':'Start training',exact:true}).click()
+   await page.getByRole('button',{name:mode==='campaign'?'Start mission':mode==='solo'?'Start match':'Start training',exact:true}).click()
    await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
    const position=await page.getByTestId('position').innerText()
    if(mobile){
@@ -39,6 +39,7 @@ for(const mobile of [false,true])test(`downloaded Practice and Solo survive offl
     const bot=page.locator('[data-actor="bot-0"]'),before=await bot.getAttribute('data-x');await expect(bot).not.toHaveAttribute('data-x',before!,{timeout:10000})
     await page.waitForTimeout(4100)
    }
+   if(mode==='campaign')await expect(page.getByText('SPAWN PROTECTION',{exact:true})).toBeHidden({timeout:6000})
    if(mobile){const fire=(await page.getByRole('button',{name:'Fire',exact:true}).boundingBox())!;await page.mouse.move(fire.x+fire.width/2,fire.y+fire.height/2);await page.mouse.down()}
    else await page.mouse.down()
    await expect(page.getByTestId('ammo')).not.toContainText('24 /')
@@ -48,6 +49,7 @@ for(const mobile of [false,true])test(`downloaded Practice and Solo survive offl
    if(mobile)await page.getByRole('button',{name:'Pause',exact:true}).tap();else await page.keyboard.press('Escape')
    await page.getByRole('button',{name:'Return to menu',exact:true}).click()
   }
+  await page.goto('http://127.0.0.1:3001/campaign');await expect(page.getByRole('heading',{name:'The last signal.'})).toBeVisible()
   await page.goto('http://127.0.0.1:3001/play?mode=online');await expect(page.getByRole('heading',{name:'Online needs internet.'})).toBeVisible()
   expect(sockets).toEqual([]);expect(errors).toEqual([])
   await context.setOffline(false);await page.goto('http://127.0.0.1:3001/');await expect(page.getByTestId('offline-ready')).toBeVisible()

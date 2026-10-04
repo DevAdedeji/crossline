@@ -1,4 +1,4 @@
-import { SOLO, SOLO_HEALTH_PACKS, type HealthPickup, moveHuman, stanceAmount, stanceHeight, stanceEye, stanceAim, stanceHead, TICK_MS, move, isBlocked, COMBAT_WORLD, TRAINING_WORLD, COMBAT_SPAWNS, COMBAT_BOT_COUNT, type Position, type MoveInput } from '@crossline/shared'
+import { SOLO, SOLO_HEALTH_PACKS, type HealthPickup, moveHuman, stanceAmount, stanceHeight, stanceEye, stanceAim, stanceHead, TICK_MS, move, isBlocked, COMBAT_WORLD, TRAINING_WORLD, COMBAT_SPAWNS, COMBAT_BOT_COUNT, type WorldGeometry, type Position, type MoveInput } from '@crossline/shared'
 import {
   TRAINING,
   RIFLE,
@@ -35,6 +35,13 @@ interface BotMemory {
   stalledMs?: number
   pursuing?: boolean
 }
+export interface SimulationScenario {
+  world: WorldGeometry
+  spawns: readonly Position[]
+  botCount: number
+  healthPacks: readonly HealthPickup[]
+  respawn: boolean
+}
 export class TrainingGame {
   actors = new Map<string, Combatant>()
   phase: Phase = 'ready'
@@ -43,8 +50,8 @@ export class TrainingGame {
   input: CombatInput = { ...IDLE_INPUT }
   events: GameEvent[] = []
   healthPacks = new Map<string, HealthPickup>()
-  get world() { return this.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD }
-  get spawns() { return this.mode !== 'training' ? COMBAT_SPAWNS : TRAINING_SPAWNS }
+  get world() { return this.scenario?.world ?? (this.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD) }
+  get spawns() { return this.scenario?.spawns ?? (this.mode !== 'training' ? COMBAT_SPAWNS : TRAINING_SPAWNS) }
   get navigation() { return getNavigation(this.world) }
   private move(position: Position, input: MoveInput, dt: number) { return move(position, input, dt, this.world, stanceHeight(position as Combatant)) }
   private worldHit(origin: Position, ray: Position) { return worldHit(origin, ray, RIFLE.range, this.world) }
@@ -57,6 +64,7 @@ export class TrainingGame {
     readonly durationMs: number = TRAINING.durationMs,
     private readonly random: () => number = Math.random,
     readonly mode: GameMode = 'training',
+    private readonly scenario?: SimulationScenario,
   ) {
     this.reset()
   }
@@ -91,14 +99,14 @@ export class TrainingGame {
     this.actors.clear()
     this.memories.clear()
     this.healthPacks.clear()
-    if(this.mode !== 'training')for(const pack of SOLO_HEALTH_PACKS)this.healthPacks.set(pack.id,{...pack,availableAt:0})
+    if(this.mode !== 'training')for(const pack of this.scenario?.healthPacks ?? SOLO_HEALTH_PACKS)this.healthPacks.set(pack.id,{...pack,availableAt:0})
     this.elapsed = 0
     this.phase = 'ready'
     this.input = { ...IDLE_INPUT }
     this.events = []
     if (this.mode === 'online') { this.phase = 'playing'; return }
     this.actors.set(this.humanId, this.actor(this.humanId, 'YOU', false, this.spawns[0]!))
-    for (let i = 0; i < (this.mode === 'solo' ? COMBAT_BOT_COUNT : TRAINING.botCount); i++) {
+    for (let i = 0; i < (this.scenario?.botCount ?? (this.mode === 'solo' ? COMBAT_BOT_COUNT : TRAINING.botCount)); i++) {
       const id = `bot-${i}`
       this.actors.set(
         id,
@@ -472,7 +480,7 @@ export class TrainingGame {
         intent='search'
       } else if(!memory.path.length && this.elapsed >= (memory.holdUntil ?? 0)) {
         // Keep patrol routes near the active human district without granting sight or firing through cover.
-        const human=[...this.actors.values()].find(actor=>!actor.bot && actor.participating!==false)
+        const human=this.scenario ? bot : [...this.actors.values()].find(actor=>!actor.bot && actor.participating!==false)
         const local=human ? this.navigation.points.filter(p=>Math.hypot(p.x-human.x,p.z-human.z)<32 && Math.abs(p.y-human.y)<4.2 && Math.hypot(p.x-bot.x,p.z-bot.z)>8) : []
         const patrol=local.length?local:this.navigation.points
         destination=patrol[Math.floor(this.random()*patrol.length)]
@@ -532,7 +540,7 @@ export class TrainingGame {
     for (const actor of this.actors.values()) {
       if (actor.participating === false) continue
       if (actor.health <= 0) {
-        if (actor.respawnUntil <= this.elapsed) this.respawn(actor)
+        if (this.scenario?.respawn !== false && actor.respawnUntil <= this.elapsed) this.respawn(actor)
         continue
       }
       if (actor.reloadUntil && actor.reloadUntil <= this.elapsed) {

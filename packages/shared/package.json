@@ -7,7 +7,9 @@
     "./combat": "./src/combat.ts",
     "./proxy": "./src/proxy.ts",
     "./TrainingGame": "./src/simulation/TrainingGame.ts",
-    "./navigation": "./src/simulation/navigation.ts"
+    "./navigation": "./src/simulation/navigation.ts",
+    "./campaign": "./src/campaign.ts",
+    "./CampaignGame": "./src/simulation/CampaignGame.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

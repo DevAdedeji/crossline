@@ -9,9 +9,12 @@ const controlsReady=ref(false)
 const touchDevice=ref(false)
 const arenaCapacity=ref(ONLINE_CAPACITY_TARGET)
 const modes = reactive([
+  { id: 'campaign', number: '01', title: 'Campaign', subtitle: 'OPERATION BREAKWATER',
+    description: 'The last signal. Infiltrate Harbour Relay, recover a captured informant and escort them to extraction. Checkpoints save on this device.',
+    available: true, players: 'CHAPTER 01 · STORY / EXTRACTION' },
   {
     id: 'solo',
-    number: '01',
+    number: '02',
     title: 'Solo vs Bots',
     subtitle: 'YOUR OWN BATTLEGROUND',
     description: 'Five minutes. Twelve bots. One rifle. Use cover, crouch and health packs to beat your best score.',
@@ -20,7 +23,7 @@ const modes = reactive([
   },
   {
     id: 'online',
-    number: '02',
+    number: '03',
     title: 'Online Free-for-All',
     subtitle: 'EVERY ANGLE IS YOURS',
     description: 'One shared human arena. Join anytime, collect health packs and climb the kill/death leaderboards.',
@@ -29,7 +32,7 @@ const modes = reactive([
   },
   {
     id: 'training',
-    number: '03',
+    number: '04',
     title: 'Practice',
     subtitle: 'ENTER THE PROVING GROUND',
     description:
@@ -63,9 +66,10 @@ function setFocus(index: number) {
 }
 async function selectMode(index: number, usePad=false) {
   if(launching.value)return
-  if(modes[index]?.id==='online'&&!navigator.onLine){message.value='Online needs internet. Practice and Solo run on this device.';return}
+  if(modes[index]?.id==='online'&&!navigator.onLine){message.value='Online needs internet. Campaign, Practice and Solo run on this device.';return}
   if(modes[index]?.id==='online'&&!account.value){showAccount.value=true;return}
   launching.value=true;active.value=index
+  if(modes[index]?.id==='campaign'){await navigateTo('/campaign');return}
   const input=usePad?'pad':touchDevice.value?'touch':'mouse'
   await prepareEntry(input)
   await navigateTo(modes[index]?.id === 'training' ? '/play' : `/play?mode=${modes[index]?.id}`)

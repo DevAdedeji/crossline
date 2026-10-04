@@ -296,7 +296,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
 
   const glass = material('window-glass', '#325f6a')
   glass.metallic = 0.15; glass.roughness = 0.16
-  if(world.limit>26) {
+  if(world.id === 'mercer-districts') {
     const medical=material('hospital white','#dbe3dc'),teal=material('hospital teal','#367c78')
     box('hospital ground floor',-48,.05,-48,29.5,.02,25.5,hospitalTiles)
     sign('MERCER GENERAL HOSPITAL',-48,8.5,-62.05,0,24,1.1)
@@ -461,7 +461,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   const skyline = material('skyline', '#687d7b')
   sign('ROOF ACCESS  /  ↑', -20, 1.2, 5, 0, 2.4, 0.55)
   sign(world.name, 0, 3, world.limit + .35, 0, 6, .9)
-  if(world.limit > 26) for(const d of COMBAT_DISTRICTS) sign(d.name,d.x+7,2.9,d.z+6,0,4.5,.65)
+  if(world.id === 'mercer-districts') for(const d of COMBAT_DISTRICTS) sign(d.name,d.x+7,2.9,d.z+6,0,4.5,.65)
   sign('LOADING / 03', 21, 1.8, -15, -Math.PI / 2, 3, 0.8)
 
   function sign(

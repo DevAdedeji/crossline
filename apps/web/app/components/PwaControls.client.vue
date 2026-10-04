@@ -95,11 +95,11 @@ onBeforeUnmount(() => {
 
 <template>
   <aside v-if="!inMatch" class="pwa-controls" aria-label="Crossline app" data-ui-action>
-    <p v-if="offline" role="status">{{ offlineReady ? 'Offline play ready. Practice and Solo run on this device.' : 'You’re offline. Download game files when connected to play offline.' }} Online needs internet.</p>
+    <p v-if="offline" role="status">{{ offlineReady ? 'Offline play ready. Campaign, Practice and Solo run on this device.' : 'You’re offline. Download game files when connected to play offline.' }} Online needs internet.</p>
     <p v-if="message" role="status">{{ message }}</p>
     <section v-if="workerReady" class="offline-download" aria-label="Offline play">
-      <p v-if="offlineReady" data-testid="offline-ready">Offline play ready · Practice + Solo</p>
-      <p v-else>Download Practice + Solo: {{ downloadSize }}. Device-only scores.</p>
+      <p v-if="offlineReady" data-testid="offline-ready">Offline play ready · Campaign + Practice + Solo</p>
+      <p v-else>Download Campaign + Practice + Solo: {{ downloadSize }}. Device-only scores.</p>
       <p v-if="downloading" role="status">{{ downloadProgress }}</p>
       <p v-if="downloadError" role="alert">{{ downloadError }}</p>
       <button v-if="!offlineReady&&!downloading" :disabled="offline" @click="downloadOffline">Download offline play</button>
@@ -112,7 +112,7 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="help" class="pwa-help" role="note">
       <p>On iPhone or iPad, open in Safari, tap Share, then Add to Home Screen. On desktop or Android, choose Install app in your browser’s menu.</p>
-      <p>Download offline play for Practice and Solo without internet. Online Free-for-All always needs a connection. Installation keeps Crossline in its own window.</p>
+      <p>Download offline play for Campaign, Practice and Solo without internet. Online Free-for-All always needs a connection. Installation keeps Crossline in its own window.</p>
       <button @click="help=false">Close instructions</button>
     </div>
   </aside>

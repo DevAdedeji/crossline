@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { CAMPAIGN_WORLD, CAMPAIGN_OBJECTIVES, EXTRACTION_MISSION, type CampaignState } from '@crossline/shared/campaign'
+import { readCampaignProgress, saveCampaignProgress } from '~/game/campaignProgress'
+import { campaignPresentation } from '~/game/campaignPresentation'
 import { attackBearing, relativeBearing } from '~/game/combatFeedback'
 import { localSession, type ArenaState, type ArenaSession } from '~/game/arenaSession'
 import { observeArenaViewport } from '~/game/viewport'
@@ -33,16 +36,20 @@ const entry=takeEntry()
 let pendingLaunch=Boolean(entry), recordedRound=''
 const personalBest=ref(0), newBest=ref(false)
 const props = withDefaults(defineProps<{ mode?: GameMode }>(), { mode: 'training' })
+const isCampaign = computed(() => props.mode === 'campaign')
+const campaign = ref<CampaignState>(), checkpointSaved = ref(true)
+let lastCampaignSave = ''
+function interact(held: boolean) { if (isCampaign.value) room?.send('action', held && active.value ? 'interact-start' : 'interact-stop') }
 const isOnline = computed(() => props.mode === 'online')
 const leaders=ref<Leaderboard>(),leadersUnavailable=ref(false),joinError=ref(''),showLeaders=ref(false)
 const networkStalled=ref(false), networkNotice=ref('')
 const onlineEntered = ref(false), onlinePaused = ref(false), onlineCapacity = ref(ONLINE_CAPACITY_TARGET), roomCode = ref('')
 const isSolo = computed(() => props.mode === 'solo')
-const world = computed(() => props.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD)
+const world = computed(() => isCampaign.value ? CAMPAIGN_WORLD : props.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD)
 const radarRadius = computed(() => props.mode === 'training' ? 28 : 42)
 const radarBox = computed(() => { const r = radarRadius.value; return `${(self.value?.x ?? 0)-r} ${-(self.value?.z ?? 0)-r} ${r*2} ${r*2}` })
-const modeTitle = computed(() => isOnline.value ? 'Online Free-for-All' : isSolo.value ? 'Solo vs Bots' : 'Training')
-const sessionWord = computed(() => props.mode !== 'training' ? 'match' : 'training')
+const modeTitle = computed(() => isCampaign.value ? 'Campaign' : isOnline.value ? 'Online Free-for-All' : isSolo.value ? 'Solo vs Bots' : 'Training')
+const sessionWord = computed(() => isCampaign.value ? 'mission' : props.mode !== 'training' ? 'match' : 'training')
 const showControls = ref(false)
 const fireBinding = ref<FireBinding>(DEFAULT_FIRE_BINDING)
 const bindingFire = ref(false)
@@ -125,7 +132,7 @@ const active = computed(
 )
 const seconds = computed(() => Math.ceil(Math.max(0, duration.value - elapsed.value) / 1000))
 const time = computed(
-  () => isOnline.value ? '∞' : `${Math.floor(seconds.value / 60)}:${String(seconds.value % 60).padStart(2, '0')}`,
+  () => isCampaign.value ? `${Math.floor(elapsed.value / 60000)}:${String(Math.floor(elapsed.value / 1000) % 60).padStart(2, '0')}` : isOnline.value ? '∞' : `${Math.floor(seconds.value / 60)}:${String(seconds.value % 60).padStart(2, '0')}`,
 )
 const accuracy = computed(() =>
   self.value?.shots ? Math.round((self.value.hits / self.value.shots) * 100) : 0,
@@ -133,10 +140,10 @@ const accuracy = computed(() =>
 const reloadLeft = computed(() => Math.max(0, (self.value?.reloadUntil ?? 0) - elapsed.value))
 const menuItems = computed(() =>
   phase.value === 'finished'
-    ? ['Play again', 'Return to menu']
+    ? isCampaign.value ? [campaign.value?.outcome === 'success' ? 'Replay mission' : 'Retry checkpoint', 'Mission briefing'] : ['Play again', 'Return to menu']
     : isOnline.value ? [onlineEntered.value ? 'Resume match' : 'Enter arena', 'Return to menu']
     : phase.value === 'paused'
-      ? [`Resume ${sessionWord.value}`, `Restart ${sessionWord.value}`, 'Finish session', 'Return to menu']
+      ? [`Resume ${sessionWord.value}`, isCampaign.value ? 'Retry checkpoint' : `Restart ${sessionWord.value}`, isCampaign.value ? 'Abort mission' : 'Finish session', 'Return to menu']
       : [`Start ${sessionWord.value}`, 'Return to menu'],
 )
 let locallyPaused=false
@@ -170,6 +177,7 @@ function readInput():CombatInput {
       }
 }
 function clearInput() {
+  interact(false)
   keys.clear()
   touchMovement={x:0,z:0};touchFiring=false;touchAiming=false
   mouseFire = false
@@ -236,16 +244,17 @@ async function start(usePad = false) {
 }
 function choose(index: number, usePad = false) {
   const label = menuItems.value[index]
+  if (label === 'Mission briefing') { void navigateTo('/campaign'); return }
   if (label === 'Return to menu') {
     void navigateTo('/')
     return
   }
-  if (label === 'Finish session') {
+  if (label === 'Finish session' || label === 'Abort mission') {
     action('finish')
     release()
     return
   }
-  if (label === `Restart ${sessionWord.value}` || label === 'Play again') {
+  if (label === `Restart ${sessionWord.value}` || label === 'Play again' || label === 'Retry checkpoint' || label === 'Replay mission') {
     action('restart')
     Object.assign(look, { yaw: 0, pitch: 0 })
     menuIndex.value = 0
@@ -287,6 +296,7 @@ function keydown(event: KeyboardEvent) {
   if (active.value) {
     if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyC', 'ControlLeft', 'ControlRight', 'Space'].includes(event.code))
       event.preventDefault()
+    if (event.code === 'KeyE' && isCampaign.value) { event.preventDefault(); if (!event.repeat) interact(true) }
     keys.add(event.code)
     if (event.code === 'KeyC' && !event.repeat) crouchToggle.value=!crouchToggle.value
     if (event.code === 'KeyR' && !event.repeat) reload()
@@ -299,7 +309,7 @@ function keydown(event: KeyboardEvent) {
         menuItems.value.length
   }
 }
-const keyup = (event: KeyboardEvent) => keys.delete(event.code)
+const keyup = (event: KeyboardEvent) => { keys.delete(event.code); if(event.code === 'KeyE') interact(false) }
 function mouseLook(event: MouseEvent) {
   if (captured.value && active.value && (event.movementX || event.movementY)) {
     padActive.value = false
@@ -390,6 +400,7 @@ function pollPad(dt: number) {
           (selectFireArmed && Boolean(pressed[0]))
         padAim = Boolean(pressed[6])
         if (edge(2)) reload()
+        if (isCampaign.value && Boolean(pressed[3]) !== Boolean(previousButtons[3])) interact(Boolean(pressed[3]))
       }
     } else {
       selectFireArmed = false
@@ -437,6 +448,7 @@ onMounted(async () => {
       return
     }
     arena.addVehicles(assets)
+    const missionVisuals = isCampaign.value ? campaignPresentation(scene, assets, arena.shadows) : undefined
     const supplies = props.mode!=='training' ? healthPickups(scene) : undefined
     const labels=isOnline.value?playerLabels(scene,camera,world.value):undefined
     const visuals = combatPresentation(scene, camera, assets, arena.shadows, props.mode)
@@ -525,7 +537,7 @@ onMounted(async () => {
       Object.assign(onlineRoom.reconnection,{enabled:true,minUptime:0,minDelay:300,maxDelay:2000,maxRetries:12})
       try { sessionStorage.setItem('crossline.ffa.reconnect',onlineRoom!.reconnectionToken) } catch {}
       roomCode.value=joined.roomId
-    } else joined = localSession(isSolo.value ? 'solo' : 'training',name)
+    } else joined = localSession(isCampaign.value ? 'campaign' : isSolo.value ? 'solo' : 'training',name,isCampaign.value ? readCampaignProgress() : undefined)
     if (stopped) {
       await joined.leave()
       return
@@ -546,6 +558,12 @@ onMounted(async () => {
         incoming.value=[]; elimination.value=undefined; eliminatedBy.value=undefined
         hitUntil.value=0; damageUntil.value=0; healUntil.value=0; feed.value=[]
       }
+      if (state.campaign) {
+        campaign.value = state.campaign
+        missionVisuals?.sync(state.campaign)
+        const serialized = JSON.stringify(state.campaign.save)
+        if (serialized !== lastCampaignSave) { checkpointSaved.value = saveCampaignProgress(state.campaign.save); lastCampaignSave = serialized }
+      }
       confirmedPhase.value = state.phase
       const nextPhase = state.phase==='finished' ? 'finished' : isOnline.value ? !onlineEntered.value ? 'ready' : onlinePaused.value ? 'paused' : state.phase : locallyPaused ? 'paused' : state.phase
       const phaseChanged = phase.value !== nextPhase
@@ -564,7 +582,7 @@ onMounted(async () => {
       actors.value = values
       self.value = values.find((a) => a.id === joined.sessionId)
       if(self.value && pendingLaunch)launchEntry()
-      if(state.phase==='finished' && recordedRound!==`${joined.roomId}/${state.round}`){
+      if(!isCampaign.value && state.phase==='finished' && recordedRound!==`${joined.roomId}/${state.round}`){
         recordedRound=`${joined.roomId}/${state.round}`
         const score=self.value?.score ?? 0
         newBest.value=score>personalBest.value
@@ -593,7 +611,7 @@ onMounted(async () => {
         const building = world.value.buildings.find(
           (b) => Math.abs(player.x - b.x) < b.width / 2 && Math.abs(player.z - b.z) < b.depth / 2,
         )
-        const district = props.mode !== 'training' ? [...COMBAT_DISTRICTS].sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0]?.name : 'MERCER STREET'
+        const district = isCampaign.value ? 'HARBOUR DEPOT' : props.mode !== 'training' ? [...COMBAT_DISTRICTS].sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0]?.name : 'MERCER STREET'
         area.value = building ? player.y>=(building.height ?? 4.1)-.2 ? 'ROOFTOPS' : `${building.name}${building.height ? ` / LEVEL ${Math.floor(player.y/3.2)+1}` : ''}` : player.y>3.8 ? 'UPPER WALKWAY' : district ?? 'MERCER STREET'
       }
       labels?.sync(values.filter(a=>a.id!==joined.sessionId))
@@ -722,13 +740,14 @@ onBeforeUnmount(() => {
       <div><span class="rotate-icon" aria-hidden="true">↻</span><h1>Turn your phone sideways.</h1><p>Crossline uses landscape controls. Rotate your device to continue.</p><NuxtLink to="/">Return to menu</NuxtLink></div>
     </div>
     <TouchControls v-if="touchDevice && active" :crouched="(self?.crouch ?? 0)>.5" @move="touchMove" @look="touchLook" @fire="touchFire" @aim="touchAim" @reload="reload" @crouch="crouchToggle=!crouchToggle" @pause="pause" />
+    <CampaignHud v-if="isCampaign && campaign && active" :state="campaign" :player="self" :touch="touchDevice" :heading="heading" :saved="checkpointSaved" @interact="interact" />
     <header>
       <NuxtLink to="/" class="brand">CROSSLINE<span>+</span></NuxtLink>
       <div class="location">
         {{ world.name }}<small>{{ area }}</small>
       </div>
       <div class="timer" data-testid="timer">
-        {{ time }}<small>{{ modeTitle.toUpperCase() }} / {{ isOnline ? 'SHARED ARENA' : `ROUND ${round}` }}</small>
+        {{ time }}<small>{{ modeTitle.toUpperCase() }} / {{ isCampaign ? 'CHAPTER 01 / EXTRACTION' : isOnline ? 'SHARED ARENA' : `ROUND ${round}` }}</small>
       </div>
     </header>
     <button v-if="isOnline" class="leaderboard-launch" @click="openLeaders">LEADERBOARD <span v-if="!touchDevice">· TAB / VIEW / SHARE</span></button>
@@ -750,6 +769,8 @@ onBeforeUnmount(() => {
         />
         <rect v-for="p in packs" :key="p.id" :x="p.x-1.6" :y="-p.z-1.6" width="3.2" height="3.2" :fill="p.availableAt<=elapsed ? '#80ffc2' : '#53675d'"
           :data-pack="p.id" :data-ready="p.availableAt<=elapsed" :data-x="p.x" :data-z="p.z" :data-available-at="p.availableAt"><title>{{ p.availableAt<=elapsed ? '+35 HP' : 'Health pack cooling down' }}</title></rect>
+        <circle v-if="campaign" :cx="CAMPAIGN_OBJECTIVES[campaign.stage].position.x" :cy="-CAMPAIGN_OBJECTIVES[campaign.stage].position.z" r="2" fill="#ffd090"><title>Mission objective</title></circle>
+        <circle v-if="campaign" :cx="campaign.captive.x" :cy="-campaign.captive.z" r="1.5" fill="#92e6ce"><title>Finch</title></circle>
         <circle
           v-for="a in actors"
           :key="a.id"
@@ -769,7 +790,7 @@ onBeforeUnmount(() => {
         <path v-if="self" d="M0 -2.8L1.9 1.8 0 1 -1.9 1.8Z" :transform="`translate(${self.x} ${-self.z}) rotate(${heading})`" fill="#fff4de" stroke="#151c22" stroke-width=".6" />
       </svg>
       <span class="radar-north" aria-hidden="true">N</span><span class="radar-range">{{ radarRadius * 2 }} m</span>
-      <small class="diagnostics">{{ isOnline ? status : status === 'Connected' ? 'Connected · ON DEVICE' : status }} · {{ isOnline ? `${actors.length} / ${onlineCapacity} PLAYERS` : isSolo ? `${COMBAT_BOT_COUNT} COMBAT BOTS` : '3 TARGETS · 2 PATROLS' }}</small>
+      <small class="diagnostics">{{ isOnline ? status : status === 'Connected' ? 'Connected · ON DEVICE' : status }} · {{ isOnline ? `${actors.length} / ${onlineCapacity} PLAYERS` : isCampaign ? 'CAMPAIGN / LOCAL' : isSolo ? `${COMBAT_BOT_COUNT} COMBAT BOTS` : '3 TARGETS · 2 PATROLS' }}</small>
     </aside>
     <div v-if="mode !== 'training' && healUntil>now" class="health-feedback" role="status" data-testid="health-feedback">+{{ healAmount }} HP · SUPPLIES COLLECTED</div>
     <div class="kill-feed">
@@ -792,28 +813,31 @@ onBeforeUnmount(() => {
     <div v-if="active && hitUntil > now && hitHeadshot" class="hit-caption">Headshot</div>
     <Transition name="elimination"><div v-if="active && elimination && elimination.until > now" :key="elimination.until" class="elimination-confirmation" role="status"><span>Eliminated</span> {{ elimination.name }}</div></Transition>
     <div v-if="damageUntil > now" class="damage-flash" />
-    <RespawnOverlay v-if="phase === 'playing' && self && self.health <= 0" :remaining-ms="self.respawnUntil - elapsed" :duration-ms="TRAINING.respawnMs" :killer="eliminatedBy" />
+    <RespawnOverlay v-if="!isCampaign && phase === 'playing' && self && self.health <= 0" :remaining-ms="self.respawnUntil - elapsed" :duration-ms="TRAINING.respawnMs" :killer="eliminatedBy" />
     <section v-if="!active && (phase !== 'playing' || status !== 'Connected')" class="overlay">
       <div class="menu-card">
         <span class="eyebrow">{{
           phase === 'finished'
-            ? 'SESSION COMPLETE'
+            ? isCampaign ? campaign?.outcome === 'success' ? 'OPERATION COMPLETE' : 'OPERATION FAILED' : 'SESSION COMPLETE'
             : phase === 'paused'
               ? 'TAKE A BREATHER'
-              : `${world.name} / ${isOnline ? 'SHARED ARENA' : isSolo ? 'SOLO MATCH' : 'LIVE PRACTICE'}`
+              : `${world.name} / ${isOnline ? 'SHARED ARENA' : isCampaign ? 'CHAPTER 01' : isSolo ? 'SOLO MATCH' : 'LIVE PRACTICE'}`
         }}</span>
         <h1>
           {{
             phase === 'finished'
-              ? `${modeTitle} complete.`
+              ? isCampaign ? campaign?.outcome === 'success' ? 'Finch is safe.' : 'Contact lost.' : `${modeTitle} complete.`
               : phase === 'paused'
                 ? isOnline ? 'Match continues.' : `${modeTitle} paused.`
-                : isOnline ? 'Join the free-for-all.' : isSolo ? 'Every angle is live.' : 'Learn the block.'
+                : isCampaign ? EXTRACTION_MISSION.title + '.' : isOnline ? 'Join the free-for-all.' : isSolo ? 'Every angle is live.' : 'Learn the block.'
           }}
         </h1>
         <p v-if="phase === 'ready'">
-          {{ isOnline ? 'Human players only. One ongoing arena. Quick respawns. Join friends on the same match server.' : isSolo ? 'Five minutes. Twelve bots targeting you. Use cover and crouch. Walk over green supply cases for +35 HP; they return after 25 seconds. Health does not regenerate in Solo.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
+          {{ isCampaign ? EXTRACTION_MISSION.briefing : isOnline ? 'Human players only. One ongoing arena. Quick respawns. Join friends on the same match server.' : isSolo ? 'Five minutes. Twelve bots targeting you. Use cover and crouch. Walk over green supply cases for +35 HP; they return after 25 seconds. Health does not regenerate in Solo.' : 'Three minutes. Five unarmed targets. Find your aim.' }}
         </p>
+        <p v-if="isCampaign && phase === 'ready'" class="controls">{{ campaign ? CAMPAIGN_OBJECTIVES[campaign.stage].instruction : '' }}<br />{{ touchDevice ? 'Hold the on-screen interaction button near an objective.' : 'Hold E / Y / △ near an objective to interact.' }}</p>
+        <p v-if="isCampaign && phase === 'finished'" role="status">{{ campaign?.outcome === 'success' ? EXTRACTION_MISSION.debrief : 'Your last checkpoint is ready. Retry to continue the operation.' }}</p>
+        <p v-if="isCampaign && !checkpointSaved" role="status">Device storage unavailable. Progress is available for this session only.</p>
         <p v-if="phase === 'paused'">
           {{ isOnline ? 'Your controls are paused. The shared match continues and your character stays vulnerable.' : 'The whole session is paused. Your timer and opponents will wait.' }}
         </p>
@@ -836,7 +860,7 @@ onBeforeUnmount(() => {
             >HEAD HITS
           </div>
         </div>
-        <p v-if="phase === 'finished'" data-testid="personal-best">{{ newBest ? 'NEW PERSONAL BEST' : 'PERSONAL BEST' }} · {{ personalBest }} POINTS <small>ON THIS DEVICE</small></p>
+        <p v-if="!isCampaign && phase === 'finished'" data-testid="personal-best">{{ newBest ? 'NEW PERSONAL BEST' : 'PERSONAL BEST' }} · {{ personalBest }} POINTS <small>ON THIS DEVICE</small></p>
         <ol v-if="isOnline" class="match-standings my-5 space-y-2 text-sm" aria-label="Match standings">
           <li v-for="(actor, index) in [...actors].sort((a,b) => b.score-a.score)" :key="actor.id" class="flex justify-between border-b border-white/10 py-1" :class="{ 'text-[#d9ff9c]': actor.id === self?.id }">
             <span>{{ index + 1 }} · {{ actor.name }}{{ actor.connected === false ? ' · RECONNECTING' : actor.participating === false ? ' · LOBBY' : '' }}</span><span>{{ actor.kills }} K / {{ actor.deaths }} D · {{ actor.score }}</span>
@@ -944,7 +968,7 @@ footer{position:absolute;inset:auto 0 0;display:flex;justify-content:space-betwe
 .network-notice{position:absolute;top:90px;left:50%;transform:translateX(-50%);z-index:50;background:#191f24ed;color:var(--cl-accent);padding:8px 12px;max-width:80vw;font:12px/1.4 Arial;pointer-events:none;border:1px solid var(--cl-line);border-radius:5px}
 .leaderboard-launch{position:absolute;right:32px;top:98px;z-index:45;border:1px solid var(--cl-line);border-radius:5px;background:#191f24e8;padding:10px 12px;font-size:10px;color:var(--cl-text);pointer-events:auto}.leaderboard-launch span{color:var(--cl-muted);font-size:9px}.leaderboard-dialog{position:absolute;inset:0;z-index:60;background:#0b1013e8;display:grid;place-items:center;padding:24px}.leaderboard-dialog>div{width:min(720px,96vw);max-height:90dvh;overflow-y:auto;background:var(--cl-panel);border:1px solid var(--cl-line);border-top:3px solid var(--cl-accent);border-radius:8px;padding:24px}.leaderboard-close{display:block;width:100%;padding:12px;background:#ffffff15;margin-top:18px;font-size:12px;border-radius:5px}
 .rotate-phone{position:fixed;inset:0;z-index:100;background:var(--cl-bg);display:grid;place-items:center;padding:28px;text-align:center;touch-action:manipulation}.rotate-phone h1{font-size:27px;margin:18px 0}.rotate-phone p{max-width:300px;line-height:1.6;color:var(--cl-muted);font-size:14px}.rotate-phone a{display:inline-block;margin-top:24px;color:var(--cl-accent);padding:12px}.rotate-icon{font-size:64px;color:var(--cl-accent)}
-.touch-layout{min-height:0;touch-action:none;overscroll-behavior:none}.touch-layout header{padding:calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));height:50px}.touch-layout .brand{font-size:20px}.touch-layout .location{display:none}.touch-layout .timer{font-size:24px}.touch-layout .timer small{font-size:8px;margin-top:4px}.touch-layout .radar-panel{top:54px;left:calc(12px + env(safe-area-inset-left));width:84px}.touch-layout .radar-north{font-size:8px;top:2px}.touch-layout .radar-range{font-size:7px;right:3px;bottom:3px}.touch-menu-hidden{visibility:hidden}.touch-layout footer{padding:22px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));gap:14px}.touch-layout footer strong{font-size:34px}.touch-layout footer strong span{font-size:11px}.touch-layout footer small{font-size:8px}.touch-layout .health{width:130px}.touch-layout .health-bar{margin-top:5px;height:4px}.touch-layout .score strong{font-size:23px}.touch-layout .score small{font-size:8px}.touch-layout .kill-feed{top:54px;right:calc(50% - 90px);font-size:9px;max-width:180px}.touch-layout .kill-feed p{padding:5px 8px}.touch-layout .health-feedback{top:20%;padding:8px 12px;font-size:11px}.touch-layout .overlay{padding:10px}.touch-layout .menu-card{width:min(500px,94vw);max-height:calc(100dvh - 20px);padding:18px 24px;touch-action:pan-y}.touch-layout .menu-card h1{font-size:26px;margin:8px 0}.touch-layout .menu-card p{font-size:11px;line-height:1.5}.touch-layout .menu-actions{margin-top:16px}.touch-layout .menu-actions button{min-height:40px;padding:10px 14px;font-size:11px}.touch-layout .results{margin:14px 0;gap:6px}.touch-layout .results>div{padding:10px 7px}.touch-layout .results strong{font-size:22px}.touch-layout .leaderboard-launch{top:54px;right:calc(12px + env(safe-area-inset-right));padding:8px;font-size:9px}.touch-layout .leaderboard-dialog{padding:10px}.touch-layout .leaderboard-dialog>div{padding:16px;max-height:94dvh}
+.touch-layout{min-height:0;touch-action:none;overscroll-behavior:none}.touch-layout header{padding:calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));height:50px}.touch-layout .brand{font-size:20px}.touch-layout .location{display:none}.touch-layout .timer{font-size:24px}.touch-layout .timer small{font-size:8px;margin-top:4px}.touch-layout .radar-panel{top:54px;left:calc(12px + env(safe-area-inset-left));width:84px}.touch-layout .radar-north{font-size:8px;top:2px}.touch-layout .radar-range{font-size:7px;right:3px;bottom:3px}.touch-menu-hidden{visibility:hidden}.touch-layout footer{padding:22px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));gap:14px}.touch-layout footer strong{font-size:34px}.touch-layout footer strong span{font-size:11px}.touch-layout footer small{font-size:8px}.touch-layout .health{width:130px}.touch-layout .health-bar{margin-top:5px;height:4px}.touch-layout .score strong{font-size:23px}.touch-layout .score small{font-size:8px}.arena[data-mode=campaign] .kill-feed{display:none}.touch-layout .kill-feed{top:54px;right:calc(50% - 90px);font-size:9px;max-width:180px}.touch-layout .kill-feed p{padding:5px 8px}.touch-layout .health-feedback{top:20%;padding:8px 12px;font-size:11px}.touch-layout .overlay{padding:10px}.touch-layout .menu-card{width:min(500px,94vw);max-height:calc(100dvh - 20px);padding:18px 24px;touch-action:pan-y}.touch-layout .menu-card h1{font-size:26px;margin:8px 0}.touch-layout .menu-card p{font-size:11px;line-height:1.5}.touch-layout .menu-actions{margin-top:16px}.touch-layout .menu-actions button{min-height:40px;padding:10px 14px;font-size:11px}.touch-layout .results{margin:14px 0;gap:6px}.touch-layout .results>div{padding:10px 7px}.touch-layout .results strong{font-size:22px}.touch-layout .leaderboard-launch{top:54px;right:calc(12px + env(safe-area-inset-right));padding:8px;font-size:9px}.touch-layout .leaderboard-dialog{padding:10px}.touch-layout .leaderboard-dialog>div{padding:16px;max-height:94dvh}
 @media(max-width:650px){.location{display:none}.menu-card h1{font-size:28px}.results strong{font-size:20px}}
 @media(max-height:400px){.touch-layout .radar-panel{width:70px}.touch-layout .kill-feed p:nth-child(n+3){display:none}}
 </style>
