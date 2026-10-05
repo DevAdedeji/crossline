@@ -9,6 +9,7 @@ export interface Building {
   id: string; name: string; x: number; z: number; width: number; depth: number
   height?: number
   doorWidth?: number
+  architecture?: 'house' | 'shop' | 'workshop' | 'hall' | 'clinic' | 'bunker'
   material: Solid['material']; doors: ('north' | 'south' | 'east' | 'west')[]
 }
 export interface ParkedCar {

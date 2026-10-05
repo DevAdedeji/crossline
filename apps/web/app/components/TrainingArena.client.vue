@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { grenadePresentation } from '~/game/grenadePresentation'
+import type { PlayerGrenade } from '@crossline/shared/campaignGrenades'
 import { campaignWaypoints, type MissionWaypoint } from '~/game/campaignWaypoint'
 import { CAMPAIGN_MISSIONS, activeCampaignTask, getMissionTasks, getCampaignMission, type CampaignState } from '@crossline/shared/campaign'
 import { readCampaignProgress, saveCampaignProgress } from '~/game/campaignProgress'
@@ -277,6 +279,7 @@ function toggleAudio() {
   muted.value = !muted.value
   audio.mute(muted.value)
 }
+function throwGrenade(){if(active.value&&(self.value?.grenades??0)>0)action('grenade')}
 function reload() {
   if (active.value && reloadLeft.value === 0 && self.value && self.value.ammo < RIFLE.magazine) {
     action('reload')
@@ -298,10 +301,11 @@ function keydown(event: KeyboardEvent) {
   }
   if ((event.target as HTMLElement)?.closest('input, [data-ui-action]')) return
   if (active.value) {
-    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyC', 'ControlLeft', 'ControlRight', 'Space'].includes(event.code))
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyG', 'KeyC', 'ControlLeft', 'ControlRight', 'Space'].includes(event.code))
       event.preventDefault()
     keys.add(event.code)
     if (event.code === 'KeyC' && !event.repeat) crouchToggle.value=!crouchToggle.value
+    if (event.code === 'KeyG' && !event.repeat) throwGrenade()
     if (event.code === 'KeyR' && !event.repeat) reload()
   } else if (['ArrowUp', 'ArrowDown', 'Enter'].includes(event.code)) {
     event.preventDefault()
@@ -403,6 +407,7 @@ function pollPad(dt: number) {
           (selectFireArmed && Boolean(pressed[0]))
         padAim = Boolean(pressed[6])
         if (edge(2)) reload()
+        if (edge(5)) throwGrenade()
       }
     } else {
       selectFireArmed = false
@@ -450,6 +455,8 @@ onMounted(async () => {
       return
     }
     arena.addVehicles(assets)
+    const grenadeVisuals=grenadePresentation(scene,camera)
+    await grenadeVisuals.ready
     const missionVisuals = isCampaign.value ? campaignPresentation(scene, assets, arena.shadows, mission.value) : undefined
     const supplies = props.mode!=='training' ? healthPickups(scene) : undefined
     const labels=isOnline.value?playerLabels(scene,camera,world.value):undefined
@@ -569,6 +576,8 @@ onMounted(async () => {
         const serialized = JSON.stringify(state.campaign.save)
         if (serialized !== lastCampaignSave) { checkpointSaved.value = saveCampaignProgress(state.campaign.save); lastCampaignSave = serialized }
       }
+      const liveGrenades:PlayerGrenade[]=[];state.grenades?.forEach(g=>liveGrenades.push({...g}))
+      grenadeVisuals.sync(liveGrenades,state.campaign?.grenades??[],self.value)
       confirmedPhase.value = state.phase
       const nextPhase = state.phase==='finished' ? 'finished' : isOnline.value ? !onlineEntered.value ? 'ready' : onlinePaused.value ? 'paused' : state.phase : locallyPaused ? 'paused' : state.phase
       const phaseChanged = phase.value !== nextPhase
@@ -625,8 +634,9 @@ onMounted(async () => {
       if (phaseChanged && (state.phase === 'finished' || state.phase === 'paused')) release()
     })
     room.onMessage('event', (event: GameEvent) => {
-      if (event.type === 'explosion') {
-        missionVisuals?.explosion(event.position)
+      if(event.type==='grenade-thrown'){if(event.sourceId===joined.sessionId)grenadeVisuals.thrown()}
+      else if (event.type === 'explosion') {
+        grenadeVisuals.explosion(event.position)
         audio.sound('explosion', false, event.position, self.value, look.yaw)
       } else if (event.type === 'shot') {
         const own = event.shooterId === joined.sessionId
@@ -747,7 +757,8 @@ onBeforeUnmount(() => {
     <div v-if="touchDevice && portrait" class="rotate-phone" role="dialog" aria-modal="true" aria-label="Rotate phone">
       <div><span class="rotate-icon" aria-hidden="true">↻</span><h1>Turn your phone sideways.</h1><p>Crossline uses landscape controls. Rotate your device to continue.</p><NuxtLink to="/">Return to menu</NuxtLink></div>
     </div>
-    <TouchControls v-if="touchDevice && active" :crouched="(self?.crouch ?? 0)>.5" @move="touchMove" @look="touchLook" @fire="touchFire" @aim="touchAim" @reload="reload" @crouch="crouchToggle=!crouchToggle" @pause="pause" />
+    <div v-if="self && active && !touchDevice" class="grenade-inventory" aria-label="Grenade inventory" data-testid="grenade-count">{{ self.grenades??0 }} GRENADES <span>{{ padActive?'RB / R1':'G' }}</span></div>
+    <TouchControls v-if="touchDevice && active" :crouched="(self?.crouch ?? 0)>.5" :grenades="self?.grenades??0" @grenade="throwGrenade" @move="touchMove" @look="touchLook" @fire="touchFire" @aim="touchAim" @reload="reload" @crouch="crouchToggle=!crouchToggle" @pause="pause" />
     <CampaignHud v-if="isCampaign && campaign && active" :state="campaign" :player="self" :touch="touchDevice" :heading="heading" :saved="checkpointSaved" :waypoints="waypoints" />
     <header>
       <NuxtLink to="/" class="brand">CROSSLINE<span>+</span></NuxtLink>
@@ -902,11 +913,11 @@ onBeforeUnmount(() => {
         <button class="controls-toggle" @click="showControls = !showControls">{{ showControls ? 'Hide controls' : 'Controls' }}</button>
         <p v-if="showControls && touchDevice" class="controls">Left stick moves · Swipe the right side to look · Hold FIRE · AIM toggles sights · RELOAD · CROUCH · Ⅱ pauses</p>
         <p v-if="showControls && !touchDevice" class="controls">
-          WASD move · Mouse look · Left click fire · Right click aim<br />R reload · Esc pause ·
+          WASD move · Mouse look · Left click fire · Right click aim<br />R reload · G grenade · Esc pause ·
           {{ mode !== 'training' ? 'Walk over green cases for +35 HP · C toggles crouch · Ctrl holds crouch' : 'Practice health regenerates after cover · C toggles crouch · Ctrl holds crouch' }}
         </p>
         <p v-if="showControls && !touchDevice" class="controls">
-          Controller: sticks move/look · A / × or RT / R2 fire · LT / L2 aim · X / □ reload<br />A / × select · Start
+          Controller: sticks move/look · A / × or RT / R2 fire · LT / L2 aim · X / □ reload · RB / R1 grenade<br />A / × select · Start
           or B / ○ pause/back · D-pad navigate · Right-stick click toggles crouch
         </p>
         <TouchSettings v-if="showControls && touchDevice" />
@@ -980,3 +991,5 @@ footer{position:absolute;inset:auto 0 0;display:flex;justify-content:space-betwe
 @media(max-width:650px){.location{display:none}.menu-card h1{font-size:28px}.results strong{font-size:20px}}
 @media(max-height:400px){.touch-layout .radar-panel{width:70px}.touch-layout .kill-feed p:nth-child(n+3){display:none}}
 </style>
+
+<style scoped>.grenade-inventory{position:absolute;right:32px;bottom:155px;color:#dae3d6;font:11px Arial;z-index:4}.grenade-inventory span{border:1px solid #ffffff55;border-radius:3px;padding:3px 6px;margin-left:7px}</style>

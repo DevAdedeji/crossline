@@ -23,7 +23,7 @@ export function campaignEnvironment(scene: Scene, world: WorldGeometry) {
       for(let i=-2;i<=2;i++){const cargo=MeshBuilder.CreateBox('freighter cargo',{width:9,height:6,depth:11},scene);cargo.position.set(x+i*11,8,170);cargo.material=containers;cargo.freezeWorldMatrix()}
     }
   } else {
-    const mountain=mat('ridge stone',world.environment==='desert'?'#a18c70':'#697361'), roof=mat('village clay roofs','#9e684d')
+    const mountain=mat('ridge stone',world.environment==='desert'?'#a18c70':'#697361')
     mountain.albedoTexture=new Texture('/textures/concrete-color.jpg',scene)
     for(let i=0;i<12;i++) {
       const angle=i*Math.PI/6, height=35+(i%4)*12
@@ -33,11 +33,7 @@ export function campaignEnvironment(scene: Scene, world: WorldGeometry) {
       VertexData.ComputeNormals(positions,hill.getIndices()!,normals);hill.updateVerticesData(VertexBuffer.PositionKind,positions);hill.updateVerticesData(VertexBuffer.NormalKind,normals)
       hill.refreshBoundingInfo();hill.position.set(Math.sin(angle)*155,-1,Math.cos(angle)*155);hill.rotation.y=angle;hill.material=mountain;hill.freezeWorldMatrix()
     }
-    if(world.id==='hill-village') for(const b of world.buildings) {
-      const tile=MeshBuilder.CreateCylinder('pitched village roof',{diameterTop:b.width+1,diameterBottom:b.width+1,height:b.depth+1,tessellation:3},scene)
-      tile.rotation.x=Math.PI/2;tile.rotation.y=Math.PI;tile.scaling.z=.24
-      tile.position.set(b.x,4.2,b.z);tile.material=roof;tile.isPickable=false;tile.freezeWorldMatrix()
-    }
+
   }
   for(const mesh of scene.meshes) if(mesh.name.startsWith('distant')||mesh.name.startsWith('freighter')) {mesh.isPickable=false;mesh.doNotSyncBoundingInfo=true}
   // Merge the distant cargo boxes to keep the phone draw budget modest.

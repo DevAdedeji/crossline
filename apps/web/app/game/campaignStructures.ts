@@ -92,6 +92,7 @@ export function campaignStructures(scene:Scene,world:WorldGeometry,box:Box,mater
   }
   for(const b of world.buildings){
     if(world.environment!=='industrial'&&world.environment!=='airfield')continue
+    if(b.architecture && b.architecture!=='hall')continue
     const height=b.height??8,tower=world.environment==='airfield'&&b.id.endsWith('-north')
     if(tower)continue
     // Corrugated walls, roof ribs and exposed portal frames read as work halls, not houses.

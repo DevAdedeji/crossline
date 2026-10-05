@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { accountService, type OnlineIdentity } from './auth/service.js'
 import { Room, ServerError, type Client } from '@colyseus/core'
 import { TICK_MS, INPUT_TIMEOUT_MS, ONLINE_CAPACITY_TARGET } from '@crossline/shared'
-import { Actor, HealthPack, TrainingState } from './TrainingRoom.js'
+import { Actor, HealthPack, TrainingState, syncGrenades } from './TrainingRoom.js'
 import { TrainingGame } from './training/TrainingGame.js'
 
 export { playerName } from './playerName.js'
@@ -46,6 +46,7 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
     this.onMessage('action',(client,value:unknown)=>{
       if(!this.canPlay(client.sessionId))return
       if(value==='start')this.game.enterHuman(client.sessionId)
+      else if(value==='grenade')this.game.throwGrenade(client.sessionId)
       else if(value==='reload')this.game.reload(client.sessionId)
       else if(value==='pause')this.game.stopHuman(client.sessionId)
       // Clients cannot reset, finish, pause the world, choose a spawn, or submit damage.
@@ -143,6 +144,7 @@ export class OnlineRoom extends Room<{state: TrainingState}> {
   private sync() {
     if(this.commits.blocked)return
     for(const [id,value] of this.game.healthPacks){let pack=this.state.healthPacks.get(id);if(!pack){pack=new HealthPack();this.state.healthPacks.set(id,pack)}Object.assign(pack,value)}
+    syncGrenades(this.state,this.game)
     this.state.phase=this.game.phase
     this.state.elapsed=this.game.elapsed
     for(const [id,value] of this.game.actors) {

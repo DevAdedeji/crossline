@@ -4,7 +4,7 @@ import type { Building, Solid, WorldGeometry } from './urban-map.js'
 export function createCampaignArena(id: string, name: string, limit: number, buildings: Building[], solids: Solid[], roads: number[]): WorldGeometry {
   const box = (id:string,x:number,y:number,z:number,width:number,height:number,depth:number,material:Solid['material']) => solids.push({id,x,y,z,width,height,depth,material})
   for (const b of buildings) {
-    const height=b.height ?? 3.8, opening=b.doorWidth ?? 3, doorwayHeight=height>5?4.8:3
+    const height=b.height ?? 3.8, opening=b.doorWidth ?? 3, doorwayHeight=height>5&&(!b.architecture||b.architecture==='hall')?4.8:3
     for (const side of ['north','south','east','west'] as const) {
       const horizontal=side==='north'||side==='south', sign=side==='north'||side==='east'?1:-1
       const length=horizontal?b.width:b.depth, x=b.x+(horizontal?0:sign*b.width/2),z=b.z+(horizontal?sign*b.depth/2:0)

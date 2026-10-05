@@ -32,14 +32,17 @@ export function addFacades(scene: Scene, assets: TrainingAssets, _shadows: Shado
   }
   for (const building of world.buildings) {
     tone = buildingFinishIndex(building.id)
-    if(world.environment==='airfield') continue
+    if(world.environment==='airfield'&&(!building.architecture||building.architecture==='hall')) continue
     if (world.legacyRamp === false && (building.id.startsWith('port-') || world.environment)) {
       const height=building.height??3.8,kit=building.material==='metal'||building.material==='brick'?'factory':'apartment'
       for(const face of ['north','south','east','west'] as const){
         const horizontal=face==='north'||face==='south',side=face==='north'||face==='east'?1:-1,length=horizontal?building.width:building.depth
         for(let offset=-length/2+1.6;offset<length/2-1;offset+=3){
-          if(building.doors.includes(face)&&Math.abs(offset)<(building.doorWidth??3)/2+1.5)continue
-          for(let y=world.environment==='industrial'?4.8:.12;y+2.7<height;y+=3.4)module(kit,'panel',building.x+(horizontal?offset:side*(building.width/2+.25)),y,building.z+(horizontal?side*(building.depth/2+.25):offset),horizontal?(side>0?Math.PI:0):(side>0?-Math.PI/2:Math.PI/2),2.85,Math.min(3.15,height-y-.25))
+          for(let y=world.environment==='industrial'&&building.architecture==='hall'?4.8:.12;y+2.7<height;y+=3.4){
+            const openingHeight=height>5&&(!building.architecture||building.architecture==='hall')?4.8:3
+            if(y<openingHeight&&building.doors.includes(face)&&Math.abs(offset)<(building.doorWidth??3)/2+1.5)continue
+            module(kit,'panel',building.x+(horizontal?offset:side*(building.width/2+.25)),y,building.z+(horizontal?side*(building.depth/2+.25):offset),horizontal?(side>0?Math.PI:0):(side>0?-Math.PI/2:Math.PI/2),2.85,Math.min(3.15,height-y-.25))
+          }
           module(kit,'trim',building.x+(horizontal?offset:side*(building.width/2+.27)),height-.15,building.z+(horizontal?side*(building.depth/2+.27):offset),horizontal?(side>0?Math.PI:0):(side>0?-Math.PI/2:Math.PI/2))
         }
       }

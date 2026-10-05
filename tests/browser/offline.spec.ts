@@ -49,7 +49,7 @@ for(const mobile of [false,true])test(`downloaded Campaign, Practice and Solo su
    if(mobile)await page.getByRole('button',{name:'Pause',exact:true}).tap();else await page.keyboard.press('Escape')
    await page.getByRole('button',{name:'Return to menu',exact:true}).click()
   }
-  await page.goto('http://127.0.0.1:3001/campaign');await expect(page.getByRole('heading',{name:'The last signal.'})).toBeVisible()
+  await page.goto('http://127.0.0.1:3001/campaign');await expect(page.getByRole('heading',{name:'Choose your mission.'})).toBeVisible()
   await page.goto('http://127.0.0.1:3001/play?mode=online');await expect(page.getByRole('heading',{name:'Online needs internet.'})).toBeVisible()
   expect(sockets).toEqual([]);expect(errors).toEqual([])
   await context.setOffline(false);await page.goto('http://127.0.0.1:3001/');await expect(page.getByTestId('offline-ready')).toBeVisible()

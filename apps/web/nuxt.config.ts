@@ -28,7 +28,7 @@ export default defineNuxtConfig({
       ],
     },
     injectManifest: {
-      globPatterns: ['offline.html','offline-shell/**/*.html','icons/*.png','_nuxt/**/*.js','_nuxt/**/*.css','models/*.glb','audio/*.wav','textures/*.jpg','images/mercer-menu.jpg'], maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
+      globPatterns: ['offline.html','offline-shell/**/*.html','icons/*.png','_nuxt/**/*.js','_nuxt/**/*.css','models/*.glb','audio/*.wav','textures/*.jpg','images/mercer-menu.jpg','campaign/*.jpg'], maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       // Build-time public files only. SHA-256 protects resumable downloads from
       // mixing non-hashed model URLs across releases; no session HTML is saved.
       manifestTransforms: [async entries => ({manifest: await Promise.all(entries

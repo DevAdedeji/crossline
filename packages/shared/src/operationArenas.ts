@@ -1,3 +1,4 @@
+import { populateSector } from './sectorArchitecture.js'
 import { createCampaignArena } from './campaignArenas.js'
 import type { Position } from './index.js'
 import type { Building, Solid, WorldGeometry } from './urban-map.js'
@@ -24,19 +25,6 @@ export function operationArena(id: string, name: string, environment: OperationE
     const point=points[location]
     const tower=environment==='airfield'&&location==='north'
     buildings.push({id:`${id}-${location}`,name:`${name} / ${tower?'CONTROL TOWER':environment==='airfield'?`HANGAR 0${i+1}`:environment==='industrial'?['PRODUCTION HALL','MACHINE SHOP','CONTROL ROOM'][i]:['CONTROL','OPERATIONS','COMMAND'][i]}`,x:point.x,z:point.z,width:tower?8:environment==='airfield'?26:environment==='urban'?18:environment==='industrial'?24:12,depth:tower?8:environment==='airfield'?24:environment==='industrial'?18:environment==='urban'?16:12,height:tower?12:environment==='airfield'?8:environment==='industrial'?8.2:environment==='urban'?6:3.8,doorWidth:tower?3:environment==='airfield'?14:environment==='industrial'?6:3,material:environment==='industrial'||environment==='airfield'?'metal':i%2?'brick':'plaster',doors:['north','south','east','west']})
-  }
-  // Extra structures and cover differ per sector, but leave every objective and its doors open.
-  for(let x=-58;x<=58;x+=29)for(let z=-52;z<=52;z+=26){
-    if(Object.values(points).some(p=>Math.hypot(x-p.x,z-p.z)<17)||buildings.some(b=>Math.abs(x-b.x)<b.width/2+5&&Math.abs(z-b.z)<b.depth/2+6))continue
-    const n=Math.abs(x*3+z+variant),cargo=environment==='coastal'&&id!=='cold-water'&&id!=='white-flag'
-    if(environment==='urban'&&n%3===0)buildings.push({id:`${id}-store-${x}-${z}`,name:`${name} / STORE`,x,z,width:10,depth:10,material:'brick',doors:['south','north']})
-    else if(cargo)box(`container-${x}-${z}`,x,1.6,z,7,3.2,10,'metal')
-    else if(environment==='forest') {
-      box(`garden-wall-${x}-${z}`,x,.55,z,5,1.1,.7,'wood')
-      box(`planter-${x}-${z}`,x+6,.4,z+4,2,.8,2,'concrete')
-    } else if(n%3===0)box(`jersey-barrier-${x}-${z}`,x,.55,z,4,1.1,.8,'concrete')
-    else if(n%3===1)box(`supply-crate-${x}-${z}`,x,.7,z,2.4,1.4,2,'wood')
-    else box(`equipment-cabinet-${x}-${z}`,x,1.1,z,1.6,2.2,.9,'metal')
   }
 
   for(const building of buildings.filter(b=>!(environment==='airfield'&&b.id.endsWith('-north'))))for(const side of [-1,1]) {
@@ -78,7 +66,7 @@ export function operationArena(id: string, name: string, environment: OperationE
     box(`reservoir-water-${side}`,c.x+side*12,1.42,c.z,7.3,.04,13.3,'metal')
   }
   if(id==='deep-cut'||id==='open-horizon')for(const side of [-1,1]){
-    box(`ridge-fortification-${side}`,c.x+side*14,2,c.z+4,7,4,8,'concrete')
+    buildings.push({id:`${id}-bunker-${side}`,name:'RIDGE / GUARD HOUSE',x:c.x+side*14,z:c.z+4,width:9,depth:9,height:3.8,architecture:'bunker',material:'concrete',doors:['south','north']})
     box(`ridge-cover-${side}`,c.x+side*10,.65,c.z-10,5,1.3,1,'concrete')
   }
   for(const side of [-1,1]) {
@@ -86,7 +74,7 @@ export function operationArena(id: string, name: string, environment: OperationE
     if(id==='burn-line'){
       box(`sector-fuel-tank-${side}`,x,2.7,z,7,5.4,8,'metal');box(`fuel-pipe-${side}`,x,.65,z-7,.7,1.3,7,'metal')
     } else if(id==='chain-reaction') {
-      box(`forge-furnace-${side}`,x,4,z,6,8,6,'brick');box(`forge-chimney-${side}`,x,13,z,2,10,2,'metal')
+      buildings.push({id:`${id}-forge-${side}`,name:'IRONWORKS / FURNACE HALL',x,z,width:12,depth:14,height:8,doorWidth:5,architecture:'hall',material:'brick',doors:['south','north']});box(`forge-chimney-${side}`,x+4,11,z+4,2,6,2,'metal')
     } else if(id==='ghost-frequency'||id==='silent-current'||id==='hard-reset') {
       box(`signal-mast-${side}`,x,9,z,.6,18,.6,'metal');box(`signal-array-${side}`,x,15,z,8,2,.4,'metal')
       box(`signal-console-${side}`,x,1,z-5,3,2,2,'metal')
@@ -94,7 +82,7 @@ export function operationArena(id: string, name: string, environment: OperationE
       box(`market-canopy-${side}`,x,3.1,z,9,.25,6,'wood');box(`market-counter-${side}`,x,.6,z,7,1.2,1.2,'wood')
       for(const edge of [-1,1])box(`market-post-${side}-${edge}`,x+edge*4,1.5,z-2.5,.18,3,.18,'wood')
     } else if(id==='long-watch') {
-      box(`field-watchpost-${side}`,x,2.2,z,5,4.4,5,'wood');box(`field-watch-roof-${side}`,x,4.6,z,6,.4,6,'roof')
+      buildings.push({id:`${id}-watchpost-${side}`,name:'RANGER / WATCH POST',x,z,width:8,depth:9,height:3.8,architecture:'house',material:'wood',doors:['south','north']})
       box(`field-log-cover-${side}`,x,.55,z-7,7,1.1,1,'wood')
     } else if(id==='dust-trail'||id==='white-flag') {
       box(`field-tent-${side}`,x,1.3,z,7,2.6,9,'wood')
@@ -113,7 +101,9 @@ export function operationArena(id: string, name: string, environment: OperationE
       if(id==='last-approach'){box(`airfield-control-mast-${side}`,x,10,z+9,.6,20,.6,'metal');box(`airfield-control-array-${side}`,x,18,z+9,6,1,1,'metal')}
     }
   }
-  const world=createCampaignArena(id,name,82+(variant%3)*4,buildings,solids,environment==='urban'?[-28,28]:environment==='airfield'?[c.x]:[])
+  const roads=environment==='urban'?[-28,28]:environment==='airfield'?[c.x]:[]
+  populateSector(id,environment,variant,buildings,solids,Object.values(points),roads)
+  const world=createCampaignArena(id,name,82+(variant%3)*4,buildings,solids,roads)
   world.environment=environment
   world.navigationPoints=[...world.navigationPoints!,...Object.values(points)]
   const guards:Position[]=[]

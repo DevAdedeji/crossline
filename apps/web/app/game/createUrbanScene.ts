@@ -1,3 +1,4 @@
+import { campaignArchitecture } from './campaignArchitecture'
 import { campaignStructures, detailedCampaignSolid } from './campaignStructures'
 import { campaignEnvironment } from './campaignEnvironment'
 import { interiorDetails, detailedFurniture } from './interiorDetails'
@@ -105,7 +106,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     const existing = materials.get(name)
     if (existing) return existing
     const value = new PBRMaterial(name, scene)
-    value.albedoColor = Color3.FromHexString(color)
+    value.albedoColor = Color3.FromHexString(color).toLinearSpace()
     value.metallic = 0
     value.roughness = 0.88
     value.environmentIntensity = 0.65
@@ -114,7 +115,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
         ? 'brick'
         : name === 'asphalt'
           ? 'asphalt'
-          : ['concrete', 'roof', 'paving'].includes(name)
+          : ['concrete', 'roof', ...(world.legacyRamp===false?[]:['paving'])].includes(name)
             ? 'concrete'
             : null
     if (photo) {
@@ -139,7 +140,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
       if (photo === 'brick') value.albedoColor = new Color3(0.88, 0.88, 0.88)
       if (photo === 'asphalt') value.albedoColor = new Color3(0.48, 0.51, 0.54)
     } else if (['wood', 'interior-floor', 'paving', 'plaster'].includes(name))
-      value.albedoTexture = surfaceTexture(name, scene)
+      value.albedoTexture = surfaceTexture(name==='paving'&&world.legacyRamp===false?'aggregate':name, scene)
     materials.set(name, value)
     return value
   }
@@ -180,7 +181,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     if (solid.id.startsWith('crane-')) return material('crane-ochre', '#bd9450')
     if (world.legacyRamp === false && solid.material !== 'roof') {
       const building = BUILDINGS.find(b => solid.id.startsWith(b.id + '-'))
-      if (building) return world.environment==='airfield'||world.environment==='industrial' ? material('hall cladding','#637878') : buildingWalls.get(building.id)!
+      if (building) return (world.environment==='airfield'||world.environment==='industrial') && (!building.architecture || building.architecture==='hall') ? material(`hall cladding ${buildingFinishIndex(building.id)%3}`,['#637878','#8c8167','#617184'][buildingFinishIndex(building.id)%3]!) : buildingWalls.get(building.id)!
     }
     if (solid.id.startsWith('city-')) {
       const buildingId = solid.id.match(/^city-\d+-[01](?=-)/)?.[0]
@@ -311,6 +312,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   }
 
   campaignStructures(scene,world,box,material,staticMeshes)
+  campaignArchitecture(world,box,material)
 
   // Solid sloped wedge uses exactly the authoritative ramp's extent and height.
   if (world.legacyRamp !== false) {
@@ -401,8 +403,9 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     const doorSide = door === 'east' || door === 'north' ? 1 : -1
     const doorX = building.x + (horizontal ? 0 : doorSide * (building.width / 2 + .23))
     const doorZ = building.z + (horizontal ? doorSide * (building.depth / 2 + .23) : 0)
-    sign(building.name, doorX, (building.height ?? 3.8) > 5 ? 5.15 : 3.3, doorZ,
+    sign(building.name, doorX, (building.height ?? 3.8) > 5 && (!building.architecture||building.architecture==='hall') ? 5.15 : 3.3, doorZ,
       horizontal ? (doorSide > 0 ? Math.PI : 0) : (-doorSide * Math.PI) / 2, 4.6, .7)
+    if(world.legacyRamp===false)box('building forecourt',building.x,.003,building.z,building.width+2,.012,building.depth+4,material('interior-floor','#b9b09a'))
     // Floor inset and contrasting entrance threshold help read the interiors.
     box(
       'interior-tile',

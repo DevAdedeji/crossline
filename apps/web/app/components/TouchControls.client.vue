@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const preferences = useTouchPreferences()
-const props=defineProps<{crouched:boolean}>()
-const emit=defineEmits<{move:[x:number,z:number];look:[x:number,y:number];fire:[pressed:boolean];aim:[pressed:boolean];reload:[];crouch:[];pause:[]}>()
+const props=defineProps<{crouched:boolean;grenades?:number}>()
+const emit=defineEmits<{move:[x:number,z:number];look:[x:number,y:number];fire:[pressed:boolean];aim:[pressed:boolean];reload:[];grenade:[];crouch:[];pause:[]}>()
 const stick=ref<HTMLElement>(),offset=ref({x:0,y:0}),aimed=ref(false),firing=ref(false)
 let moveId:number|undefined,lookId:number|undefined,fireId:number|undefined,last={x:0,y:0}
 function capture(event:PointerEvent){event.preventDefault();(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)}
@@ -28,6 +28,7 @@ onBeforeUnmount(reset)
   <button class="touch-aim" aria-label="Aim" :aria-pressed="aimed" @pointerdown.stop.prevent="aimed=!aimed;emit('aim',aimed)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/><circle cx="12" cy="12" r="3"/></svg><span>Aim</span></button>
   <button class="touch-reload" aria-label="Reload" @pointerdown.stop.prevent="emit('reload')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10a8 8 0 1 0-2 8M20 4v6h-6"/></svg><span>Reload</span></button>
   <button class="touch-crouch" aria-label="Crouch" :aria-pressed="props.crouched" @pointerdown.stop.prevent="emit('crouch')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="14" cy="4" r="2"/><path d="m12 8-4 6 7 2-3 5m0-13 3 5h5M8 14l-4 7"/></svg><span>Crouch</span></button>
+  <button class="touch-grenade" :aria-label="`Throw grenade (${props.grenades??0} remaining)`" :disabled="!props.grenades" @pointerdown.stop.prevent="emit('grenade')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 8h7l3 5v6l-3 3H9l-3-3v-6zM10 8V4h5v4M10 4l7-1 3 5M7 14h11M7 18h11M12 9v12"/><circle cx="7" cy="4" r="2"/></svg><span>{{ props.grenades??0 }} Grenades</span></button>
   <button class="touch-pause" aria-label="Pause" @pointerdown.stop.prevent="emit('pause')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg></button>
  </div>
 </template>
@@ -48,3 +49,5 @@ button[aria-pressed=true],button.pressed,button:active{background:#ffbb70e8;colo
 .touch-crouch{right:calc(29px + env(safe-area-inset-right));bottom:calc(92px + env(safe-area-inset-bottom))}
 .touch-pause{top:max(10px,env(safe-area-inset-top));left:calc(50% - 22px);width:44px;height:36px;border-radius:8px}
 </style>
+
+<style scoped>.touch-grenade{right:calc(22px + 150px * var(--touch-scale) + env(safe-area-inset-right));bottom:calc(92px + env(safe-area-inset-bottom))}.touch-grenade:disabled{opacity:.35}</style>

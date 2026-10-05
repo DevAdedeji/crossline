@@ -22,6 +22,7 @@ export const Actor = schema(
     pitch: t.number(),
     health: t.number(),
     ammo: t.number(),
+    grenades: t.number().default(2), grenadeReadyAt: t.number().default(0),
     kills: t.number(),
     deaths: t.number(),
     score: t.number(),
@@ -37,9 +38,11 @@ export const Actor = schema(
   'Actor',
 )
 export const HealthPack = schema({ id:t.string(), x:t.number(), y:t.number(), z:t.number(), availableAt:t.number() },'HealthPack')
+export const Grenade = schema({id:t.string(),sourceId:t.string(),x:t.number(),y:t.number(),z:t.number(),vx:t.number(),vy:t.number(),vz:t.number(),remainingMs:t.number()},'Grenade')
 export const TrainingState = schema(
   {
     actors: t.map(Actor),
+    grenades: t.map(Grenade),
     healthPacks: t.map(HealthPack),
     phase: t.string().default('ready'),
     elapsed: t.number(),
@@ -77,6 +80,7 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
         this.game.start()
         this.lastInput = this.clock.elapsedTime
       } else if (value === 'pause') this.game.pause()
+      else if (value === 'grenade') this.game.throwGrenade(this.game.humanId)
       else if (value === 'reload') this.game.reload(this.game.humanId)
       else if (value === 'finish' && this.game.phase !== 'ready') this.game.finish()
       else if (
@@ -121,6 +125,7 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
       if(!pack){pack=new HealthPack();this.state.healthPacks.set(id,pack)}
       Object.assign(pack,value)
     }
+    syncGrenades(this.state,this.game)
     this.state.phase = this.game.phase
     this.state.elapsed = this.game.elapsed
     this.state.duration = this.game.durationMs
@@ -145,4 +150,9 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
 
 export class SoloRoom extends TrainingRoom {
   protected override mode = 'solo' as const
+}
+
+export function syncGrenades(state:TrainingState,game:TrainingGame){
+  for(const id of state.grenades.keys())if(!game.grenades.has(id))state.grenades.delete(id)
+  for(const [id,value] of game.grenades){let grenade=state.grenades.get(id);if(!grenade){grenade=new Grenade();state.grenades.set(id,grenade)}Object.assign(grenade,value)}
 }

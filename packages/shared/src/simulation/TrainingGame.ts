@@ -1,3 +1,4 @@
+import { PLAYER_GRENADES, GRENADE_FUSE_MS, grenadeDamage, stepPlayerGrenade, type PlayerGrenade } from '../campaignGrenades.js'
 import { SOLO, SOLO_HEALTH_PACKS, type HealthPickup, moveHuman, stanceAmount, stanceHeight, stanceEye, stanceAim, stanceHead, TICK_MS, move, isBlocked, COMBAT_WORLD, TRAINING_WORLD, COMBAT_SPAWNS, COMBAT_BOT_COUNT, type WorldGeometry, type Position, type MoveInput } from '@crossline/shared'
 import {
   TRAINING,
@@ -53,6 +54,8 @@ export interface SimulationScenario {
   respawn: boolean
 }
 export class TrainingGame {
+  grenades = new Map<string, PlayerGrenade>()
+  private grenadeSequence=0
   actors = new Map<string, Combatant>()
   phase: Phase = 'ready'
   elapsed = 0
@@ -91,6 +94,7 @@ export class TrainingGame {
       crouch: 0,
       health: 100,
       ammo: RIFLE.magazine,
+      grenades: PLAYER_GRENADES, grenadeReadyAt: 0,
       kills: 0,
       deaths: 0,
       score: 0,
@@ -105,6 +109,7 @@ export class TrainingGame {
     }
   }
   reset() {
+    this.grenades.clear();this.grenadeSequence=0
     this.lastNoise = undefined
     this.spawnHistory.clear()
     this.humanInputs.clear()
@@ -163,6 +168,7 @@ export class TrainingGame {
     if(actor) this.humanInputs.set(id,{...IDLE_INPUT,yaw:actor.yaw,pitch:actor.pitch,crouch:stanceAmount(actor)>0})
   }
   removeHuman(id: string) {
+    for(const [key,g] of this.grenades)if(g.sourceId===id)this.grenades.delete(key)
     this.actors.delete(id); this.humanInputs.delete(id); this.spawnHistory.delete(id)
   }
   acceptInput(value: unknown, id = this.humanId): boolean {
@@ -188,6 +194,39 @@ export class TrainingGame {
       return false
     actor.reloadUntil = this.elapsed + RIFLE.reloadMs
     return true
+  }
+  throwGrenade(id:string):boolean {
+    const actor=this.actors.get(id)
+    if(this.phase!=='playing'||!actor||actor.bot||actor.participating===false||actor.connected===false||actor.health<=0||!actor.grenades||(actor.grenadeReadyAt??0)>this.elapsed||this.grenades.size>=128)return false
+    const ray=direction(actor.yaw,actor.pitch),key=`grenade-${++this.grenadeSequence}`
+    actor.grenades--;actor.grenadeReadyAt=this.elapsed+1000
+    // Throwing, like firing, ends spawn protection.
+    actor.protectedUntil=this.elapsed
+    this.lastNoise={id:actor.id,position:{x:actor.x,y:actor.y,z:actor.z},at:this.elapsed}
+    this.grenades.set(key,{id:key,sourceId:id,x:actor.x,y:actor.y+stanceEye(actor)-.15,z:actor.z,vx:ray.x*16,vy:ray.y*16+5,vz:ray.z*16,remainingMs:GRENADE_FUSE_MS})
+    this.events.push({type:'grenade-thrown',sourceId:id})
+    return true
+  }
+  private stepGrenades(dt:number){
+    for(const [id,g] of this.grenades){
+      stepPlayerGrenade(g,this.world,dt)
+      if(g.remainingMs>0)continue
+      this.grenades.delete(id);this.events.push({type:'explosion',position:{x:g.x,y:g.y,z:g.z}})
+      const source=this.actors.get(g.sourceId)
+      if(!source)continue
+      for(const victim of this.actors.values()){
+        if(victim.health<=0||victim.participating===false||victim.protectedUntil>this.elapsed)continue
+        const damage=grenadeDamage(victim,g,this.world,110)
+        if(!damage)continue
+        victim.health=Math.max(0,victim.health-damage);victim.lastDamage=this.elapsed
+        this.events.push({type:'damage',sourceId:source.id,targetId:victim.id,damage,health:victim.health})
+        if(!victim.health){
+          victim.deaths++;victim.respawnUntil=this.elapsed+TRAINING.respawnMs;victim.reloadUntil=0
+          if(victim!==source){source.kills++;source.score+=100}
+          this.events.push({type:'kill',killerId:source.id,victimId:victim.id,killer:victim===source?'OWN GRENADE':source.name,victim:victim.name,humanKill:source.id===this.humanId&&victim!==source})
+        }
+      }
+    }
   }
   private respawn(actor: Combatant) {
     const others = [...this.actors.values()].filter((other) => other.id !== actor.id && other.participating !== false && other.health > 0)
@@ -226,6 +265,7 @@ export class TrainingGame {
     Object.assign(actor, spawn, {
       health: 100,
       ammo: RIFLE.magazine,
+      grenades: PLAYER_GRENADES, grenadeReadyAt: 0,
       reloadUntil: 0,
       respawnUntil: 0,
       crouch: 0,
@@ -584,6 +624,7 @@ export class TrainingGame {
         if (input.fire) this.fire(actor, input.yaw, input.pitch, input.aim)
       }
     }
+    this.stepGrenades(dt)
     this.collectHealth()
   }
   private collectHealth() {

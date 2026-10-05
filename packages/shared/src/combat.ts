@@ -60,6 +60,8 @@ export function parseCombatInput(value: unknown): CombatInput | null {
   return { ...('seq' in value ? {seq:value.seq as number} : {}), ...movement, yaw: yaw % (Math.PI * 2), pitch, fire, aim, crouch: 'crouch' in value ? value.crouch as boolean : false }
 }
 export interface Combatant extends Position {
+  grenades?: number
+  grenadeReadyAt?: number
   inputSeq?: number
   crouch?: number
   connected?: boolean
@@ -95,6 +97,7 @@ export interface ShotEvent {
 }
 export type GameEvent =
   | { type: 'explosion'; position: Position }
+  | { type: 'grenade-thrown'; sourceId: string }
   | { type: 'heal'; targetId: string; pickupId: string; amount: number; health: number }
   | ShotEvent
   | { type: 'damage'; targetId: string; sourceId: string; damage: number; health: number }

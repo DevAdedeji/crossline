@@ -1,6 +1,6 @@
 # Operation Breakwater
 
-Twenty independently selectable missions, grouped into four acts. Progress stays on the device, with checkpoints after objectives and a best completion time per chapter. Existing opening-chapter saves remain compatible.
+Twenty independently selectable missions, grouped into four acts. Progress stays on the device, with checkpoints after objectives and a best completion time per chapter. Existing opening-chapter saves remain compatible. Arena preview cards show only the image and mission name; selecting a card opens a small briefing. Acknowledging it enters play immediately, including checkpoint continuation. Escape, backdrop or the close button returns to the gallery.
 
 | Chapter | Mission | Arena | Main sequence |
 | --- | --- | --- | --- |
@@ -39,10 +39,14 @@ Twenty independently selectable missions, grouped into four acts. Progress stays
 
 The first three arenas retain their established objective sequences. North Quay now has 24 soldiers and seven port buildings, including larger freight and repair halls, customs desks, storage racks, loading cover and cargo trailers. The 17 later chapters each have 20 soldiers, including staged reinforcement squads; eliminated guards stay eliminated through checkpoints.
 
+The later arenas replace scattered generic cover blocks with clusters of enterable houses, shops, workshops and clinics. Pitched roofs, parapets, storefront glazing, entrance canopies, courtyard walls and room dividers distinguish their streets. Bunker and watchpost landmarks are enterable. Their authoritative walls are used by navigation, bullets and grenade collision.
+
 The later arenas use different route layouts, building dimensions and themed landmarks: rail cars and tracks, reservoir basins, signal arrays, wide hangars, a glazed control tower, runway lights and parked aircraft, market stalls, quarry fortifications, factory halls with machinery, conveyors, overhead pipes and chimneys, fuel tanks, field stations and container stacks. Common construction modules are shared to control asset size and rendering cost. These are combat arenas on level playable terrain; hills and harbour ships are background scenery, and vehicles are not drivable.
 
-Enemy soldiers engage on sight and can throw grenades. The red ground ring indicates the blast area. Cover blocks blast damage; grenade throws are spaced apart. Mobile uses the existing landscape controls and compact mission HUD.
+Enemy soldiers engage on sight and can throw grenades. The red ground ring indicates the blast area. Cover blocks blast damage; grenade throws are spaced apart. Players also carry two grenades per life, thrown with G, RB/R1 or the touch grenade button. Both sides use olive fragmentation shells with fuse caps, safety levers and pull rings. Player projectiles bounce against physical walls and ceilings. Mobile uses the landscape controls and compact mission HUD.
 
 ## Verification
 
 `pnpm test` covers objective order, every mission's navigable spawn/objective routes, checkpoint restoration, timed failures, contested defenses, reinforcement activation and physical escort movement. `PLAYWRIGHT_CHANNEL=chrome pnpm exec playwright test tests/browser/campaign*.spec.ts` checks selection, persistence, retry, desktop gameplay and mobile layouts. Against a running development server, `node scripts/campaign-render-audit.mjs` writes screenshots of all twenty arenas under `/tmp/crossline-campaign-audit` for visual inspection. Browser emulation does not certify physical-phone performance.
+
+To refresh the committed gallery images from the actual game renderer, run `WRITE_CAMPAIGN_PREVIEWS=1 node scripts/campaign-render-audit.mjs` against the development server. Images are included in the explicit offline download.
