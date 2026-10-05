@@ -23,8 +23,9 @@ try {
       a.arena=arena;arena.addVehicles(await a.loadTrainingAssets(arena.scene))
       const b=m.world.buildings[0],center=m.world.environment==='airfield'?(m.tasks?.find(t=>t.kind==='defend')?.position??m.relay):{x:b.x,z:b.z}
       const dz=m.world.environment==='airfield'?38:b.depth/2+18
-      arena.camera.position.set(center.x+18,7,center.z-dz)
-      arena.camera.setTarget(new arena.camera.position.constructor(center.x,2.8,center.z))
+      const view=m.world.place?.preview
+      arena.camera.position.set(...(view?.eye??[center.x+18,7,center.z-dz]))
+      arena.camera.setTarget(new arena.camera.position.constructor(...(view?.target??[center.x,2.8,center.z])))
       await arena.scene.whenReadyAsync();arena.engine.runRenderLoop(()=>arena.scene.render())
       return {buildings:m.world.buildings.length,guards:m.guards.length}
     },id)

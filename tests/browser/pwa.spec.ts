@@ -39,7 +39,7 @@ test('install manifest, bounded static cache, offline fallback and API exclusion
  await expect(page.getByText(/Offline game files are not ready/)).toBeVisible()
  expect(await page.evaluate(async()=>{try{await fetch('/api/auth/get-session');return 'cached'}catch{return 'network-only'}})).toBe('network-only')
  await context.setOffline(false);await page.getByRole('link',{name:'Try again'}).click()
- await expect(page.getByRole('button',{name:'Practice',exact:true})).toBeVisible()
+ await expect(page.getByRole('button',{name:'Campaign',exact:true})).toBeVisible()
 })
 
 test('a waiting worker cannot update a match tab and never reloads it',async({browser})=>{
@@ -66,7 +66,7 @@ test('a waiting worker cannot update a match tab and never reloads it',async({br
   await expect.poll(()=>menu.evaluate(async()=> (await (await caches.open('crossline-code-v1')).keys()).length)).toBe(32)
   await menu.evaluate(async()=>{await (await fetch('/_nuxt/cache-fixture-oversize.js')).arrayBuffer()})
   expect(await menu.evaluate(async()=>Boolean(await (await caches.open('crossline-code-v1')).match('/_nuxt/cache-fixture-oversize.js')))).toBe(false)
-  const match=await context.newPage();await match.goto(base+'/play?update-fixture')
+  const match=await context.newPage();await match.goto(base+'/play?mode=campaign&update-fixture')
   const matchTime=await match.evaluate(()=>performance.timeOrigin),menuTime=await menu.evaluate(()=>performance.timeOrigin)
   await menu.evaluate(async()=>{await (await caches.open('crossline-offline-obsolete-fixture')).put('/models/old.glb',new Response('old asset'))})
   revision=2
@@ -83,7 +83,7 @@ test('a waiting worker cannot update a match tab and never reloads it',async({br
   await reloaded
   expect(await menu.evaluate(()=>performance.timeOrigin)).not.toBe(menuTime)
   await expect.poll(()=>menu.evaluate(async()=>Boolean((await navigator.serviceWorker.getRegistration())?.waiting))).toBe(false)
-  await expect(menu.getByRole('button',{name:'Practice',exact:true})).toBeVisible()
+  await expect(menu.getByRole('button',{name:'Campaign',exact:true})).toBeVisible()
   expect(await menu.evaluate(()=>caches.has('crossline-offline-obsolete-fixture'))).toBe(false)
  }finally{await context.close();await new Promise<void>(resolve=>proxy.close(()=>resolve()))}
 })

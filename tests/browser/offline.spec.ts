@@ -5,7 +5,7 @@ async function download(page:Page){
  await page.getByRole('button',{name:'Download offline play',exact:true}).click()
  await expect(page.getByTestId('offline-ready')).toBeVisible({timeout:60000})
 }
-for(const mobile of [false,true])test(`downloaded Campaign, Practice and Solo survive offline reload (${mobile?'phone':'desktop'})`,async({browser},info)=>{
+for(const mobile of [false,true])test(`downloaded Campaign survives offline reload (${mobile?'phone':'desktop'})`,async({browser},info)=>{
  test.setTimeout(150000)
  const context=await browser.newContext(mobile?{viewport:{width:844,height:390},deviceScaleFactor:3,isMobile:true,hasTouch:true}:{}),page=await context.newPage(),errors:string[]=[],sockets:string[]=[]
  page.on('pageerror',error=>errors.push(error.message));page.on('websocket',socket=>sockets.push(socket.url()))
@@ -16,10 +16,10 @@ for(const mobile of [false,true])test(`downloaded Campaign, Practice and Solo su
   expect(cache.bytes).toBeLessThanOrEqual(64*1024*1024);expect(cache.urls.length).toBeLessThanOrEqual(97)
   expect(cache.urls.some(url=>url.startsWith('/api/'))).toBe(false)
   const cdp=await context.newCDPSession(page);await cdp.send('Network.setCacheDisabled',{cacheDisabled:true});await context.setOffline(true)
-  for(const mode of ['training','solo','campaign']){
+  for(const mode of ['campaign']){
    await page.goto(`http://127.0.0.1:3001/play?mode=${mode}`)
    await expect(page.locator('.radar-panel')).toContainText('ON DEVICE',{timeout:30000})
-   await page.getByRole('button',{name:mode==='campaign'?'Start mission':mode==='solo'?'Start match':'Start training',exact:true}).click()
+   await page.getByRole('button',{name:'Start mission',exact:true}).click()
    await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
    const position=await page.getByTestId('position').innerText()
    if(mobile){
@@ -33,11 +33,6 @@ for(const mobile of [false,true])test(`downloaded Campaign, Practice and Solo su
     await page.keyboard.down('KeyW');await expect(page.getByTestId('position')).not.toHaveText(position);await page.keyboard.up('KeyW')
     const heading=await page.getByTestId('heading').innerText();await page.mouse.move(150,150);await page.mouse.move(400,180);await expect(page.getByTestId('heading')).not.toHaveText(heading)
     await page.mouse.down({button:'right'})
-   }
-   if(mode==='solo'){
-    await expect(page.locator('[data-actor]')).toHaveCount(13)
-    const bot=page.locator('[data-actor="bot-0"]'),before=await bot.getAttribute('data-x');await expect(bot).not.toHaveAttribute('data-x',before!,{timeout:10000})
-    await page.waitForTimeout(4100)
    }
    if(mode==='campaign')await expect(page.getByText('SPAWN PROTECTION',{exact:true})).toBeHidden({timeout:6000})
    if(mobile){const fire=(await page.getByRole('button',{name:'Fire',exact:true}).boundingBox())!;await page.mouse.move(fire.x+fire.width/2,fire.y+fire.height/2);await page.mouse.down()}

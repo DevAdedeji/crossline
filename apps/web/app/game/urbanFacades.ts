@@ -32,13 +32,15 @@ export function addFacades(scene: Scene, assets: TrainingAssets, _shadows: Shado
   }
   for (const building of world.buildings) {
     tone = buildingFinishIndex(building.id)
+    if(building.architecture==='house')continue
+    if(['terminal','ruin','hangar','tower'].includes(building.architecture??''))continue
     if(world.environment==='airfield'&&(!building.architecture||building.architecture==='hall')) continue
-    if (world.legacyRamp === false && (building.id.startsWith('port-') || world.environment)) {
+    if (world.legacyRamp === false && (building.id.startsWith('port-') || world.environment || world.place)) {
       const height=building.height??3.8,kit=building.material==='metal'||building.material==='brick'?'factory':'apartment'
       for(const face of ['north','south','east','west'] as const){
         const horizontal=face==='north'||face==='south',side=face==='north'||face==='east'?1:-1,length=horizontal?building.width:building.depth
         for(let offset=-length/2+1.6;offset<length/2-1;offset+=3){
-          for(let y=world.environment==='industrial'&&building.architecture==='hall'?4.8:.12;y+2.7<height;y+=3.4){
+          for(let y=world.environment==='industrial'&&building.architecture==='hall'?4.8:.12;y+2.7<height;y+=building.architecture==='apartment'?3.2:3.4){
             const openingHeight=height>5&&(!building.architecture||building.architecture==='hall')?4.8:3
             if(y<openingHeight&&building.doors.includes(face)&&Math.abs(offset)<(building.doorWidth??3)/2+1.5)continue
             module(kit,'panel',building.x+(horizontal?offset:side*(building.width/2+.25)),y,building.z+(horizontal?side*(building.depth/2+.25):offset),horizontal?(side>0?Math.PI:0):(side>0?-Math.PI/2:Math.PI/2),2.85,Math.min(3.15,height-y-.25))

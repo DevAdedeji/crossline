@@ -776,6 +776,7 @@ onBeforeUnmount(() => {
     <aside class="radar-panel">
       <svg :viewBox="radarBox" :aria-label="`${modeTitle} radar`" class="radar">
         <rect :x="-world.limit-1" :y="-world.limit-1" :width="world.limit*2+2" :height="world.limit*2+2" fill="#151c22" />
+        <rect v-for="(patch,index) in world.surfaces?.filter(p=>p.kind==='asphalt'||p.kind==='rail')" :key="`surface-${index}`" :x="patch.x-patch.width/2" :y="-patch.z-patch.depth/2" :width="patch.width" :height="patch.depth" fill="#303d45" />
         <path v-for="c in world.roadCenters" :key="c" :d="`M${-world.limit} ${-c}H${world.limit}M${c} ${-world.limit}V${world.limit}`" stroke="#303d45" stroke-width="6" />
         <rect
           v-for="b in world.buildings"

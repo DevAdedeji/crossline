@@ -10,36 +10,18 @@ const touchDevice=ref(false)
 const arenaCapacity=ref(ONLINE_CAPACITY_TARGET)
 const modes = reactive([
   { id: 'campaign', number: '01', title: 'Campaign', subtitle: 'OPERATION BREAKWATER',
-    description: 'Twenty chapters across ports, forest posts, airfields and command sites. Rescue allies, disarm bombs and hold against counterattacks.',
+    description: 'Twenty chapters across neighbourhoods, abandoned towns, cities, airports and factories. Rescue allies, disarm bombs and hold against counterattacks.',
     available: true, players: '20 CHAPTERS · OPERATION BREAKWATER' },
   {
-    id: 'solo',
-    number: '02',
-    title: 'Solo vs Bots',
-    subtitle: 'YOUR OWN BATTLEGROUND',
-    description: 'Five minutes. Twelve bots. One rifle. Use cover, crouch and health packs to beat your best score.',
-    available: true,
-    players: '5 MIN · 1 PLAYER + 12 BOTS',
-  },
-  {
     id: 'online',
-    number: '03',
+    number: '02',
     title: 'Online Free-for-All',
     subtitle: 'EVERY ANGLE IS YOURS',
     description: 'One shared human arena. Join anytime, collect health packs and climb the kill/death leaderboards.',
     available: true,
     get players(){return `SHARED ARENA · UP TO ${arenaCapacity.value} PLAYERS`},
   },
-  {
-    id: 'training',
-    number: '04',
-    title: 'Practice',
-    subtitle: 'ENTER THE PROVING GROUND',
-    description:
-      'Three-minute practice with stationary targets and slow patrols. Master the carbine, streets, interiors and rooftops.',
-    available: true,
-    players: '1 PLAYER + 5 BOTS',
-  },
+
 ])
 onMounted(async()=>{if(!navigator.onLine)return;try{const arena=await $fetch<{capacity:number}>('/api/arena');arenaCapacity.value=arena.capacity}catch{/* Default capacity remains visible if the match server is unavailable. */}})
 const showAccount=ref(false),account=ref<Awaited<ReturnType<typeof currentAccount>>>(null)
@@ -66,13 +48,13 @@ function setFocus(index: number) {
 }
 async function selectMode(index: number, usePad=false) {
   if(launching.value)return
-  if(modes[index]?.id==='online'&&!navigator.onLine){message.value='Online needs internet. Campaign, Practice and Solo run on this device.';return}
+  if(modes[index]?.id==='online'&&!navigator.onLine){message.value='Online needs internet. Campaign runs on this device.';return}
   if(modes[index]?.id==='online'&&!account.value){showAccount.value=true;return}
   launching.value=true;active.value=index
   if(modes[index]?.id==='campaign'){await navigateTo('/campaign');return}
   const input=usePad?'pad':touchDevice.value?'touch':'mouse'
   await prepareEntry(input)
-  await navigateTo(modes[index]?.id === 'training' ? '/play' : `/play?mode=${modes[index]?.id}`)
+  await navigateTo(`/play?mode=${modes[index]?.id}`)
 }
 
 function focusMode(index: number) {
@@ -177,7 +159,7 @@ onBeforeUnmount(() => {
       <nav aria-label="Game modes" class="space-y-1">
         <button v-for="(mode, index) in modes" :id="`mode-${mode.id}`" :key="mode.id"
           class="group relative flex w-full items-center gap-5 border-l-4 px-5 py-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[#ffb15c]"
-          :class="[active === index ? 'border-[#ffb15c] bg-white/10' : 'border-transparent bg-black/10 hover:bg-white/5', mode.id === 'training' ? 'practice-option' : '']"
+          :class="active === index ? 'border-[#ffb15c] bg-white/10' : 'border-transparent bg-black/10 hover:bg-white/5'"
           :aria-label="mode.available ? mode.title : `${mode.title} — in development`"
           :aria-pressed="active === index" @mousemove="setFocus(index)" @focus="setFocus(index)" @click="selectMode(index)">
           <span class="text-xs tabular-nums text-white/35">{{ mode.number }}</span>
@@ -220,8 +202,6 @@ onBeforeUnmount(() => {
 </template>
 <style scoped>
 .display-type, .brand-word { font-family: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; font-stretch: condensed; }
-.practice-option { margin-top: 1rem; padding-block: .8rem; opacity: .8; }
-.practice-option strong { font-size: 1.15rem; }
 @media(max-height:500px) and (orientation:landscape) { .lobby header,.lobby footer { padding-block:.55rem; } .lobby section { padding-block:1rem; } .lobby h1 { font-size:2rem; margin-bottom:.8rem; } .lobby nav button { padding-block:.65rem; } .lobby nav strong { font-size:1.2rem; } }
 .lobby-scene { background: linear-gradient(130deg, #162026, #303c3e 55%, #171e21); background-image: url('/images/mercer-menu.jpg'); background-position: center; background-size: cover; }
 </style>

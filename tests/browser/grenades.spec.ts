@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test'
 
-test('Practice player throws with G and pause cannot consume a grenade',async({page})=>{
+test('Campaign player throws with G and pause cannot consume a grenade',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
-  await page.goto('/play?mode=training')
+  await page.goto('/play?mode=campaign')
   await expect(page.locator('.radar-panel')).toContainText('Connected',{timeout:30000})
-  await page.getByRole('button',{name:'Start training',exact:true}).click()
+  await page.getByRole('button',{name:'Start mission',exact:true}).click()
   await expect(page.getByTestId('grenade-count')).toContainText('2 GRENADES')
   await page.keyboard.press('g');await expect(page.getByTestId('grenade-count')).toContainText('1 GRENADES')
   await page.keyboard.press('Escape');await page.keyboard.press('g')
-  await page.getByRole('button',{name:'Resume training',exact:true}).click()
+  await page.getByRole('button',{name:'Resume mission',exact:true}).click()
   await expect(page.getByTestId('grenade-count')).toContainText('1 GRENADES')
   await page.waitForTimeout(1100);await page.keyboard.press('g')
   await expect(page.getByTestId('grenade-count')).toContainText('0 GRENADES')
@@ -19,9 +19,9 @@ test('Mobile grenade control stays separate from reload and uses the same invent
   const context=await browser.newContext({baseURL:'http://127.0.0.1:3001',viewport:{width:844,height:390},hasTouch:true,isMobile:true}),page=await context.newPage()
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
   try{
-    await page.goto('/play?mode=training')
+    await page.goto('/play?mode=campaign')
     await expect(page.locator('.radar-panel')).toContainText('Connected',{timeout:30000})
-    await page.getByRole('button',{name:'Start training',exact:true}).tap()
+    await page.getByRole('button',{name:'Start mission',exact:true}).tap()
     const grenade=page.getByRole('button',{name:'Throw grenade (2 remaining)'})
     const box=(await grenade.boundingBox())!,reload=(await page.getByRole('button',{name:'Reload',exact:true}).boundingBox())!
     expect(box.x+box.width).toBeLessThan(reload.x);expect(box.height).toBeGreaterThanOrEqual(44)
@@ -56,7 +56,7 @@ test('Controller selects mission cards and can dismiss the briefing without laun
   }
   await pulse(15);await expect(page.getByRole('button',{name:'Dead freight',exact:true})).toBeFocused()
   await pulse(0);await expect(page.getByRole('dialog')).toContainText('Dead freight')
-  await expect(page.getByRole('button',{name:'Got it, let’s go'})).toBeFocused()
+  await expect(page.getByRole('heading',{name:'Dead freight',exact:true})).toBeFocused()
   await pulse(14);await expect(page.getByRole('button',{name:'Close mission briefing'})).toBeFocused()
   await pulse(0);await expect(page.getByRole('dialog')).toBeHidden()
   await expect(page.getByRole('button',{name:'Dead freight',exact:true})).toBeFocused()

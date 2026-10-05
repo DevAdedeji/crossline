@@ -18,7 +18,7 @@ export default defineNuxtConfig({
     registerType: 'prompt', injectRegister: false, client: {registerPlugin: false},
     manifest: {
       id: '/', name: 'Crossline', short_name: 'Crossline', start_url: '/', scope: '/',
-      description: 'Practice, Solo vs Bots and Online Free-for-All. Download Practice and Solo for offline play. Online needs internet.',
+      description: 'Campaign and Online Free-for-All. Download Campaign for offline play. Online needs internet.',
       display: 'standalone', orientation: 'landscape', lang: 'en',
       background_color: '#101619', theme_color: '#101619', categories: ['games'],
       icons: [
@@ -42,5 +42,5 @@ export default defineNuxtConfig({
   routeRules: {'/offline-shell': {ssr:false,prerender:true}, '/sw.js': {headers: {'cache-control': 'no-cache'}}, '/manifest.webmanifest': {headers: {'cache-control': 'no-cache'}}},
   devtools: { enabled: false },
   runtimeConfig: { matchProxySecret: '', webOrigin: '', public: { matchUrl: 'ws://127.0.0.1:2567' } },
-  app: { head: { title: 'Crossline — Solo & Shared Arena', link: [{rel:'apple-touch-icon',href:'/icons/apple-touch-icon.png'},{rel:'icon',type:'image/svg+xml',href:'/icons/crossline.svg'}], meta: [{name:'theme-color',content:'#101619'},{name:'apple-mobile-web-app-capable',content:'yes'},{name:'apple-mobile-web-app-status-bar-style',content:'black-translucent'},{name:'apple-mobile-web-app-title',content:'Crossline'}, {name:'viewport',content:'width=device-width, initial-scale=1, viewport-fit=cover'}, { name: 'description', content: 'Five-minute Solo matches and one shared Online arena.' }] } },
+  app: { head: { title: 'Crossline — Campaign & Online', link: [{rel:'apple-touch-icon',href:'/icons/apple-touch-icon.png'},{rel:'icon',type:'image/svg+xml',href:'/icons/crossline.svg'}], meta: [{name:'theme-color',content:'#101619'},{name:'apple-mobile-web-app-capable',content:'yes'},{name:'apple-mobile-web-app-status-bar-style',content:'black-translucent'},{name:'apple-mobile-web-app-title',content:'Crossline'}, {name:'viewport',content:'width=device-width, initial-scale=1, viewport-fit=cover'}, { name: 'description', content: 'Twenty campaign missions and one shared Online Free-for-All arena.' }] } },
 })

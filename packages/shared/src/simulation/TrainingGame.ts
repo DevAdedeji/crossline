@@ -52,6 +52,7 @@ export interface SimulationScenario {
   botCount: number
   healthPacks: readonly HealthPickup[]
   respawn: boolean
+  fireEndsProtection?: boolean
 }
 export class TrainingGame {
   grenades = new Map<string, PlayerGrenade>()
@@ -290,13 +291,15 @@ export class TrainingGame {
       this.phase !== 'playing' ||
       (actor.bot && this.mode === 'training') ||
       actor.participating === false ||
-      (this.mode !== 'training' && actor.protectedUntil > this.elapsed) ||
+      (this.mode !== 'training' && actor.protectedUntil > this.elapsed && (actor.bot || !this.scenario?.fireEndsProtection)) ||
       actor.health <= 0 ||
       actor.reloadUntil ||
       actor.ammo <= 0 ||
       this.elapsed - actor.lastShot < cadence
     )
       return false
+    // Campaign players may shoot immediately; a successful shot gives up their safe-entry window.
+    if(this.scenario?.fireEndsProtection&&!actor.bot)actor.protectedUntil=Math.min(actor.protectedUntil,this.elapsed)
     this.lastNoise = { id: actor.id, position: { x: actor.x, y: actor.y, z: actor.z }, at: this.elapsed }
     actor.lastShot = this.elapsed
     actor.ammo--

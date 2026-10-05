@@ -62,17 +62,18 @@ export function parseCampaignProgress(value: unknown, missionId: string = EXTRAC
 
 // Harbour Relay retains the central block's proven ramp, then opens into a new
 // enclosed depot. Collision, AI routes and the renderer all use this geometry.
-const buildings: Building[] = [...TRAINING_WORLD.buildings,
+const buildings: Building[] = [...TRAINING_WORLD.buildings.map(b=>({...b,doors:[...b.doors]})),
   { id: 'relay-office', name: 'HARBOUR RELAY / OFFICE', x: 60, z: 54, width: 12, depth: 10, material: 'plaster', doors: ['south', 'west'] },
   { id: 'depot-store', name: 'CUSTOMS / STORAGE', x: -32, z: 30, width: 12, depth: 10, material: 'brick', doors: ['south', 'east'] },
   { id: 'customs-east', name: 'CUSTOMS / INSPECTION', x: 44, z: 14, width: 12, depth: 10, material: 'concrete', doors: ['south','north'] },
   { id: 'dock-workshop', name: 'DOCK / WORKSHOP', x: 66, z: -14, width: 12, depth: 10, material: 'brick', doors: ['west','south'] },
   { id: 'west-dispatch', name: 'WEST / DISPATCH', x: -60, z: 18, width: 12, depth: 10, material: 'plaster', doors: ['east','south'] },
   { id: 'freight-office', name: 'FREIGHT / CONTROL', x: -48, z: -42, width: 12, depth: 10, material: 'metal', doors: ['east','north'] },
-  { id: 'south-barracks', name: 'SOUTH / BARRACKS', x: 22, z: -56, width: 12, depth: 10, material: 'plaster', doors: ['west','north'] },
+  { id: 'south-barracks', name: 'HARBOUR / BAKERY', x: 22, z: -56, width: 12, depth: 10, material: 'plaster', doors: ['west','north'] },
   { id: 'north-stores', name: 'NORTH / STORES', x: 22, z: 60, width: 12, depth: 10, material: 'brick', doors: ['east','south'] },
   { id: 'harbour-security', name: 'HARBOUR / SECURITY', x: -28, z: 62, width: 12, depth: 10, material: 'concrete', doors: ['east','south'] },
 ]
+for(const b of buildings)b.architecture=b.id==='relay-office'?'workshop':/cafe|barracks|dispatch/.test(b.id)?'shop':'house'
 const solids: Solid[] = TRAINING_WORLD.solids.filter(s => !s.id.startsWith('boundary-'))
 function box(id: string, x: number, y: number, z: number, width: number, height: number, depth: number, material: Solid['material']) {
   solids.push({ id, x, y, z, width, height, depth, material })
@@ -107,7 +108,9 @@ box('relay-mast',-2,5,31,.3,10,.3,'metal')
 box('relay-crossbar',-2,8,31,4,.12,.12,'metal')
 const cars = [...TRAINING_WORLD.cars, { id: 'extraction-car', x: -71, z: -67, sideways: true, color: '#435b53' }]
 export const CAMPAIGN_WORLD: WorldGeometry = {
-  id: 'harbour-relay', name: 'HARBOUR RELAY', limit: 84, buildings, solids, cars, roadCenters: [-66, -36, 0, 36, 66],
+  id: 'harbour-relay', name: 'HARBOUR RELAY', limit: 84, buildings, solids, cars, roadCenters: [],
+  place:{identity:'Harbour streets and old town shops',atmosphere:'day',preview:{eye:[-4,3,-39],target:[-9,2,12]}},
+  surfaces:[{x:0,z:0,width:9,depth:157,kind:'asphalt'},{x:0,z:0,width:152,depth:8,kind:'asphalt'},{x:36,z:38,width:8,depth:76,kind:'asphalt'},{x:-37,z:-37,width:7,depth:73,kind:'asphalt'},{x:-7,z:-55,width:26,depth:18,kind:'grass'}],
   colliders: [...solids, ...cars.map(car => ({ id: car.id, x: car.x, y: .78, z: car.z, width: car.sideways ? 4.5 : 2, height: 1.56, depth: car.sideways ? 2 : 4.5, material: 'metal' as const }))],
   navigationPoints: [EXTRACTION_MISSION.relay, EXTRACTION_MISSION.captive, EXTRACTION_MISSION.extraction, ...buildings.slice(3).flatMap(b => [{x:b.x,y:0,z:b.z-7},{x:b.x,y:0,z:b.z-3},{x:b.x-8,y:0,z:b.z},{x:b.x+8,y:0,z:b.z}])],
 }
