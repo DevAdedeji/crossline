@@ -25,11 +25,10 @@ export class AccountStatistics {
  constructor(readonly db:ReturnType<typeof drizzle<typeof schema>>){}
  async ensure(userId:string){await this.db.insert(schema.accountStats).values({userId}).onConflictDoNothing()}
  async record(id:string,killerId:string,victimId:string){
-  if(killerId===victimId)return false
   return this.db.transaction(async tx=>{
    const inserted=await tx.insert(schema.accountEliminations).values({id,killerId,victimId}).onConflictDoNothing().returning({id:schema.accountEliminations.id})
    if(!inserted.length)return false
-   await tx.update(schema.accountStats).set({kills:sql`${schema.accountStats.kills}+1`}).where(eq(schema.accountStats.userId,killerId))
+   if(killerId!==victimId)await tx.update(schema.accountStats).set({kills:sql`${schema.accountStats.kills}+1`}).where(eq(schema.accountStats.userId,killerId))
    await tx.update(schema.accountStats).set({deaths:sql`${schema.accountStats.deaths}+1`}).where(eq(schema.accountStats.userId,victimId))
    return true
   })

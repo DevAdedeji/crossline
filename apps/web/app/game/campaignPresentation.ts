@@ -1,4 +1,3 @@
-import { grenadePosition, GRENADE_RADIUS } from '@crossline/shared/campaignGrenades'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
@@ -32,32 +31,13 @@ export function campaignPresentation(scene: Scene, assets: TrainingAssets, shado
   const charge = MeshBuilder.CreateBox('demolition charge', {width:.5,height:.3,depth:.35}, scene)
   charge.position.set(mission.captive.x,.15,mission.captive.z); charge.material=signal
   charge.setEnabled(mission.kind === 'sabotage'); charge.isPickable=false
-  const blasts=Array.from({length:3},(_,i)=>{
-    const mesh=MeshBuilder.CreateSphere(`mission blast ${i}`,{diameter:1,segments:8},scene)
-    const material=new StandardMaterial(`mission fire ${i}`,scene)
-    material.emissiveColor=Color3.FromHexString('#ff983d');material.disableLighting=true
-    mesh.material=material;mesh.setEnabled(false);mesh.isPickable=false
-    return {mesh,material,time:2}
-  })
-  let nextBlast=0
-  const danger=new StandardMaterial('grenade warning',scene);danger.emissiveColor=Color3.FromHexString('#ff765d');danger.disableLighting=true
-  const grenadeMesh=MeshBuilder.CreateSphere('enemy grenade',{diameter:.22,segments:8},scene);grenadeMesh.material=danger;grenadeMesh.setEnabled(false)
-  const dangerRing=MeshBuilder.CreateTorus('grenade blast radius',{diameter:GRENADE_RADIUS*2,thickness:.045,tessellation:40},scene);dangerRing.material=danger;dangerRing.setEnabled(false)
-  grenadeMesh.isPickable=false;dangerRing.isPickable=false
   const friend = new StandardMaterial('friendly marker', scene)
   friend.emissiveColor = Color3.FromHexString('#92e6ce'); friend.disableLighting = true
   const marker = MeshBuilder.CreateTorus('Finch friendly marker', { diameter: .35, thickness: .045, tessellation: 20 }, scene)
   marker.material = friend; marker.parent = root; marker.position.y = 2.25; marker.isPickable = false
   scene.onBeforeRenderObservable.add(() => {
     if (!state) return
-    const grenade=state.grenades[0]
-    grenadeMesh.setEnabled(Boolean(grenade));dangerRing.setEnabled(Boolean(grenade && grenade.remainingMs > 0))
-    if(grenade){grenadeMesh.scaling.setAll(grenade.remainingMs > 0 ? 1 : 1 + Math.abs(grenade.remainingMs) / 12); const position=grenadePosition(grenade);grenadeMesh.position.set(position.x,position.y,position.z);dangerRing.position.set(grenade.target.x,grenade.target.y+.05,grenade.target.z)}
     const dt = Math.min(scene.getEngine().getDeltaTime(), 50) / 1000
-    for(const blast of blasts)if(blast.time<1.2){
-      blast.time+=dt;blast.mesh.setEnabled(blast.time<1.2)
-      blast.mesh.scaling.setAll(1+blast.time*7);blast.material.alpha=Math.max(0,1-blast.time/1.2)
-    }
     charge.setEnabled(!mission.tasks && mission.kind === 'sabotage' && state.outcome !== 'success')
     const target = new Vector3(state.captive.x, state.captive.y, state.captive.z)
     if (Vector3.Distance(root.position, target) > 3) root.position.copyFrom(target)
@@ -72,9 +52,5 @@ export function campaignPresentation(scene: Scene, assets: TrainingAssets, shado
     ring.position.set(objective.x, objective.y + .045, objective.z)
     beacon.position.set(objective.x, objective.y + 2.4, objective.z); beacon.rotation.y += dt
   })
-  return { explosion(position: {x:number;y:number;z:number}) {
-    const blast=blasts[nextBlast++%blasts.length]!
-    blast.time=0;blast.material.alpha=1;blast.mesh.scaling.setAll(1)
-    blast.mesh.position.set(position.x,position.y+1,position.z);blast.mesh.setEnabled(true)
-  }, sync(value: CampaignState) { state = value; ring.setEnabled(value.outcome === 'active'); beacon.setEnabled(value.outcome === 'active') } }
+  return { sync(value: CampaignState) { state = value; ring.setEnabled(value.outcome === 'active'); beacon.setEnabled(value.outcome === 'active') } }
 }

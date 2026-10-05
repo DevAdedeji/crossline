@@ -10,36 +10,18 @@ const touchDevice=ref(false)
 const arenaCapacity=ref(ONLINE_CAPACITY_TARGET)
 const modes = reactive([
   { id: 'campaign', number: '01', title: 'Campaign', subtitle: 'OPERATION BREAKWATER',
-    description: 'Twenty chapters across ports, forest posts, airfields and command sites. Rescue allies, disarm bombs and hold against counterattacks.',
+    description: 'Twenty chapters across neighbourhoods, abandoned towns, cities, airports and factories. Rescue allies, disarm bombs and hold against counterattacks.',
     available: true, players: '20 CHAPTERS · OPERATION BREAKWATER' },
   {
-    id: 'solo',
-    number: '02',
-    title: 'Solo vs Bots',
-    subtitle: 'YOUR OWN BATTLEGROUND',
-    description: 'Five minutes. Twelve bots. One rifle. Use cover, crouch and health packs to beat your best score.',
-    available: true,
-    players: '5 MIN · 1 PLAYER + 12 BOTS',
-  },
-  {
     id: 'online',
-    number: '03',
+    number: '02',
     title: 'Online Free-for-All',
     subtitle: 'EVERY ANGLE IS YOURS',
     description: 'One shared human arena. Join anytime, collect health packs and climb the kill/death leaderboards.',
     available: true,
     get players(){return `SHARED ARENA · UP TO ${arenaCapacity.value} PLAYERS`},
   },
-  {
-    id: 'training',
-    number: '04',
-    title: 'Practice',
-    subtitle: 'ENTER THE PROVING GROUND',
-    description:
-      'Three-minute practice with stationary targets and slow patrols. Master the carbine, streets, interiors and rooftops.',
-    available: true,
-    players: '1 PLAYER + 5 BOTS',
-  },
+
 ])
 onMounted(async()=>{if(!navigator.onLine)return;try{const arena=await $fetch<{capacity:number}>('/api/arena');arenaCapacity.value=arena.capacity}catch{/* Default capacity remains visible if the match server is unavailable. */}})
 const showAccount=ref(false),account=ref<Awaited<ReturnType<typeof currentAccount>>>(null)
@@ -66,13 +48,13 @@ function setFocus(index: number) {
 }
 async function selectMode(index: number, usePad=false) {
   if(launching.value)return
-  if(modes[index]?.id==='online'&&!navigator.onLine){message.value='Online needs internet. Campaign, Practice and Solo run on this device.';return}
+  if(modes[index]?.id==='online'&&!navigator.onLine){message.value='Online needs internet. Campaign runs on this device.';return}
   if(modes[index]?.id==='online'&&!account.value){showAccount.value=true;return}
   launching.value=true;active.value=index
   if(modes[index]?.id==='campaign'){await navigateTo('/campaign');return}
   const input=usePad?'pad':touchDevice.value?'touch':'mouse'
   await prepareEntry(input)
-  await navigateTo(modes[index]?.id === 'training' ? '/play' : `/play?mode=${modes[index]?.id}`)
+  await navigateTo(`/play?mode=${modes[index]?.id}`)
 }
 
 function focusMode(index: number) {
@@ -177,7 +159,7 @@ onBeforeUnmount(() => {
       <nav aria-label="Game modes" class="space-y-1">
         <button v-for="(mode, index) in modes" :id="`mode-${mode.id}`" :key="mode.id"
           class="group relative flex w-full items-center gap-5 border-l-4 px-5 py-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[#ffb15c]"
-          :class="[active === index ? 'border-[#ffb15c] bg-white/10' : 'border-transparent bg-black/10 hover:bg-white/5', mode.id === 'training' ? 'practice-option' : '']"
+          :class="active === index ? 'border-[#ffb15c] bg-white/10' : 'border-transparent bg-black/10 hover:bg-white/5'"
           :aria-label="mode.available ? mode.title : `${mode.title} — in development`"
           :aria-pressed="active === index" @mousemove="setFocus(index)" @focus="setFocus(index)" @click="selectMode(index)">
           <span class="text-xs tabular-nums text-white/35">{{ mode.number }}</span>
@@ -208,8 +190,8 @@ onBeforeUnmount(() => {
     <section v-if="showControls" role="dialog" aria-modal="true" aria-label="Controls" class="absolute inset-0 z-20 grid place-items-center bg-black/80 p-6 backdrop-blur-sm">
       <div class="max-h-[90dvh] w-full max-w-lg overflow-y-auto border-t-2 border-[#ffb15c] bg-[#131d22] p-6 shadow-2xl sm:p-8">
         <p class="text-xs tracking-[.25em] text-[#ffb15c]">FIELD GUIDE</p><h2 class="display-type mt-2 mb-7 text-4xl font-black">STAY IN CONTROL.</h2>
-        <dl v-if="touchDevice" class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm"><dt class="text-white/50">MOVE</dt><dd>Left movement stick</dd><dt class="text-white/50">LOOK</dt><dd>Swipe the right side</dd><dt class="text-white/50">FIRE</dt><dd>Hold FIRE</dd><dt class="text-white/50">AIM</dt><dd>Tap AIM to toggle sights</dd><dt class="text-white/50">CROUCH</dt><dd>Tap CROUCH</dd><dt class="text-white/50">RELOAD</dt><dd>Tap RELOAD</dd><dt class="text-white/50">PAUSE</dt><dd>Tap Ⅱ</dd></dl>
-        <dl v-else class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm"><dt class="text-white/50">MOVE / LOOK</dt><dd>WASD + mouse / sticks</dd><dt class="text-white/50">FIRE</dt><dd>Left click / A / × / RT / R2</dd><dt class="text-white/50">AIM</dt><dd>Right click / LT / L2</dd><dt class="text-white/50">CROUCH</dt><dd>C toggle / Ctrl hold / R3 toggle</dd><dt class="text-white/50">RELOAD</dt><dd>R / Xbox X / PlayStation □</dd><dt class="text-white/50">SELECT / BACK</dt><dd>A / × · B / ○</dd><dt class="text-white/50">PAUSE</dt><dd>Esc / Start / B / ○</dd></dl>
+        <dl v-if="touchDevice" class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm"><dt class="text-white/50">MOVE</dt><dd>Left movement stick</dd><dt class="text-white/50">LOOK</dt><dd>Swipe the right side</dd><dt class="text-white/50">FIRE</dt><dd>Hold FIRE</dd><dt class="text-white/50">AIM</dt><dd>Tap AIM to toggle sights</dd><dt class="text-white/50">CROUCH</dt><dd>Tap CROUCH</dd><dt class="text-white/50">RELOAD</dt><dd>Tap RELOAD</dd><dt class="text-white/50">GRENADE</dt><dd>Tap Grenades · 2 per life</dd><dt class="text-white/50">PAUSE</dt><dd>Tap Ⅱ</dd></dl>
+        <dl v-else class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm"><dt class="text-white/50">MOVE / LOOK</dt><dd>WASD + mouse / sticks</dd><dt class="text-white/50">FIRE</dt><dd>Left click / A / × / RT / R2</dd><dt class="text-white/50">AIM</dt><dd>Right click / LT / L2</dd><dt class="text-white/50">CROUCH</dt><dd>C toggle / Ctrl hold / R3 toggle</dd><dt class="text-white/50">RELOAD</dt><dd>R / Xbox X / PlayStation □</dd><dt class="text-white/50">GRENADE</dt><dd>G / RB / R1 · 2 per life</dd><dt class="text-white/50">SELECT / BACK</dt><dd>A / × · B / ○</dd><dt class="text-white/50">PAUSE</dt><dd>Esc / Start / B / ○</dd></dl>
         <TouchSettings v-if="touchDevice" />
         <p v-if="touchDevice" class="mt-6 text-xs leading-relaxed text-white/50">Turn your phone to landscape. Use the on-screen controls to play.</p>
         <p v-else class="mt-6 text-xs leading-relaxed text-white/50">Release A / × after selecting a mode, then press it to fire. For a generic controller, assign its trigger from the in-game Controls panel.</p>
@@ -220,8 +202,6 @@ onBeforeUnmount(() => {
 </template>
 <style scoped>
 .display-type, .brand-word { font-family: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; font-stretch: condensed; }
-.practice-option { margin-top: 1rem; padding-block: .8rem; opacity: .8; }
-.practice-option strong { font-size: 1.15rem; }
 @media(max-height:500px) and (orientation:landscape) { .lobby header,.lobby footer { padding-block:.55rem; } .lobby section { padding-block:1rem; } .lobby h1 { font-size:2rem; margin-bottom:.8rem; } .lobby nav button { padding-block:.65rem; } .lobby nav strong { font-size:1.2rem; } }
 .lobby-scene { background: linear-gradient(130deg, #162026, #303c3e 55%, #171e21); background-image: url('/images/mercer-menu.jpg'); background-position: center; background-size: cover; }
 </style>

@@ -1,92 +1,87 @@
 <script setup lang="ts">
 import { selectController, controllerButtons } from '~/game/controller'
-import { prepareEntry } from '~/game/entry'
+import { prepareEntry, type EntryInput } from '~/game/entry'
 import { CAMPAIGN_MISSIONS, getMissionTasks, getCampaignMission } from '@crossline/shared/campaign'
 import { readCampaignProgress, saveCampaignProgress } from '~/game/campaignProgress'
-const route = useRoute()
-const mission = computed(() => getCampaignMission(route.query.mission))
-const tasks = computed(() => getMissionTasks(mission.value))
-const act = ref(Math.floor((Number(mission.value.chapter)-1)/5))
-const acts = ['Opening moves', 'Supply lines', 'Counteroffensive', 'Endgame']
-const visibleMissions = computed(() => CAMPAIGN_MISSIONS.slice(act.value*5,act.value*5+5))
-const progress = ref<ReturnType<typeof readCampaignProgress>>()
-const launching = ref(false)
-onMounted(() => { progress.value = readCampaignProgress(mission.value.id) })
-watch(mission, value => { progress.value = readCampaignProgress(value.id); act.value = Math.floor((Number(value.chapter)-1)/5) })
-async function deploy(restart = false, usePad = false) {
-  if (launching.value) return
-  launching.value = true
-  if (restart && progress.value) saveCampaignProgress({ ...progress.value, checkpoint: 'relay', objectiveIndex: 0, cleared: [], elapsedMs: 0 })
-  if (usePad) await prepareEntry('pad')
-  await navigateTo(`/play?mode=campaign&mission=${mission.value.id}`)
+const route=useRoute()
+const selected=ref<string>(),act=ref(0),launching=ref(false),briefing=ref<HTMLDialogElement>()
+const mission=computed(()=>getCampaignMission(selected.value))
+const progress=ref<ReturnType<typeof readCampaignProgress>>()
+const tasks=computed(()=>getMissionTasks(mission.value))
+const checkpoint=computed(()=>mission.value.tasks?tasks.value[progress.value?.objectiveIndex??0]?.title:mission.value.objectives[progress.value?.checkpoint??'relay'].title)
+const acts=['Opening moves','Supply lines','Counteroffensive','Endgame']
+const visibleMissions=computed(()=>CAMPAIGN_MISSIONS.slice(act.value*5,act.value*5+5))
+let lastCard:HTMLElement|undefined,frame=0,previous:boolean[]=[],directionHeld=0,focusIndex=0
+async function select(id:string){
+  focusIndex=CAMPAIGN_MISSIONS.findIndex(m=>m.id===id)
+  lastCard=document.activeElement as HTMLElement;selected.value=id;progress.value=readCampaignProgress(id)
+  await nextTick();briefing.value?.showModal();briefing.value?.querySelector<HTMLElement>('#briefing-title')?.focus({preventScroll:true});if(briefing.value)briefing.value.scrollTop=0
 }
-let frame = 0, armed = false, wasConfirm = false, wasBack = false, wasDirection = 0
-function pollController() {
-  const pad = selectController(Array.from(navigator.getGamepads?.() ?? []))
-  if (pad && document.hasFocus() && !document.hidden) {
-    const buttons = controllerButtons(pad), confirm = Boolean(buttons[0]), back = Boolean(buttons[1])
-    const direction = buttons[15] || (pad.axes[0] ?? 0) > .6 ? 1 : buttons[14] || (pad.axes[0] ?? 0) < -.6 ? -1 : 0
-    if (direction && direction !== wasDirection && !launching.value) {
-      const index = CAMPAIGN_MISSIONS.findIndex(item => item.id === mission.value.id)
-      void navigateTo(`/campaign?mission=${CAMPAIGN_MISSIONS[(index+direction+CAMPAIGN_MISSIONS.length)%CAMPAIGN_MISSIONS.length]!.id}`)
+function close(){briefing.value?.close();selected.value=undefined;lastCard?.focus()}
+async function deploy(restart=false,input?:EntryInput){
+  if(launching.value)return
+  launching.value=true
+  const missionId=mission.value.id
+  if(restart&&progress.value)saveCampaignProgress({...progress.value,checkpoint:'relay',objectiveIndex:0,cleared:[],elapsedMs:0})
+  briefing.value?.close()
+  await prepareEntry(input??(matchMedia('(pointer: coarse)').matches?'touch':'mouse'))
+  await navigateTo(`/play?mode=campaign&mission=${missionId}`)
+}
+function poll(){
+  const pad=selectController(Array.from(navigator.getGamepads?.()??[]))
+  if(pad&&document.hasFocus()&&!document.hidden){
+    const buttons=controllerButtons(pad),edge=(n:number)=>buttons[n]&&!previous[n]
+    const direction=buttons[15]||buttons[13]||(pad.axes[0]??0)>.6?1:buttons[14]||buttons[12]||(pad.axes[0]??0)<-.6?-1:0
+    if(selected.value){
+      const controls=Array.from(briefing.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')??[])
+      if(direction&&direction!==directionHeld){const index=controls.indexOf(document.activeElement as HTMLButtonElement);controls[(index+direction+controls.length)%controls.length]?.focus()}
+      directionHeld=direction
+      if(edge(1))close()
+      else if(edge(0)){const focused=document.activeElement;if(focused?.classList.contains('close-briefing'))close();else void deploy(Boolean(focused?.classList.contains('restart')),'pad')}
+    }else{
+      if(direction&&direction!==directionHeld){focusIndex=(focusIndex+direction+CAMPAIGN_MISSIONS.length)%CAMPAIGN_MISSIONS.length;act.value=Math.floor(focusIndex/5);void nextTick(()=>document.getElementById(`mission-${CAMPAIGN_MISSIONS[focusIndex]!.id}`)?.focus())}
+      directionHeld=direction
+      if(edge(0))void select(CAMPAIGN_MISSIONS[focusIndex]!.id)
+      if(edge(1))void navigateTo('/')
     }
-    wasDirection = direction
-    if (!confirm) armed = true
-    if (armed && confirm && !wasConfirm && progress.value) void deploy(false, true)
-    if (back && !wasBack) void navigateTo('/')
-    wasConfirm = confirm; wasBack = back
+    previous=buttons
   }
-  frame = requestAnimationFrame(pollController)
+  frame=requestAnimationFrame(poll)
 }
-onMounted(() => { frame = requestAnimationFrame(pollController) })
-onBeforeUnmount(() => cancelAnimationFrame(frame))
+onMounted(()=>{
+  if(typeof route.query.mission==='string'){const m=getCampaignMission(route.query.mission);act.value=Math.floor((Number(m.chapter)-1)/5);void select(m.id)}
+  // Ignore a held menu confirmation until released.
+  const pad=selectController(Array.from(navigator.getGamepads?.()??[]));previous=pad?controllerButtons(pad):[]
+  frame=requestAnimationFrame(poll)
+})
+onBeforeUnmount(()=>cancelAnimationFrame(frame))
 </script>
 <template>
-  <main class="campaign-briefing">
+  <main class="campaign-gallery">
     <header><NuxtLink to="/" class="brand">CROSSLINE<span>+</span></NuxtLink><NuxtLink to="/">← Back to modes</NuxtLink></header>
-    <div class="campaign-navigation">
-      <p>20 CHAPTERS <span>Progress saves separately for each mission</span></p>
-      <div class="act-tabs" role="group" aria-label="Campaign acts"><button v-for="(name,index) in acts" :key="name" :aria-pressed="act === index" @click="act = index">{{ String(index+1).padStart(2,'0') }} / {{ name }}</button></div>
+    <div class="gallery-content">
+      <div class="gallery-heading"><div><p>OPERATION BREAKWATER</p><h1>Choose your mission.</h1></div><span>20 missions · Progress saved on this device</span></div>
+      <div class="act-tabs" role="group" aria-label="Campaign acts"><button v-for="(name,index) in acts" :key="name" :aria-pressed="act===index" @click="act=index;focusIndex=index*5">{{ name }}</button></div>
+      <nav class="mission-select" aria-label="Campaign missions">
+        <button v-for="item in visibleMissions" :id="`mission-${item.id}`" :key="item.id" @focus="focusIndex=CAMPAIGN_MISSIONS.findIndex(m=>m.id===item.id)" @click="select(item.id)">
+          <img :src="`/campaign/${item.id}.jpg`" alt="" width="800" height="500" loading="lazy" />
+          <span>{{ item.title }}<i aria-hidden="true">↗</i></span>
+        </button>
+      </nav>
     </div>
-    <nav class="mission-select" aria-label="Campaign missions">
-      <NuxtLink v-for="item in visibleMissions" :key="item.id" :to="`/campaign?mission=${item.id}`" :aria-current="mission.id === item.id ? 'page' : undefined" :class="{ selected: mission.id === item.id }">
-        <small>CHAPTER {{ item.chapter }} · {{ item.kind.toUpperCase() }}</small><strong>{{ item.title }}</strong><span>{{ item.world.name }}</span>
-      </NuxtLink>
-    </nav>
-    <section>
-      <div class="brief-copy">
-        <p class="eyebrow">CAMPAIGN / {{ mission.operation }}</p>
-        <h1>{{ mission.title }}.</h1>
-        <p class="brief-text">{{ mission.briefing }}</p>
-        <div class="brief-meta"><span>{{ mission.chapter }} / {{ mission.kind.toUpperCase() }}</span><span>{{ mission.world.name }} / {{ mission.world.limit * 2 }} × {{ mission.world.limit * 2 }} M</span><span>1 PLAYER</span></div>
-        <ol aria-label="Mission objectives"><li v-for="(objective, index) in tasks" :key="objective.title"><span>{{ String(index + 1).padStart(2,'0') }}</span><div><strong>{{ objective.title }}</strong><p>{{ objective.instruction }}</p></div></li></ol>
-        <p v-if="progress?.completed" class="completion">✓ Mission completed <span v-if="progress.bestTimeMs">· Best {{ Math.floor(progress.bestTimeMs / 60000) }}:{{ String(Math.floor(progress.bestTimeMs / 1000) % 60).padStart(2, '0') }}</span></p>
-        <p v-if="progress && progress.checkpoint !== 'relay'" class="checkpoint">Checkpoint available · {{ mission.tasks ? tasks[progress.objectiveIndex ?? 0]?.title : mission.objectives[progress.checkpoint].title }}</p>
-        <button class="deploy" :disabled="launching || !progress" @click="deploy()">{{ launching ? 'Preparing operation…' : progress?.checkpoint !== 'relay' ? 'Continue mission' : progress?.completed ? 'Replay mission' : 'Begin mission' }} <span aria-hidden="true">↗</span></button>
-        <button v-if="progress && progress.checkpoint !== 'relay'" class="restart" :disabled="launching" @click="deploy(true)">Restart from insertion</button>
-        <p class="save-note">Checkpoints save separately for each mission on this device. Eliminated guards stay down. Enemy grenades have a short fuse: leave the red circle or get behind solid cover. {{ mission.companion ? `Keep ${mission.companion} close through the exit.` : 'Complete every objective in order, then secure the exit.' }}</p>
-      </div>
-      <aside class="operation-map" :aria-label="`${mission.world.name} mission map`">
-        <div class="map-caption"><span>{{ mission.world.name }}</span><span>N ↑</span></div>
-        <svg :viewBox="`${-mission.world.limit-8} ${-mission.world.limit-8} ${mission.world.limit*2+16} ${mission.world.limit*2+16}`" role="img" aria-label="Mission route and arena layout">
-          <g transform="scale(1 -1)">
-            <rect :x="-mission.world.limit" :y="-mission.world.limit" :width="mission.world.limit*2" :height="mission.world.limit*2" fill="#182b30" stroke="#758c8244" />
-            <g v-for="road in mission.world.roadCenters" :key="road" stroke="#ffffff0d" stroke-width="5"><path :d="`M${-mission.world.limit} ${road}H${mission.world.limit} M${road} ${-mission.world.limit}V${mission.world.limit}`" /></g>
-            <rect v-for="building in mission.world.buildings" :key="building.id" :x="building.x-building.width/2" :y="building.z-building.depth/2" :width="building.width" :height="building.depth" fill="#506963" stroke="#a1b4a7" stroke-width=".4" />
-            <polyline :points="[mission.spawn,...tasks.map(t=>t.position)].map(p=>`${p.x},${p.z}`).join(' ')" fill="none" stroke="#efb36b" stroke-width=".8" stroke-dasharray="3 3" />
-            <circle v-for="(point,i) in tasks.map(t=>t.position)" :key="i" :cx="point.x" :cy="point.z" r="2.5" fill="#efb36b" />
-            <circle :cx="mission.spawn.x" :cy="mission.spawn.z" r="2.5" fill="#9be4cd" />
-          </g>
-        </svg>
-        <p>INSERTION → {{ tasks.length }} OBJECTIVES → EXTRACTION</p><blockquote>{{ mission.companion ? `Reach ${mission.companion}. Bring them home.` : 'Complete the objectives. Make it out.' }}</blockquote>
-      </aside>
-    </section>
+    <dialog ref="briefing" class="mission-briefing" aria-labelledby="briefing-title" @cancel.prevent="close" @click="event=>{if(event.target===briefing)close()}">
+      <template v-if="selected">
+        <button class="close-briefing" aria-label="Close mission briefing" @click="close">×</button>
+        <p class="eyebrow">{{ mission.world.name }}</p><h2 id="briefing-title" tabindex="-1">{{ mission.title }}</h2>
+        <p class="brief-copy">{{ mission.briefing }}</p>
+        <p class="objective"><span>{{ progress?.checkpoint!=='relay'?'YOUR CHECKPOINT':'FIRST OBJECTIVE' }}</span>{{ checkpoint }}</p>
+        <p class="hint">Step into the marked circles to complete objectives. {{ mission.companion?`Keep ${mission.companion} close after the rescue.`:'Use cover and watch for enemy grenades.' }}</p>
+        <button class="deploy" :disabled="launching" @click="deploy()">{{ launching?'Loading…':progress?.checkpoint!=='relay'?'Got it, continue':'Got it, let’s go' }} <span aria-hidden="true">→</span></button>
+        <button v-if="progress?.checkpoint!=='relay'" class="restart" :disabled="launching" @click="deploy(true)">Restart from the beginning</button>
+      </template>
+    </dialog>
   </main>
 </template>
 <style scoped>
-.campaign-navigation{max-width:1180px;margin:24px auto 0;padding:0 5vw}.campaign-navigation>p{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.06em;color:#efb36b;margin-bottom:14px}.campaign-navigation>p span{color:#a5b4bc;letter-spacing:0}.act-tabs{display:flex;gap:8px;overflow-x:auto}.act-tabs button{white-space:nowrap;padding:10px 13px;border:1px solid #ffffff25;border-radius:4px;font-size:11px;min-height:42px}.act-tabs button[aria-pressed=true]{background:#efb36b;color:#172026;border-color:#efb36b}.act-tabs button:focus-visible{outline:2px solid white;outline-offset:2px}.campaign-briefing{min-height:100dvh;background:radial-gradient(ellipse at 80% 20%,#263a3b,#10171c 65%);color:#edf1ef;font-family:Arial,sans-serif}.campaign-briefing header{display:flex;justify-content:space-between;align-items:center;padding:24px 5vw;border-bottom:1px solid #ffffff1c;font-size:12px}.brand{font-size:26px;font-weight:900;letter-spacing:-1.5px}.brand span{color:#ffb15c}.mission-select{max-width:1180px;margin:14px auto 0;padding:0 5vw;display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.mission-select a{display:flex;flex-direction:column;gap:8px;padding:16px;border:1px solid #ffffff25;border-radius:5px;background:#ffffff04}.mission-select a.selected{border-color:#efb36b;background:#efb36b13}.mission-select a:focus-visible{outline:2px solid #efb36b;outline-offset:3px}.mission-select small,.mission-select span{font-size:10px;color:#a5b4bc}.mission-select small{color:#efb36b}.mission-select strong{font-size:17px}.campaign-briefing section{max-width:1180px;margin:auto;padding:56px 5vw;display:grid;grid-template-columns:1.3fr 1fr;gap:70px}.eyebrow{color:#efb36b;font-size:11px;letter-spacing:.16em;text-transform:uppercase}h1{font-size:clamp(40px,6vw,76px);line-height:1.04;font-weight:800;letter-spacing:-.05em;margin:16px 0 24px}.brief-text{font-size:15px;line-height:1.8;color:#b5c1c7}.brief-meta{display:flex;flex-wrap:wrap;gap:16px;margin:24px 0;font-size:10px;letter-spacing:.06em;color:#efb36b}ol{list-style:none;border-block:1px solid #ffffff1c;margin:20px 0;padding:10px 0}li{display:flex;gap:18px;padding:14px 0}li>span{color:#efb36b;font-size:11px;padding-top:3px}li strong{font-size:14px}li p{font-size:12px;color:#a5b4bc;line-height:1.6;margin:5px 0 0}.deploy{display:flex;align-items:center;justify-content:space-between;background:#efb36b;color:#141a1f;width:100%;min-height:52px;padding:14px 20px;font-weight:700;border-radius:4px;margin-top:22px}.deploy:disabled{opacity:.5}.deploy:focus-visible,.restart:focus-visible{outline:2px solid white;outline-offset:4px}.restart{padding:14px 0;font-size:12px;text-decoration:underline}.save-note{font-size:11px;line-height:1.7;color:#90a0a9;margin-top:18px}.completion,.checkpoint{color:#b8d9b0;font-size:12px;margin-top:12px}.operation-map{align-self:start;background:#152328;border:1px solid #ffffff20;padding:22px;box-shadow:0 24px 60px #0004}.map-caption{display:flex;justify-content:space-between;font-size:10px;letter-spacing:.12em;color:#aebdb9}.operation-map svg{width:100%;margin-top:16px}.operation-map>p{color:#efb36b;font-size:10px;margin:20px 0 12px}.operation-map blockquote{font-size:23px;line-height:1.4;font-weight:700}@media(max-width:760px){.campaign-briefing section{grid-template-columns:1fr;gap:30px;padding-top:30px}.operation-map{display:none}.campaign-briefing header{padding:18px 5vw}h1{font-size:46px}}@media(max-height:500px){.campaign-briefing section{padding-top:24px}.operation-map{display:none}.campaign-briefing section{grid-template-columns:1fr;max-width:780px}h1{font-size:36px}}
-</style>
-
-<style scoped>
-@media(max-width:900px){.mission-select{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:8px}.mission-select a{flex:0 0 190px;scroll-snap-align:start;padding:12px}.mission-select strong{font-size:15px}.campaign-navigation>p span{display:none}.act-tabs button{font-size:10px;padding:8px 10px}.campaign-briefing section{padding-top:28px}}
+.campaign-gallery{min-height:100dvh;background:radial-gradient(ellipse at 80% 0,#293838,#101619 65%);color:#eef1ed;font-family:Arial,sans-serif}.campaign-gallery header{display:flex;justify-content:space-between;align-items:center;padding:24px 5vw;border-bottom:1px solid #ffffff18;font-size:13px}.brand{font-size:27px;font-weight:900;letter-spacing:-1.5px}.brand span{color:#efb36b}.gallery-content{max-width:1280px;margin:auto;padding:46px 5vw 70px}.gallery-heading{display:flex;justify-content:space-between;align-items:end;gap:20px}.gallery-heading p,.eyebrow{font-size:10px;letter-spacing:.14em;color:#efb36b}.gallery-heading h1{font-size:clamp(28px,4vw,46px);font-weight:750;letter-spacing:-.04em;margin-top:12px}.gallery-heading>span{font-size:11px;color:#9daaa9;margin-bottom:5px}.act-tabs{display:flex;gap:8px;margin:30px 0 24px;overflow:auto;padding-bottom:4px}.act-tabs button{white-space:nowrap;min-height:44px;padding:10px 18px;border:1px solid #ffffff25;border-radius:30px;font-size:12px;color:#b3bfbd}.act-tabs button[aria-pressed=true]{background:#efb36b;border-color:#efb36b;color:#192223}.mission-select{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}.mission-select button{text-align:left;overflow:hidden;border:1px solid #ffffff20;background:#192225;border-radius:8px;transition:transform .15s,border-color .15s}.mission-select button:hover{transform:translateY(-3px);border-color:#efb36b}.mission-select img{width:100%;aspect-ratio:8/5;object-fit:cover;background:#33443f}.mission-select span{display:flex;justify-content:space-between;align-items:center;padding:18px;font-size:18px;font-weight:600}.mission-select i{font-style:normal;color:#efb36b}button:focus-visible,a:focus-visible{outline:2px solid #efb36b;outline-offset:4px}.mission-briefing{position:fixed;inset:0;margin:auto;width:min(600px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;background:#192427;color:#eef1ed;border:1px solid #50605a;border-radius:12px;padding:32px;box-shadow:0 24px 100px #0008}.mission-briefing::backdrop{background:#081011cc}.close-briefing{position:absolute;top:8px;right:8px;width:44px;height:44px;font-size:26px;color:#aebdb7}.mission-briefing .eyebrow{font-size:12px;padding-right:16px}#briefing-title:focus{outline:none}.mission-briefing h2{font-size:34px;font-weight:750;letter-spacing:-.03em;margin:12px 0 18px}.brief-copy{font-size:18px;line-height:1.65;color:#dde5df}.objective{margin-top:22px;padding:15px 0;border-block:1px solid #ffffff1c;font-size:20px;line-height:1.5}.objective span{display:block;font-size:12px;letter-spacing:.1em;color:#efb36b;margin-bottom:6px}.hint{font-size:16px;line-height:1.6;color:#9fafa7;margin:16px 0 22px}.deploy{display:flex;justify-content:space-between;align-items:center;background:#efb36b;color:#142023;width:100%;min-height:48px;padding:12px 18px;border-radius:5px;font-weight:700;font-size:17px}.deploy:disabled{opacity:.6}.restart{display:block;min-height:44px;margin:auto;font-size:15px;text-decoration:underline;color:#b7c4bb}@media(max-width:900px){.mission-select{grid-template-columns:repeat(2,minmax(0,1fr))}.gallery-heading>span{display:none}}@media(max-width:520px){.gallery-content{padding-top:28px}.mission-select{grid-template-columns:1fr;gap:18px}.act-tabs{margin-top:22px}.act-tabs button{padding:8px 14px}.mission-briefing{padding:24px}.mission-select span{font-size:17px;padding:16px}}@media(max-height:500px){.mission-briefing{width:min(600px,calc(100vw - 32px));padding:20px 26px}.mission-briefing h2{font-size:30px;margin:6px 0 10px}.objective{margin-top:12px;padding:8px 0}.hint{margin:10px 0}.brief-copy{font-size:18px}.gallery-content{padding-top:24px}}@media(prefers-reduced-motion:reduce){.mission-select button{transition:none}}
 </style>

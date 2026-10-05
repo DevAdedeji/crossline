@@ -1,6 +1,6 @@
 # Crossline
 
-A locally runnable first-person browser shooter built with Nuxt 4 / Vue / Nuxt UI, Babylon.js, an authoritative Colyseus Node.js server, and an optional PostgreSQL / Drizzle persistence layer. Campaign, Solo and Practice run entirely in a device-local worker and need no match server, account, external database, API key or paid service. Online requires an account.
+A locally runnable first-person browser shooter built with Nuxt 4 / Vue / Nuxt UI, Babylon.js, an authoritative Colyseus Node.js server, and an optional PostgreSQL / Drizzle persistence layer. Campaign runs entirely in a device-local worker and needs no match server, account, external database, API key or paid service. Online requires an account.
 
 ## Run
 
@@ -11,14 +11,14 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open **http://127.0.0.1:3000**. Enter an optional Solo/Practice nickname and select a mode to launch directly. Online opens a compact login/signup form when signed out. There is no Deploy step. The menu gesture prepares sound and mouse capture before assets load; browsers that decline capture offer a retry in the arena. Direct `/play` links still offer a Start button. Phones require landscape orientation. Stop both processes with Ctrl-C; separate commands are `pnpm dev:web` and `pnpm dev:match`.
+Open **http://127.0.0.1:3000**. Enter an optional campaign callsign and select a mode to launch directly. Online opens a compact login/signup form when signed out. There is no Deploy step. The menu gesture prepares sound and mouse capture before assets load; browsers that decline capture offer a retry in the arena. Direct `/play?mode=campaign` links still offer a Start button. Old Solo, Practice and unqualified `/play` links open the campaign gallery. Phones require landscape orientation. Stop both processes with Ctrl-C; separate commands are `pnpm dev:web` and `pnpm dev:match`.
 
-- **Campaign — Operation Breakwater:** 20 selectable chapters grouped into four acts, with independent device-local checkpoints and best times. The opening missions introduce automatic objective circles, rescuing and escorting companions, and shipment sabotage. The 17 later chapters combine five to seven objectives: eliminate marked squads, collect intelligence, plant charges, disarm timed devices, defend contested zones against reinforcements, and extract. Arenas include a port, village, rail yard, reservoir, forest relay, airfields, market, quarry, fuel depot and command ridge. **Dead freight** now has 24 guards, seven varied port buildings, customs furniture, storage racks, loading cover, containers and cranes. Other new chapters have 20 soldiers including their staged reinforcements. Enter objective circles to interact automatically. Leaving a defense zone resets its hold; nearby enemies contest it. Rescue companions wait beyond 18 metres and must reach extraction with you. Death offers a retry from the latest objective, preserving cleared guards and elapsed time; timed-device deadlines restart on retry. Enemy grenades have visible warnings, cover-blocked damage and a 2.6-second fuse. All campaign simulation and timers freeze while paused. Vehicles remain scenery. See [the mission guide](docs/campaign.md).
-- **Solo vs Bots:** five minutes against twelve bots, quick respawns, health packs, results with kills/deaths/accuracy and a personal-best score stored on this device. Play Again starts immediately. Bots target humans only; they never damage other bots. Patrols stay near the active player's district, but aiming/firing still requires real sight and cover checks.
+- **Campaign — Operation Breakwater:** 20 selectable chapters grouped into four acts, shown as actual arena previews and mission names. Selecting a card opens a compact briefing; acknowledging it launches directly without a second Start screen. Chapters come with independent device-local checkpoints and best times. The opening missions introduce automatic objective circles, rescuing and escorting companions, and shipment sabotage. The 17 later chapters combine five to seven objectives: eliminate marked squads, collect intelligence, plant charges, disarm timed devices, defend contested zones against reinforcements, and extract. Arenas include mixed-size civilian neighbourhoods, abandoned communities, a city centre, civil airport, remote airstrip, railway station, factories, port and reservoir. **Dead freight** now has 24 guards, seven varied port buildings, customs furniture, storage racks, loading cover, containers and cranes. Other new chapters have 20 soldiers including their staged reinforcements. Enter objective circles to interact automatically. Leaving a defense zone resets its hold; nearby enemies contest it. Rescue companions wait beyond 18 metres and must reach extraction with you. Death offers a retry from the latest objective, preserving cleared guards and elapsed time; timed-device deadlines restart on retry. Enemy grenades have visible warnings, cover-blocked damage and a 2.6-second fuse. All campaign simulation and timers freeze while paused. Firing responds immediately on entry and checkpoint retry; the first shot ends the four-second safe-entry protection. Vehicles remain scenery. See [the mission guide](docs/campaign.md).
 - **Online Free-for-All:** one continuous account-based, human-only arena, join/leave anytime, unlimited respawns, health packs and general top-kills/top-deaths leaderboards in a standalone button/view (also accessible from the main screen). The single process admits up to 100 clients, including reserved reconnect seats. A full arena offers a waiting/retry message; it never intentionally creates a second public arena. The configured cap is 100; simultaneous 100-player performance is not yet measured. Smaller test fixtures verify full-room rejection and singleton behavior.
-- **Practice:** the smaller menu option opens a personal three-minute Training session with three stationary targets and two slow unarmed patrols. They never attack.
 
 The match server defaults to `127.0.0.1:2567`. `/health` reports liveness, `/arena` reports public seat availability, and `/leaderboard` exposes only public totals. The web origin is deliberately `127.0.0.1`, not `localhost`.
+
+Only Campaign and Online Free-for-All are player-facing modes. References below to Solo or Practice simulation describe retained engine fixtures and earlier verification, not selectable modes.
 
 ## Controls
 
@@ -28,18 +28,21 @@ The match server defaults to `127.0.0.1:2567`. `/health` reports liveness, `/are
 | Fire | Left click | A / × or RT / R2 | Hold FIRE |
 | Aim | Right click | LT / L2 | Toggle AIM |
 | Reload | R | X / □ | RELOAD |
+| Throw grenade | G | RB / R1 | Grenade button |
 | Campaign interact | Enter objective circle | Enter objective circle | Enter objective circle |
 | Crouch | C toggle / Ctrl hold | R3 toggle | CROUCH |
 | Pause / menu | Esc | Start / Options or B / ○ | Pause button |
 | Online leaderboard / back | Tab / Esc | View or Share / B or ○ | Leaderboard / Back |
 
-A / × selects menus and fires in play. Release it after selecting or resuming before pressing to shoot. Controller axes have an 18% radial deadzone; Controls → Assign fire trigger supports generic layouts. Losing focus, disconnecting the active controller, or losing mouse capture releases input. Campaign/Practice/Solo pause the whole simulation; Online only pauses your controls and leaves your character vulnerable.
+A / × selects menus and fires in play. Release it after selecting or resuming before pressing to shoot. Controller axes have an 18% radial deadzone; Controls → Assign fire trigger supports generic layouts. Losing focus, disconnecting the active controller, or losing mouse capture releases input. Campaign pauses the whole simulation; Online only pauses your controls and leaves your character vulnerable.
 
 Touch movement, look and fire support simultaneous fingers. Pointer cancellation, backgrounding and rotation to portrait release held input. Rotation back dismisses the blocker and resizes the renderer automatically, then requires Resume. The arena observes visual-viewport/orientation/foreground changes with bounded settling checks for installed WebKit viewports; no refresh or reinstall is required. Safe-area layout, a reduced render resolution and 1024px shadows are used on touch devices. Chrome touch emulation checks 667×375 and 932×430; physical Android/iPhone and Safari behavior remain unverified.
 
 ## Combat and recovery
 
 One CL-24 rifle is implemented: 24 rounds, unlimited reserve, 140ms shot interval, 1.6-second reload, 80m range, 25 body / 50 head damage. Online movement, stance, ray hits, cover, ammunition, health, elimination and respawn belong to the server. Practice and Solo use the same deterministic simulation locally; their scores remain device-only and are never submitted as competitive results. Clients cannot submit damage, health, score or target IDs. Crouch changes speed, camera height, pose, shot origin and hit region; blocked headroom prevents standing into a ceiling.
+
+Players carry two fragmentation grenades per life in every mode. G, RB/R1 or the touch grenade button throws one; the shared simulation handles a 2.6-second fuse, bouncing, seven-metre blast radius, distance falloff and solid cover. Throws end spawn protection and have a one-second cooldown. Self-inflicted deaths award no kill; Online persists the death exactly once. Grenades do not change rifle accuracy.
 
 Solo and Online start at 100 HP, use a visible health bar and have no passive human regeneration. Eleven ground supply cases heal up to 35 HP within 1.15m on the same floor, capped at 100, then cool down for 25 seconds of simulation time. Collection checks life, participation, spawn protection and line of sight; simultaneous claims have one winner. A short chime and `+N HP` cue report the actual gain. Practice retains regeneration and no packs.
 
@@ -121,11 +124,11 @@ Implementation references: [Better Auth Nuxt integration](https://better-auth.co
 
 This remains a prototype with sparse interiors and a modular art kit, not finished photorealistic COD art. Physical-phone performance, Safari, hostile public traffic, prediction under severe packet loss, lag compensation and hosted database behavior under load remain unverified. Short local M4 Pro / Chrome measurements are not cross-device benchmarks. Dedicated long-range aimed-view blood-effect inspection is still pending; server hit range/occlusion is tested.
 
-The configured 100-player shared-arena limit is not a 100-player performance certification. Online signup/login uses the configured production database and server-only secrets. Solo and Practice remain guest-accessible; password reset is deferred.
+The configured 100-player shared-arena limit is not a 100-player performance certification. Online signup/login uses the configured production database and server-only secrets. Campaign remains guest-accessible; password reset is deferred.
 
 Normal admission defaults to 100 seats, with `FFA_MAX_CLIENTS` restricted to integers 2–100. `pnpm test:capacity` starts isolated loopback-only, in-memory servers for bounded 8/16/32-client experiments; it does not connect to the live preview. It requires the match build first, creates synthetic accounts, respects auth limits, and stops on resource thresholds. See [capacity assessment](docs/capacity-assessment.md) for measurements and limitations. Validating 100 needs interest management, serialization/bandwidth work and staged real-client load tests.
 
-There is no shop, progression, extra weapon catalog, bombs or squads. Production is deployed on Vercel and Railway with PostgreSQL on a separate Neon Free organization. Production startup fails closed unless its required secure configuration is supplied. Railway retains its existing spending cap. Hosted load testing and ongoing monitoring remain future work; the deployment example files document configuration and do not provision services automatically.
+There is no shop, progression, extra weapon catalog or squads. Grenades and scripted campaign demolition charges are implemented. Production is deployed on Vercel and Railway with PostgreSQL on a separate Neon Free organization. Production startup fails closed unless its required secure configuration is supplied. Railway retains its existing spending cap. Hosted load testing and ongoing monitoring remain future work; the deployment example files document configuration and do not provision services automatically.
 
 ## Resource and persistence safeguards
 
@@ -169,7 +172,7 @@ A map-only Chrome profile on an Apple M4 Pro reduced active meshes from 745/2119
 
 Open https://crossline-three.vercel.app and choose **Install app**, or use your browser's install menu. On iPhone/iPad, open the site in Safari and choose **Share → Add to Home Screen**. The installed app uses a standalone window, its own icon and the existing landscape controls/safe-area layout. Desktop and mobile browser support varies; an OS-level installation on a physical phone has not been verified.
 
-**Download offline play** on the menu saves a versioned game pack with visible size/progress. When **Offline play ready** appears, Practice and Solo can reload, move, aim, shoot and simulate bots with networking disabled. Online always requires internet and an account. An interrupted download is not marked ready; retry reuses verified files. **Remove offline files** frees the pack when no match/download is open. Browsers may evict local storage; check readiness before leaving connectivity.
+**Download offline play** on the menu saves a versioned game pack with visible size/progress. When **Offline play ready** appears, Campaign can reload checkpoints, move, aim, shoot and simulate enemies with networking disabled. Online always requires internet and an account. An interrupted download is not marked ready; retry reuses verified files. **Remove offline files** frees the pack when no match/download is open. Browsers may evict local storage; check readiness before leaving connectivity.
 
 The automatic precache remains small. The opt-in pack contains a build-time anonymous SPA shell, matching JS/CSS, the local simulation worker, models, textures, audio and menu art. SHA-256 and byte-size checks reject mixed releases. Limits are 64 MiB total, 8 MiB per file and 96 files; incomplete downloads cannot launch offline. A completed pack pins shell/code/art together. Activating a new release removes the old pack and requires an explicit new download. Auth/account/leaderboard/matchmaking APIs, session HTML and game state are never cached. The separate ordinary code cache remains bounded at 32 files / 3 MiB each / seven days; normal HTTP caching is separate.
 
@@ -178,7 +181,7 @@ Updates wait in the background. **Update app** appears on the menu; activation i
 PWA/offline browser checks cover manifest/icons, app-specific install eligibility, cache bounds, interrupted downloads, real network-disabled reload/gameplay on desktop and phone emulation, API exclusion and cross-tab update blocking. Run `PLAYWRIGHT_CHANNEL=chrome pnpm exec playwright test tests/browser/pwa.spec.ts`. The worker is disabled during `pnpm dev`; use a production build for PWA checks.
 
 
-## Weak connections and Solo pacing
+## Weak connections and simulation history
 
 Practice and Solo never open a WebSocket. A worker runs their fixed-step simulation independently of rendering. Online predicts movement and muzzle feedback immediately, with server-confirmed hits, ammo, health and scores. Acknowledgment delay above 250ms or silence above 350ms shows a warning. After one second without acknowledgment (or an 8 KiB socket backlog), controls pause visibly; held inputs clear, prediction resets, and recovery requires Resume. Input history stays bounded. The server ignores new-client input based on a server timestamp more than 1.2 seconds old. Shared multiplayer cannot continue offline.
 

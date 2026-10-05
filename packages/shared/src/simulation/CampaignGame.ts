@@ -15,6 +15,7 @@ export class CampaignGame extends TrainingGame {
   constructor(id: string, progress: unknown = undefined, random: () => number = Math.random, missionId = 'last-signal') {
     const mission = getCampaignMission(missionId)
     super(id, 0, random, 'solo', {
+      fireEndsProtection: true,
       botProfile: { sightRange: 68, nearAwareness: 28, halfFov: 2.1, reactionMs: 550, reactionJitterMs: 200,
         shotIntervalMs: 600, burstShots: 3, burstRestMs: 1100, burstRestJitterMs: 350,
         maxAttackers: 3, bodyDamage: 8, headDamage: 12, damageGraceMs: 650, searchMs: 9000, patrolRadius: 12 },

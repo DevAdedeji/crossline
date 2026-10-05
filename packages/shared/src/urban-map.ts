@@ -9,6 +9,7 @@ export interface Building {
   id: string; name: string; x: number; z: number; width: number; depth: number
   height?: number
   doorWidth?: number
+  architecture?: 'house' | 'shop' | 'workshop' | 'hall' | 'clinic' | 'bunker' | 'terrace' | 'apartment' | 'terminal' | 'ruin' | 'station' | 'market' | 'tower' | 'hangar'
   material: Solid['material']; doors: ('north' | 'south' | 'east' | 'west')[]
 }
 export interface ParkedCar {
@@ -81,6 +82,8 @@ export const CAR_COLLIDERS: readonly Solid[] = PARKED_CARS.map((car) => ({ id: c
 export const COLLIDERS: readonly Solid[] = [...MAP_SOLIDS, ...CAR_COLLIDERS]
 
 export interface WorldGeometry {
+  place?: {identity:string; atmosphere:'day'|'overcast'|'haze'; preview:{eye:[number,number,number];target:[number,number,number]}}
+  surfaces?: readonly {x:number;z:number;width:number;depth:number;kind:'asphalt'|'grass'|'paving'|'apron'|'rail'}[]
   environment?: 'industrial' | 'coastal' | 'forest' | 'desert' | 'urban' | 'airfield'
   legacyRamp?: boolean
   navigationPoints?: readonly {x:number;y:number;z:number}[]

@@ -1,7 +1,9 @@
+import type { PlayerGrenade } from '@crossline/shared/campaignGrenades'
 import type { CampaignState, CampaignProgress } from '@crossline/shared/campaign'
 import type { Combatant, Phase } from '@crossline/shared/combat'
 import type { HealthPickup } from '@crossline/shared'
 export interface ArenaState {
+ grenades?: {forEach(callback:(grenade:PlayerGrenade)=>void):void}
  actors: {forEach(callback:(actor:Combatant,id:string)=>void):void}
  healthPacks?: {forEach(callback:(pack:HealthPickup)=>void):void}
  campaign?: CampaignState

@@ -14,7 +14,7 @@ export class WeaponFeedback {
   }
   fire(now:number,held:boolean,actor:Combatant,elapsed:number,mode:GameMode){
     // If confirmations stop arriving, feedback must not invent an endless magazine.
-    if(!held || actor.health<=0 || actor.participating===false || actor.reloadUntil || actor.ammo-this.pending<=0 || (mode!=='training' && actor.protectedUntil>elapsed))return false
+    if(!held || actor.health<=0 || actor.participating===false || actor.reloadUntil || actor.ammo-this.pending<=0 || (mode!=='training' && mode!=='campaign' && actor.protectedUntil>elapsed))return false
     if(now-this.last<Math.ceil(RIFLE.intervalMs/TICK_MS)*TICK_MS)return false
     this.last=now;this.pending++;return true
   }

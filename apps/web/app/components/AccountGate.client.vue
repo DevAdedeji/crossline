@@ -35,7 +35,7 @@ function pad(){
  }
  previous=pressed;frame=requestAnimationFrame(pad)
 }
-onMounted(async()=>{frame=requestAnimationFrame(pad);try{const status=await $fetch<{local:boolean;available:boolean}>('/api/auth/status');local.value=status.local;available.value=status.available;await nextTick();panel.value?.querySelector<HTMLInputElement>('input')?.focus()}catch{error.value='Online accounts are not configured yet. Solo and Practice are available.'}})
+onMounted(async()=>{frame=requestAnimationFrame(pad);try{const status=await $fetch<{local:boolean;available:boolean}>('/api/auth/status');local.value=status.local;available.value=status.available;await nextTick();panel.value?.querySelector<HTMLInputElement>('input')?.focus()}catch{error.value='Online accounts are not configured yet. Campaign is available.'}})
 onBeforeUnmount(()=>cancelAnimationFrame(frame))
 </script>
 <template>

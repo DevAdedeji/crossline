@@ -68,4 +68,4 @@ export const accountStats = pgTable('account_stats', {
 export const accountEliminations = pgTable('account_eliminations', {
  id:uuid().primaryKey(),killerId:text('killer_id').notNull().references(()=>user.id),victimId:text('victim_id').notNull().references(()=>user.id),
  createdAt:timestamp('created_at').notNull().defaultNow(),
-},t=>[check('account_distinct_players',sql`${t.killerId} <> ${t.victimId}`)])
+})

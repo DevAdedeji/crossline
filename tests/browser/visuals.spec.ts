@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test'
 import { browserAccount } from './accounts'
 
 for (const scenario of [
-  { name: 'retina-solo', mode: 'solo', mobile: false, width: 1280, height: 720, density: 2 },
-  { name: 'phone-practice', mode: 'training', mobile: true, width: 844, height: 390, density: 3 },
+  { name: 'retina-campaign', mode: 'campaign', mobile: false, width: 1280, height: 720, density: 2 },
+  { name: 'phone-campaign', mode: 'campaign', mobile: true, width: 844, height: 390, density: 3 },
   { name: 'online-daylight', mode: 'online', mobile: false, width: 1280, height: 720, density: 1 },
 ]) test(`${scenario.name} renders clear daylight at bounded pixel density`, async ({ browser }, info) => {
   test.setTimeout(60000)
@@ -14,7 +14,7 @@ for (const scenario of [
     if (scenario.mode === 'online') await browserAccount(page, 'visualdaylight')
     await page.goto(`http://127.0.0.1:3001/play?mode=${scenario.mode}`)
     await expect(page.locator('.radar-panel')).toContainText('Connected', { timeout: 30000 })
-    const start = page.getByRole('button', { name: scenario.mode === 'online' ? 'Enter arena' : scenario.mode === 'solo' ? 'Start match' : 'Start training', exact: true })
+    const start = page.getByRole('button', { name: scenario.mode === 'online' ? 'Enter arena' : 'Start mission', exact: true })
     if (scenario.mobile) await start.tap(); else await start.click()
     await expect(page.locator('main.arena')).toHaveAttribute('data-phase', 'playing')
     const pixels = await page.locator('canvas').evaluate((canvas: HTMLCanvasElement) => ({ width: canvas.width / canvas.clientWidth, height: canvas.height / canvas.clientHeight }))

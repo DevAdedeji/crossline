@@ -53,7 +53,7 @@ export function campaignStructures(scene:Scene,world:WorldGeometry,box:Box,mater
     }else if(id.startsWith('aircraft-engine-')){
       cylinder('aircraft engine',x,y,z,w,d,steel,Math.PI/2)
       cylinder('engine intake',x,y,z-d/2-.01,w*.82,.03,rubber,Math.PI/2)
-    }else if(id==='tower-observation-cabin'){
+    }else if(id.startsWith('tower-observation-cabin')){
       box('tower cabin floor',x,y-h/2+.15,z,w,.3,d,trim)
       box('tower cabin ceiling',x,y+h/2-.15,z,w,.3,d,trim)
       for(const side of [-1,1]){
@@ -92,8 +92,8 @@ export function campaignStructures(scene:Scene,world:WorldGeometry,box:Box,mater
   }
   for(const b of world.buildings){
     if(world.environment!=='industrial'&&world.environment!=='airfield')continue
-    const height=b.height??8,tower=world.environment==='airfield'&&b.id.endsWith('-north')
-    if(tower)continue
+    if(b.architecture && b.architecture!=='hall'&&b.architecture!=='hangar')continue
+    const height=b.height??8
     // Corrugated walls, roof ribs and exposed portal frames read as work halls, not houses.
     for(const side of [-1,1]){
       for(let offset=-b.width/2+.4;offset<b.width/2;offset+=.8){

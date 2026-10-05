@@ -1,0 +1,1 @@
+ALTER TABLE "account_eliminations" DROP CONSTRAINT "account_distinct_players";

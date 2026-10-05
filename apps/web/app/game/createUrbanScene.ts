@@ -1,3 +1,6 @@
+import { communityProps, communitySolid } from './communityProps'
+import { campaignStreets } from './campaignStreets'
+import { campaignArchitecture } from './campaignArchitecture'
 import { campaignStructures, detailedCampaignSolid } from './campaignStructures'
 import { campaignEnvironment } from './campaignEnvironment'
 import { interiorDetails, detailedFurniture } from './interiorDetails'
@@ -54,6 +57,8 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   skyDome.material = skySurface; skyDome.infiniteDistance = true; skyDome.isPickable = false
 
   campaignEnvironment(scene, world)
+  if(world.place?.atmosphere==='overcast'){scene.fogColor=Color3.FromHexString('#9ba8aa');scene.fogDensity=.0032}
+  if(world.place?.atmosphere==='haze'){scene.fogColor=Color3.FromHexString('#c6b69a');scene.fogDensity=.0038}
   const camera = new UniversalCamera('player-camera', new Vector3(-3, 1.7, -22), scene)
   camera.minZ = 0.12
   camera.maxZ = world.limit > 26 ? 850 : 300
@@ -71,7 +76,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   ambient.groundColor = Color3.FromHexString('#62696a')
   const sun = new DirectionalLight('afternoon-sun', new Vector3(-0.6, -1, 0.4), scene)
   sun.position.set(25, 45, -25)
-  sun.intensity = 1.65
+  sun.intensity = world.place?.atmosphere==='overcast'?1.05:1.65
   sun.diffuse = Color3.FromHexString('#fff0d8')
   sun.autoUpdateExtends = false
   const shadowRadius = options.mobile ? 32 : 48
@@ -105,7 +110,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     const existing = materials.get(name)
     if (existing) return existing
     const value = new PBRMaterial(name, scene)
-    value.albedoColor = Color3.FromHexString(color)
+    value.albedoColor = Color3.FromHexString(color).toLinearSpace()
     value.metallic = 0
     value.roughness = 0.88
     value.environmentIntensity = 0.65
@@ -114,7 +119,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
         ? 'brick'
         : name === 'asphalt'
           ? 'asphalt'
-          : ['concrete', 'roof', 'paving'].includes(name)
+          : ['concrete', 'roof', ...(world.legacyRamp===false?[]:['paving'])].includes(name)
             ? 'concrete'
             : null
     if (photo) {
@@ -138,8 +143,11 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
       value.bumpTexture.level = photo === 'asphalt' ? 0.3 : 0.4
       if (photo === 'brick') value.albedoColor = new Color3(0.88, 0.88, 0.88)
       if (photo === 'asphalt') value.albedoColor = new Color3(0.48, 0.51, 0.54)
-    } else if (['wood', 'interior-floor', 'paving', 'plaster'].includes(name))
-      value.albedoTexture = surfaceTexture(name, scene)
+    } else if (name==='airport apron') value.albedoTexture=surfaceTexture('paving',scene)
+    else if (name==='park grass') value.albedoTexture=surfaceTexture('aggregate',scene)
+    else if (name==='abandoned masonry') value.albedoTexture=surfaceTexture('brick',scene)
+    else if (['wood', 'interior-floor', 'paving', 'plaster'].includes(name))
+      value.albedoTexture = surfaceTexture(name==='paving'&&world.legacyRamp===false?'aggregate':name, scene)
     materials.set(name, value)
     return value
   }
@@ -180,7 +188,9 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     if (solid.id.startsWith('crane-')) return material('crane-ochre', '#bd9450')
     if (world.legacyRamp === false && solid.material !== 'roof') {
       const building = BUILDINGS.find(b => solid.id.startsWith(b.id + '-'))
-      if (building) return world.environment==='airfield'||world.environment==='industrial' ? material('hall cladding','#637878') : buildingWalls.get(building.id)!
+      if (building?.architecture==='terminal')return material('terminal glazing','#294a54')
+      if(building?.architecture==='ruin')return material('abandoned masonry','#887b65')
+      if (building) return (world.environment==='airfield'||world.environment==='industrial') && (!building.architecture || building.architecture==='hall'||building.architecture==='hangar') ? material(`hall cladding ${buildingFinishIndex(building.id)%3}`,['#637878','#8c8167','#617184'][buildingFinishIndex(building.id)%3]!) : buildingWalls.get(building.id)!
     }
     if (solid.id.startsWith('city-')) {
       const buildingId = solid.id.match(/^city-\d+-[01](?=-)/)?.[0]
@@ -230,11 +240,12 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
       const positions = mesh.getVerticesData(VertexBuffer.PositionKind)!,
         normals = mesh.getVerticesData(VertexBuffer.NormalKind)!,
         uvs: number[] = []
+      const textureMetres=surface.name==='airport apron'?12:2
       for (let i = 0; i < positions.length; i += 3) {
         const horizontal = Math.abs(normals[i + 1]!) > 0.5
         uvs.push(
-          (Math.abs(normals[i]!) > 0.5 ? positions[i + 2]! + z : positions[i]! + x) / 2,
-          (horizontal ? positions[i + 2]! + z : positions[i + 1]! + y) / 2,
+          (Math.abs(normals[i]!) > 0.5 ? positions[i + 2]! + z : positions[i]! + x) / textureMetres,
+          (horizontal ? positions[i + 2]! + z : positions[i + 1]! + y) / textureMetres,
         )
       }
       mesh.setVerticesData(VertexBuffer.UVKind, uvs)
@@ -270,7 +281,8 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   if(world.environment !== 'airfield') for (const x of world.roadCenters) for(const z of world.roadCenters)
     for(let stripe=-3.6;stripe<=3.7;stripe+=1.2)for(const side of [-5.1,5.1])
       box('crosswalk',x+stripe,.025,z+side,.65,.015,1.5,paint)
-  const renderedSolids = MAP_SOLIDS.filter(s=>!detailedFurniture(s) && !detailedCampaignSolid(s) && !s.id.startsWith('aircraft-engine-') && !['landmark-factory-crane','landmark-factory-hoist'].includes(s.id) && !s.id.startsWith('street-bench-') && !/hospital-bed-\d/.test(s.id))
+  campaignStreets(world,box,material)
+  const renderedSolids = MAP_SOLIDS.filter(s=>!communitySolid(s) && !detailedFurniture(s) && !detailedCampaignSolid(s) && !s.id.startsWith('aircraft-engine-') && !['landmark-factory-crane','landmark-factory-hoist'].includes(s.id) && !s.id.startsWith('street-bench-') && !/hospital-bed-\d/.test(s.id))
   const topSurfaces = solidTopSurfaces(renderedSolids)
   for (const solid of renderedSolids)
     box(
@@ -311,6 +323,8 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   }
 
   campaignStructures(scene,world,box,material,staticMeshes)
+  campaignArchitecture(world,box,material)
+  communityProps(scene,world,box,material,staticMeshes)
 
   // Solid sloped wedge uses exactly the authoritative ramp's extent and height.
   if (world.legacyRamp !== false) {
@@ -401,8 +415,9 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     const doorSide = door === 'east' || door === 'north' ? 1 : -1
     const doorX = building.x + (horizontal ? 0 : doorSide * (building.width / 2 + .23))
     const doorZ = building.z + (horizontal ? doorSide * (building.depth / 2 + .23) : 0)
-    sign(building.name, doorX, (building.height ?? 3.8) > 5 ? 5.15 : 3.3, doorZ,
+    sign(building.name, doorX, (building.height ?? 3.8) > 5 && (!building.architecture||building.architecture==='hall'||building.architecture==='hangar') ? 5.15 : 3.3, doorZ,
       horizontal ? (doorSide > 0 ? Math.PI : 0) : (-doorSide * Math.PI) / 2, 4.6, .7)
+    if(world.legacyRamp===false&&!world.place)box('building forecourt',building.x,.003,building.z,building.width+2,.012,building.depth+4,material('interior-floor','#b9b09a'))
     // Floor inset and contrasting entrance threshold help read the interiors.
     box(
       'interior-tile',

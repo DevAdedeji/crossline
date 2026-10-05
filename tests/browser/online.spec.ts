@@ -44,6 +44,8 @@ test('two browser players share FFA, pause locally, reconnect and leave using co
     await button(page,0,false);await page.waitForTimeout(150);await button(page,0,true)
     await expect(page.getByTestId('ammo')).not.toContainText('24 /')
     await button(page,0,false)
+    await expect(page.getByTestId('grenade-count')).toContainText('2 GRENADES')
+    await pulse(page,5);await expect(page.getByTestId('grenade-count')).toContainText('1 GRENADES')
     await page.screenshot({path:info.outputPath('online-playing.png')})
     await page.evaluate(()=>{const sockets=(window as unknown as {testSockets:WebSocket[]}).testSockets;sockets.find(s=>s.readyState===WebSocket.OPEN)!.close()})
     await expect(page.locator('.radar-panel')).toContainText('Reconnecting')

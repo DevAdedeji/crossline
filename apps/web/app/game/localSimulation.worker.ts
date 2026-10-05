@@ -6,7 +6,7 @@ import { QUICK_MATCH_MS, TRAINING } from '@crossline/shared/combat'
 let game: TrainingGame | undefined
 function publish() {
  if(!game)return
- postMessage({type:'state',state:{actors:game.actors,healthPacks:game.healthPacks,phase:game.phase,elapsed:game.elapsed,duration:game.durationMs,round:game.round,capacity:1,...(game instanceof CampaignGame ? {campaign:game.campaign} : {})}})
+ postMessage({type:'state',state:{actors:game.actors,grenades:game.grenades,healthPacks:game.healthPacks,phase:game.phase,elapsed:game.elapsed,duration:game.durationMs,round:game.round,capacity:1,...(game instanceof CampaignGame ? {campaign:game.campaign} : {})}})
  for(const event of game.drainEvents())postMessage({type:'event',event})
 }
 onmessage=({data})=>{
@@ -18,6 +18,7 @@ onmessage=({data})=>{
   else if(data.type==='action'){
    if(data.value==='start')game.start()
    else if(data.value==='pause')game.pause()
+   else if(data.value==='grenade')game.throwGrenade(game.humanId)
    else if(data.value==='reload')game.reload(game.humanId)
    else if(data.value==='finish'&&game.phase!=='ready')game.finish()
    else if(data.value==='restart'&&(game.phase==='finished'||game.phase==='paused'))game.restart()

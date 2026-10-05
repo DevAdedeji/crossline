@@ -128,3 +128,27 @@ test('The expanded depot has three times the ground area and a reinforced rescue
   assert.ok(CAMPAIGN_GUARDS.filter(p=>Math.hypot(p.x-mission.captive.x,p.z-mission.captive.z)<18).length>=7)
   assert.ok(CAMPAIGN_WORLD.buildings.length>=10)
 })
+
+test('every campaign fires on the first input tick and after retry; only a successful shot ends entry protection', async () => {
+  const {CAMPAIGN_MISSIONS}=await import('../packages/shared/src/campaign.js')
+  for(const mission of CAMPAIGN_MISSIONS){
+    const game=new CampaignGame('human',undefined,()=>.5,mission.id),player=game.actors.get('human')!
+    assert.ok(player.protectedUntil>game.elapsed)
+    assert.equal(game.fire(player,0,0),false,'ready state cannot fire')
+    assert.ok(player.protectedUntil>game.elapsed)
+    game.start()
+    player.ammo=0;assert.equal(game.fire(player,0,0),false,'empty gun retains protection');player.ammo=24
+    assert.ok(player.protectedUntil>game.elapsed)
+    game.acceptInput({x:0,z:0,yaw:player.yaw,pitch:0,fire:true,aim:false});game.step()
+    assert.equal(player.shots,1,mission.id);assert.equal(player.ammo,23,mission.id)
+    assert.ok(player.protectedUntil<=game.elapsed,mission.id)
+    game.finish();game.restart();game.start()
+    const retried=game.actors.get('human')!
+    assert.ok(retried.protectedUntil>game.elapsed)
+    assert.equal(game.fire(retried,retried.yaw,0),true,`${mission.id} retry`)
+    assert.ok(retried.protectedUntil<=game.elapsed)
+    const guard=[...game.actors.values()].find(a=>a.bot&&a.health>0)!
+    guard.protectedUntil=game.elapsed+1000
+    assert.equal(game.fire(guard,0,0),false,'protected enemies cannot attack')
+  }
+})

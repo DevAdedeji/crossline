@@ -53,3 +53,13 @@ test('immediate weapon feedback remains bounded by ammo, cadence, reload and con
  assert.equal(feedback.fire(6200,true,actor,0,'training'),true)
  actor.health=0;assert.equal(feedback.fire(6500,true,actor,0,'training'),false)
 })
+
+test('campaign muzzle feedback is immediate during safe entry; online protection still blocks fire', () => {
+  const actor=new TrainingGame('test').actors.get('test')!,feedback=new WeaponFeedback()
+  actor.protectedUntil=4000;feedback.sync(actor)
+  assert.equal(feedback.fire(0,true,actor,0,'campaign'),true)
+  feedback.reset()
+  assert.equal(feedback.fire(0,true,actor,0,'online'),false)
+  actor.reloadUntil=1500
+  assert.equal(feedback.fire(0,true,actor,0,'campaign'),false)
+})

@@ -1,19 +1,19 @@
 import { browserAccount } from './accounts'
 import {test,expect} from '@playwright/test'
-for(const scenario of [{width:667,height:375,mode:'training'},{width:932,height:430,mode:'online'}])test(`landscape ${scenario.width}px touch controls support simultaneous movement look and fire`,async({browser},info)=>{
+for(const scenario of [{width:667,height:375,mode:'campaign'},{width:932,height:430,mode:'online'}])test(`landscape ${scenario.width}px touch controls support simultaneous movement look and fire`,async({browser},info)=>{
  test.setTimeout(60000)
  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:2}),page=await context.newPage(),errors:string[]=[]
  page.on('pageerror',e=>errors.push(e.message))
  try{
   if(scenario.mode==='online')await browserAccount(page,'mobileonline')
   await page.addInitScript(()=>{const Original=window.AudioContext;const contexts:AudioContext[]=[];(window as unknown as {testAudio:AudioContext[]}).testAudio=contexts;window.AudioContext=class extends Original{constructor(options?:AudioContextOptions){super(options);contexts.push(this)}}})
-  await page.goto(`http://127.0.0.1:3001/play${scenario.mode==='online'?'?mode=online':''}`)
+  await page.goto(`http://127.0.0.1:3001/play${`?mode=${scenario.mode}`}`)
   await expect(page.getByRole('dialog',{name:'Rotate phone'})).toBeVisible()
   await expect(page.locator('.radar-panel')).toContainText('Connected',{timeout:30000})
   await page.setViewportSize({width:scenario.width,height:scenario.height})
   await expect(page.getByRole('dialog',{name:'Rotate phone'})).toBeHidden()
   await expect(page.getByTestId('gamepad-status')).toHaveCount(0)
-  await page.getByRole('button',{name:scenario.mode==='online'?'Enter arena':'Start training',exact:true}).tap()
+  await page.getByRole('button',{name:scenario.mode==='online'?'Enter arena':'Start mission',exact:true}).tap()
   await expect(page.getByRole('button',{name:'Fire',exact:true})).toBeVisible()
   expect(await page.evaluate(()=>document.pointerLockElement===null)).toBe(true)
   await expect.poll(()=>page.evaluate(()=>(window as unknown as {testAudio:AudioContext[]}).testAudio.every(c=>c.state==='running'))).toBe(true)
@@ -43,7 +43,7 @@ for(const scenario of [{width:667,height:375,mode:'training'},{width:932,height:
   await page.setViewportSize({width:390,height:844});await expect(page.getByRole('dialog',{name:'Rotate phone'})).toBeVisible()
   await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]})
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','paused')
-  await page.setViewportSize({width:scenario.width,height:scenario.height});await page.getByRole('button',{name:scenario.mode==='online'?'Resume match':'Resume training',exact:true}).tap()
+  await page.setViewportSize({width:scenario.width,height:scenario.height});await page.getByRole('button',{name:scenario.mode==='online'?'Resume match':'Resume mission',exact:true}).tap()
   await expect(page.getByTestId('ammo')).toBeVisible();await expect(page.getByTestId('ammo')).toHaveText(/\d+ \/ ∞/);const resumed=(await page.getByTestId('ammo').innerText())!;await page.waitForTimeout(350);await expect(page.getByTestId('ammo')).toHaveText(resumed)
   await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await expect(page.locator('main.arena')).toHaveAttribute('data-phase','paused')
   if(scenario.mode==='online'){
@@ -57,7 +57,7 @@ for(const scenario of [{width:667,height:375,mode:'training'},{width:932,height:
  }finally{await context.close()}
 })
 
-test('phone mode tap launches Solo directly, unlocks audio and replays without another Start',async({browser},info)=>{
+test('phone mission briefing launches Campaign directly, unlocks audio and retries without another Start',async({browser},info)=>{
  const context=await browser.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true,deviceScaleFactor:2}),page=await context.newPage()
  try{
   await page.addInitScript(()=>{const Original=window.AudioContext;const contexts:AudioContext[]=[];(window as unknown as {testAudio:AudioContext[]}).testAudio=contexts;window.AudioContext=class extends Original{constructor(options?:AudioContextOptions){super(options);contexts.push(this)}}})
@@ -69,15 +69,16 @@ test('phone mode tap launches Solo directly, unlocks audio and replays without a
   await expect(guide).toContainText('Swipe the right side')
   await expect(guide).not.toContainText(/controller|WASD|Xbox|PlayStation/i)
   await guide.getByRole('button',{name:'CLOSE',exact:true}).tap()
-  await page.getByRole('button',{name:'Solo vs Bots',exact:true}).tap()
+  await page.getByRole('button',{name:'Campaign',exact:true}).tap()
+  await page.getByRole('button',{name:/The last signal/}).tap()
+  await page.getByRole('button',{name:'Got it, let’s go'}).tap()
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing',{timeout:30000})
   await expect(page.getByRole('button',{name:'Fire',exact:true})).toBeVisible()
-  await expect(page.getByTestId('timer')).toContainText(/4:5|5:00/)
   expect(await page.evaluate(()=>(window as unknown as {testAudio:AudioContext[]}).testAudio.some(c=>c.state==='running'))).toBe(true)
-  await page.getByRole('button',{name:'Pause',exact:true}).tap();await page.getByRole('button',{name:'Finish session',exact:true}).tap()
-  await expect(page.getByTestId('results')).toBeVisible();await expect(page.getByTestId('personal-best')).toBeVisible()
-  await page.screenshot({path:info.outputPath('phone-solo-results.png')})
-  await page.getByRole('button',{name:'Play again',exact:true}).tap()
+  await page.getByRole('button',{name:'Pause',exact:true}).tap();await page.getByRole('button',{name:'Abort mission',exact:true}).tap()
+  await expect(page.getByTestId('results')).toBeVisible()
+  await page.screenshot({path:info.outputPath('phone-campaign-results.png')})
+  await page.getByRole('button',{name:'Retry checkpoint',exact:true}).tap()
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing')
   await expect(page.getByRole('button',{name:'Fire',exact:true})).toBeVisible()
   await page.getByRole('button',{name:'Pause',exact:true}).tap();await page.getByRole('button',{name:'Return to menu',exact:true}).tap()
