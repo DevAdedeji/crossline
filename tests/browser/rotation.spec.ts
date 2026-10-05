@@ -25,7 +25,7 @@ test('standalone phone recovers repeated rotations with stale window dimensions 
    await page.getByRole('button',{name:'Resume mission',exact:true}).tap()
    await expect(page.locator('main.arena')).toHaveAttribute('data-phase','playing');await expect(page.getByTestId('ammo')).toBeVisible()
    const ammo=await page.getByTestId('ammo').innerText();await page.waitForTimeout(300);await expect(page.getByTestId('ammo')).toHaveText(ammo)
-   for(const name of ['Fire','Aim','Pause']){const bounds=(await page.getByRole('button',{name,exact:true}).boundingBox())!;expect(bounds.x+bounds.width).toBeLessThanOrEqual(size.width);expect(bounds.y+bounds.height).toBeLessThanOrEqual(size.height)}
+   for(const name of ['Fire','Pause']){const bounds=(await page.getByRole('button',{name,exact:true}).boundingBox())!;expect(bounds.x+bounds.width).toBeLessThanOrEqual(size.width);expect(bounds.y+bounds.height).toBeLessThanOrEqual(size.height)}
   }
   await page.evaluate(()=>{Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'))})
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase','paused')

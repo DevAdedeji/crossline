@@ -18,7 +18,7 @@ for(const scenario of [{width:667,height:375,mode:'campaign'},{width:932,height:
   expect(await page.evaluate(()=>document.pointerLockElement===null)).toBe(true)
   await expect.poll(()=>page.evaluate(()=>(window as unknown as {testAudio:AudioContext[]}).testAudio.every(c=>c.state==='running'))).toBe(true)
   await expect(page.getByText('SPAWN PROTECTION',{exact:true})).toBeHidden({timeout:6000})
-  for(const name of ['Fire','Aim','Reload','Crouch','Pause']){const box=await page.getByRole('button',{name,exact:true}).boundingBox();expect(box).toBeTruthy();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.y).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(scenario.width);expect(box!.y+box!.height).toBeLessThanOrEqual(scenario.height)}
+  for(const name of ['Fire','Reload','Crouch','Pause']){const box=await page.getByRole('button',{name,exact:true}).boundingBox();expect(box).toBeTruthy();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.y).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(scenario.width);expect(box!.y+box!.height).toBeLessThanOrEqual(scenario.height)}
   const id=await page.locator('main.arena').getAttribute('data-player-id'),actor=page.locator(`[data-actor="${id}"]`)
   const initial={x:Number(await actor.getAttribute('data-x')),z:Number(await actor.getAttribute('data-z')),heading:await page.getByTestId('heading').innerText()}
   const stick=(await page.getByTestId('touch-move').boundingBox())!,fire=(await page.getByRole('button',{name:'Fire',exact:true}).boundingBox())!,look=(await page.getByTestId('touch-look').boundingBox())!
@@ -34,7 +34,7 @@ for(const scenario of [{width:667,height:375,mode:'campaign'},{width:932,height:
   await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]})
   await page.waitForTimeout(200);const ammo=(await page.getByTestId('ammo').innerText())!,stopped=await actor.getAttribute('data-z')
   await page.waitForTimeout(300);await expect(page.getByTestId('ammo')).toHaveText(ammo);expect(await actor.getAttribute('data-z')).toBe(stopped)
-  await page.getByRole('button',{name:'Aim',exact:true}).tap();await expect(page.getByRole('button',{name:'Aim',exact:true})).toHaveAttribute('aria-pressed','true')
+  await expect(page.getByRole('button',{name:'Aim',exact:true})).toHaveCount(0)
   await page.getByRole('button',{name:'Crouch',exact:true}).tap();await expect(page.locator('main.arena')).toHaveAttribute('data-crouch','1')
   await page.getByRole('button',{name:'Reload',exact:true}).tap();await expect(page.getByTestId('ammo')).toContainText('24 /',{timeout:5000})
   await page.screenshot({path:info.outputPath(`landscape-${scenario.width}.png`)})

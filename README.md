@@ -26,7 +26,6 @@ Only Campaign and Online Free-for-All are player-facing modes. References below 
 |---|---|---|---|
 | Move / look | WASD / mouse | Left / right stick | Left stick / right-side swipe |
 | Fire | Left click | A / × or RT / R2 | Hold FIRE |
-| Aim | Right click | LT / L2 | Toggle AIM |
 | Reload | R | X / □ | RELOAD |
 | Throw grenade | G | RB / R1 | Grenade button |
 | Campaign interact | Enter objective circle | Enter objective circle | Enter objective circle |

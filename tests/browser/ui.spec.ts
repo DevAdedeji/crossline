@@ -58,7 +58,7 @@ test('touch preferences persist and largest controls fit a small landscape phone
     await expect(page.getByRole('button', { name: 'Fire', exact: true })).toBeVisible({ timeout: 30000 })
     await expect(page.locator('.touch-controls')).toHaveCSS('--touch-scale', '1.2')
     await expect(page.locator('.touch-controls')).toHaveCSS('--touch-opacity', '0.45')
-    for (const name of ['Fire', 'Aim', 'Reload', 'Crouch', 'Pause']) {
+    for (const name of ['Fire', 'Reload', 'Crouch', 'Pause']) {
       const box = (await page.getByRole('button', { name, exact: true }).boundingBox())!
       expect(box.x).toBeGreaterThanOrEqual(0); expect(box.y).toBeGreaterThanOrEqual(0)
       expect(box.x + box.width).toBeLessThanOrEqual(667); expect(box.y + box.height).toBeLessThanOrEqual(375)

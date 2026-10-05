@@ -42,7 +42,7 @@ test('high-density phone renders clearly at 1.5 pixels per CSS pixel',async({bro
  }finally{await context.close()}
 })
 
-test('gameplay stays unobscured through aim, pause and resume',async({page},info)=>{
+test('gameplay stays unobscured through right click, pause and resume',async({page},info)=>{
  await page.goto('/play?mode=campaign');await expect(page.locator('.radar-panel')).toContainText('Connected',{timeout:60000})
  await page.getByRole('button',{name:'Start mission',exact:true}).click()
  await expect(page.locator('.overlay')).toHaveCount(0)

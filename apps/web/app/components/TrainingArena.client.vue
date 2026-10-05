@@ -77,7 +77,7 @@ function saveFireBinding(pad: Gamepad, binding: FireBinding) {
 }
 const viewport=ref({width:0,height:0}),stopViewport=ref<(()=>void)>()
 const touchDevice=ref(false),portrait=ref(false),touchActive=ref(false)
-let touchMovement={x:0,z:0},touchFiring=false,touchAiming=false
+let touchMovement={x:0,z:0},touchFiring=false
 const canvas = ref<HTMLCanvasElement>(),
   status = ref('Connecting'),
   phase = ref<Phase>('ready'),
@@ -121,11 +121,9 @@ let engine: Engine | undefined,
   room: ArenaSession | undefined,
   timer: ReturnType<typeof setInterval> | undefined,
   stopped = false,
-  mouseFire = false,
-  mouseAim = false
+  mouseFire = false
 let padMovement = { x: 0, y: 0 },
   padFire = false,
-  padAim = false,
   previousButtons: boolean[] = [],
   menuAxis = false,
   padIndex: number | undefined,
@@ -178,18 +176,16 @@ function readInput():CombatInput {
         z: (Math.cos(look.yaw) * forward - Math.sin(look.yaw) * right) / length,
         ...look,
         fire: enabled && (touchActive.value ? touchFiring : padActive.value ? padFire : mouseFire),
-        aim: enabled && (touchActive.value ? touchAiming : padActive.value ? padAim : mouseAim),
+        aim: false,
         crouch: enabled ? crouchToggle.value || keys.has('ControlLeft') || keys.has('ControlRight') : (self.value?.crouch ?? 0)>0,
       }
 }
 function clearInput() {
   keys.clear()
-  touchMovement={x:0,z:0};touchFiring=false;touchAiming=false
+  touchMovement={x:0,z:0};touchFiring=false
   mouseFire = false
-  mouseAim = false
   padMovement = { x: 0, y: 0 }
   padFire = false
-  padAim = false
   selectFireArmed = false
   if(status.value === 'Connected')room?.send('input', { x: 0, z: 0, ...look, fire: false, aim: false, crouch: (self.value?.crouch ?? 0)>0 })
 }
@@ -329,11 +325,9 @@ function mouseLook(event: MouseEvent) {
 function mouseDown(event: MouseEvent) {
   if (!captured.value || !active.value) return
   if (event.button === 0) mouseFire = true
-  if (event.button === 2) mouseAim = true
 }
 function mouseUp(event: MouseEvent) {
   if (event.button === 0) mouseFire = false
-  if (event.button === 2) mouseAim = false
 }
 function pointerChange() {
   captured.value = document.pointerLockElement === canvas.value || document.pointerLockElement === document.documentElement
@@ -348,7 +342,6 @@ function touchMode(){if(phase.value!=='playing')return;touchActive.value=true;pa
 function touchMove(x:number,z:number){touchMode();touchMovement={x,z}}
 function touchLook(x:number,y:number){if(!active.value)return;touchMode();Object.assign(look,rotateLook(look,x*.004,y*.004))}
 function touchFire(value:boolean){if(value)touchMode();touchFiring=value}
-function touchAim(value:boolean){if(value)touchMode();touchAiming=value}
 function pollPad(dt: number) {
   const pad = selectController(Array.from(navigator.getGamepads?.() ?? []), padIndex)
   if (!pad) {
@@ -405,7 +398,6 @@ function pollPad(dt: number) {
         padFire = controllerFire(pad) ||
           (controllerFire(pad, fireBinding.value) && (!boundToSelect || selectFireArmed)) ||
           (selectFireArmed && Boolean(pressed[0]))
-        padAim = Boolean(pressed[6])
         if (edge(2)) reload()
         if (edge(5)) throwGrenade()
       }
@@ -499,7 +491,7 @@ onMounted(async () => {
           : undefined
       visuals.frame(
         dt,
-        active.value && (touchActive.value ? touchAiming : padActive.value ? padAim : mouseAim),
+        false,
         keys.size > 0 || Math.hypot(padMovement.x, padMovement.y) > 0.1,
         reloadLeft.value,
         (self.value?.health ?? 0) > 0 && phase.value === 'playing',
@@ -758,7 +750,7 @@ onBeforeUnmount(() => {
       <div><span class="rotate-icon" aria-hidden="true">↻</span><h1>Turn your phone sideways.</h1><p>Crossline uses landscape controls. Rotate your device to continue.</p><NuxtLink to="/">Return to menu</NuxtLink></div>
     </div>
     <div v-if="self && active && !touchDevice" class="grenade-inventory" aria-label="Grenade inventory" data-testid="grenade-count">{{ self.grenades??0 }} GRENADES <span>{{ padActive?'RB / R1':'G' }}</span></div>
-    <TouchControls v-if="touchDevice && active" :crouched="(self?.crouch ?? 0)>.5" :grenades="self?.grenades??0" @grenade="throwGrenade" @move="touchMove" @look="touchLook" @fire="touchFire" @aim="touchAim" @reload="reload" @crouch="crouchToggle=!crouchToggle" @pause="pause" />
+    <TouchControls v-if="touchDevice && active" :crouched="(self?.crouch ?? 0)>.5" :grenades="self?.grenades??0" @grenade="throwGrenade" @move="touchMove" @look="touchLook" @fire="touchFire" @reload="reload" @crouch="crouchToggle=!crouchToggle" @pause="pause" />
     <CampaignHud v-if="isCampaign && campaign && active" :state="campaign" :player="self" :touch="touchDevice" :heading="heading" :saved="checkpointSaved" :waypoints="waypoints" />
     <header>
       <NuxtLink to="/" class="brand">CROSSLINE<span>+</span></NuxtLink>
@@ -912,13 +904,13 @@ onBeforeUnmount(() => {
         </button>
         <p v-if="captureError" role="alert">{{ captureError }}</p>
         <button class="controls-toggle" @click="showControls = !showControls">{{ showControls ? 'Hide controls' : 'Controls' }}</button>
-        <p v-if="showControls && touchDevice" class="controls">Left stick moves · Swipe the right side to look · Hold FIRE · AIM toggles sights · RELOAD · CROUCH · Ⅱ pauses</p>
+        <p v-if="showControls && touchDevice" class="controls">Left stick moves · Swipe the right side to look · Hold FIRE · RELOAD · CROUCH · Ⅱ pauses</p>
         <p v-if="showControls && !touchDevice" class="controls">
-          WASD move · Mouse look · Left click fire · Right click aim<br />R reload · G grenade · Esc pause ·
+          WASD move · Mouse look · Left click fire<br />R reload · G grenade · Esc pause ·
           {{ mode !== 'training' ? 'Walk over green cases for +35 HP · C toggles crouch · Ctrl holds crouch' : 'Practice health regenerates after cover · C toggles crouch · Ctrl holds crouch' }}
         </p>
         <p v-if="showControls && !touchDevice" class="controls">
-          Controller: sticks move/look · A / × or RT / R2 fire · LT / L2 aim · X / □ reload · RB / R1 grenade<br />A / × select · Start
+          Controller: sticks move/look · A / × or RT / R2 fire · X / □ reload · RB / R1 grenade<br />A / × select · Start
           or B / ○ pause/back · D-pad navigate · Right-stick click toggles crouch
         </p>
         <TouchSettings v-if="showControls && touchDevice" />

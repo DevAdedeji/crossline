@@ -26,7 +26,7 @@ for(const mobile of [false,true])test(`downloaded Campaign survives offline relo
     const stick=(await page.getByTestId('touch-move').boundingBox())!
     await page.mouse.move(stick.x+stick.width/2,stick.y+stick.height/2);await page.mouse.down();await page.mouse.move(stick.x+stick.width/2,stick.y+5)
     await expect(page.getByTestId('position')).not.toHaveText(position);await page.mouse.up()
-    await page.getByRole('button',{name:'Aim',exact:true}).tap();await expect(page.getByRole('button',{name:'Aim',exact:true})).toHaveAttribute('aria-pressed','true')
+    await expect(page.getByRole('button',{name:'Aim',exact:true})).toHaveCount(0)
     const look=page.getByTestId('touch-look'),box=(await look.boundingBox())!,heading=await page.getByTestId('heading').innerText()
     await page.mouse.move(box.x+50,box.y+70);await page.mouse.down();await page.mouse.move(box.x+150,box.y+70);await page.mouse.up();await expect(page.getByTestId('heading')).not.toHaveText(heading)
    }else{

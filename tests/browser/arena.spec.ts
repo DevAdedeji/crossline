@@ -64,6 +64,31 @@ async function pulse(page: Page, index: number) {
 
 test.beforeEach(async({page})=>quietCampaign(page))
 
+test('mouse and controller fire stay at hip level while former aim controls are held', async ({page}) => {
+  await padSetup(page)
+  await page.addInitScript(() => {
+    const inputs: {fire:boolean;aim:boolean}[] = []
+    ;(window as unknown as {combatInputs:typeof inputs}).combatInputs = inputs
+    const post = Worker.prototype.postMessage
+    Worker.prototype.postMessage = function(message, options?: StructuredSerializeOptions | Transferable[]) {
+      if (message.type === 'input') inputs.push(message.value)
+      return post.call(this, message, Array.isArray(options) ? {transfer:options} : options)
+    }
+  })
+  const inputs = () => page.evaluate(() => (window as unknown as {combatInputs:{fire:boolean;aim:boolean}[]}).combatInputs)
+  await page.goto('/play?mode=campaign'); await connected(page); await start(page)
+  await page.mouse.down({button:'right'}); await page.mouse.down()
+  await expect(page.getByTestId('ammo')).not.toContainText('24 /')
+  await page.mouse.up(); await page.mouse.up({button:'right'})
+  expect((await inputs()).some(input => input.fire)).toBe(true)
+  expect((await inputs()).every(input => !input.aim)).toBe(true)
+  await page.evaluate(() => { (window as unknown as {combatInputs:unknown[]}).combatInputs.length = 0 })
+  await button(page,6,true); await button(page,7,true)
+  await expect.poll(async () => (await inputs()).some(input => input.fire)).toBe(true)
+  await button(page,7,false); await button(page,6,false)
+  expect((await inputs()).every(input => !input.aim)).toBe(true)
+})
+
 test('recorded reload follows pause/resume and weapon framing survives viewport changes', async ({
   page,
 }, info) => {
@@ -130,7 +155,7 @@ test('recorded reload follows pause/resume and weapon framing survives viewport 
     await page.screenshot({ path: info.outputPath(`weapon-hip-${viewport.width}.png`) })
     await page.mouse.down({ button: 'right' })
     await page.waitForTimeout(350)
-    await page.screenshot({ path: info.outputPath(`weapon-aim-${viewport.width}.png`) })
+    await page.screenshot({ path: info.outputPath(`weapon-right-click-${viewport.width}.png`) })
     await page.mouse.up({ button: 'right' })
   }
   expect(errors).toEqual([])
