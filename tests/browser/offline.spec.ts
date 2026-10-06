@@ -14,6 +14,7 @@ for(const mobile of [false,true])test(`downloaded Campaign survives offline relo
   await download(page)
   const cache=await page.evaluate(async()=>{const name=(await caches.keys()).find(n=>n.startsWith('crossline-offline-'))!;const c=await caches.open(name),keys=await c.keys();let bytes=0;for(const key of keys)bytes+=(await (await c.match(key))!.arrayBuffer()).byteLength;return {urls:keys.map(k=>new URL(k.url).pathname),bytes}})
   expect(cache.bytes).toBeLessThanOrEqual(64*1024*1024);expect(cache.urls.length).toBeLessThanOrEqual(97)
+  expect(cache.urls.filter(url=>url.endsWith('-mobile.glb'))).toHaveLength(5)
   expect(cache.urls.some(url=>url.startsWith('/api/'))).toBe(false)
   const cdp=await context.newCDPSession(page);await cdp.send('Network.setCacheDisabled',{cacheDisabled:true});await context.setOffline(true)
   for(const mode of ['campaign']){

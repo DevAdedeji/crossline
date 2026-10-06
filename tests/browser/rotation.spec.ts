@@ -34,7 +34,8 @@ test('standalone phone recovers repeated rotations with stale window dimensions 
   await expect(page.getByRole('dialog',{name:'Rotate phone'})).toBeHidden()
   await page.getByRole('button',{name:'Resume mission',exact:true}).tap()
   await expect(page.locator('main.arena')).toHaveAttribute('data-player-id',identity!)
-  expect(await page.evaluate(()=>performance.timeOrigin)).toBe(origin)
+  // WebKit rounds timing values, including timeOrigin, for privacy.
+  expect(Math.abs(await page.evaluate(()=>performance.timeOrigin)-origin)).toBeLessThanOrEqual(2)
   const initial=await page.getByTestId('position').innerText(),stick=(await page.getByTestId('touch-move').boundingBox())!
   await page.mouse.move(stick.x+stick.width/2,stick.y+stick.height/2);await page.mouse.down();await page.mouse.move(stick.x+stick.width/2,stick.y+5);await expect(page.getByTestId('position')).not.toHaveText(initial);await page.mouse.up()
   await page.screenshot({path:info.outputPath('rotation-restored.png')});expect(errors).toEqual([])

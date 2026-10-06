@@ -12,7 +12,7 @@ import { SharpenPostProcess } from '@babylonjs/core/PostProcesses/sharpenPostPro
 import { ReflectionProbe } from '@babylonjs/core/Probes/reflectionProbe'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
-import { VertexBuffer } from '@babylonjs/core/Buffers/buffer'
+import { StaticGeometry } from './staticGeometry'
 import { surfaceTexture } from './surfaceTexture'
 import type { TrainingAssets } from './trainingAssets'
 import { Engine } from '@babylonjs/core/Engines/engine'
@@ -35,7 +35,8 @@ import { TRAINING_WORLD, COMBAT_DISTRICTS, type WorldGeometry, RAMP, ROOF_HEIGHT
 /** Shared collider geometry with locally licensed facade and surface artwork. */
 export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry = TRAINING_WORLD, options: {mobile?:boolean} = {}) {
   const BUILDINGS = world.buildings, MAP_SOLIDS = world.solids, PARKED_CARS = world.cars
-  const engine = new Engine(canvas, true, { stencil: true })
+  // Mobile uses the same 1.5x detail without a multisampled back buffer.
+  const engine = new Engine(canvas, !options.mobile, { stencil: false, loseContextOnDispose: true })
   // Babylon uses the reciprocal of render density. The previous desktop formula
   // rendered Retina displays below CSS resolution, softening every surface.
   engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 1.5))
@@ -62,7 +63,8 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   const camera = new UniversalCamera('player-camera', new Vector3(-3, 1.7, -22), scene)
   camera.minZ = 0.12
   camera.maxZ = world.limit > 26 ? 850 : 300
-  camera.fov = 1.2
+  // A wide desktop lens makes people very small on a landscape phone screen.
+  camera.fov = options.mobile ? .95 : 1.2
   camera.keysUp = []
   camera.keysDown = []
   camera.keysLeft = []
@@ -88,7 +90,10 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   sun.shadowMinZ = 1
   sun.shadowMaxZ = 140
   const shadows = new ShadowGenerator(shadowSize, sun)
-  shadows.usePercentageCloserFiltering = engine.webGLVersion > 1
+  // Mobile WebKit rejects some hardware comparison-sampler bindings. Poisson
+  // filtering retains soft shadows using ordinary texture samples.
+  shadows.usePercentageCloserFiltering = !options.mobile && engine.webGLVersion > 1
+  if (options.mobile) shadows.usePoissonSampling = true
   shadows.filteringQuality = options.mobile ? ShadowGenerator.QUALITY_LOW : ShadowGenerator.QUALITY_MEDIUM
   shadows.bias = 0.001
   shadows.normalBias = 0.035
@@ -106,6 +111,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   }
 
   const materials = new Map<string, PBRMaterial>()
+  const signSurfaces = new Map<string, StandardMaterial>()
   function material(name: string, color: string) {
     const existing = materials.get(name)
     if (existing) return existing
@@ -206,6 +212,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     return palette[solid.material]
   }
   const staticMeshes: Mesh[] = []
+  const geometry = new StaticGeometry(scene)
   function box(
     name: string,
     x: number,
@@ -217,9 +224,8 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     surface: PBRMaterial,
     topFaces?: SurfaceRect[],
   ) {
-    const mesh = MeshBuilder.CreateBox(name, { width, height, depth }, scene)
+    const data = VertexData.CreateBox({ width, height, depth })
     if (topFaces && !(topFaces.length===1 && topFaces[0]!.left===x-width/2 && topFaces[0]!.right===x+width/2 && topFaces[0]!.near===z-depth/2 && topFaces[0]!.far===z+depth/2)) {
-      const data = VertexData.ExtractFromMesh(mesh)
       const positions = Array.from(data.positions!), normals = Array.from(data.normals!), indices: number[] = []
       const uvs = Array.from(data.uvs!)
       for (let i=0;i<data.indices!.length;i+=3) {
@@ -234,11 +240,11 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
         // Babylon's left-handed mesh convention uses clockwise outward faces.
         indices.push(start,start+2,start+1,start,start+3,start+2)
       }
-      data.positions=positions;data.normals=normals;data.indices=indices;data.uvs=uvs;data.applyToMesh(mesh)
+      data.positions=positions;data.normals=normals;data.indices=indices;data.uvs=uvs
     }
     if (surface.albedoTexture) {
-      const positions = mesh.getVerticesData(VertexBuffer.PositionKind)!,
-        normals = mesh.getVerticesData(VertexBuffer.NormalKind)!,
+      const positions = data.positions!,
+        normals = data.normals!,
         uvs: number[] = []
       const textureMetres=surface.name==='airport apron'?12:2
       for (let i = 0; i < positions.length; i += 3) {
@@ -248,8 +254,9 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
           (horizontal ? positions[i + 2]! + z : positions[i + 1]! + y) / textureMetres,
         )
       }
-      mesh.setVerticesData(VertexBuffer.UVKind, uvs)
+      data.uvs = uvs
     }
+    const mesh = geometry.create(name, data)
     mesh.position.set(x, y, z)
     mesh.material = surface
     mesh.receiveShadows = true
@@ -442,9 +449,9 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
   }
 
   // Cars are game-ready meshes, fitted to the existing conservative authoritative colliders.
-  function addVehicles(assets: TrainingAssets) {
-    addFacades(scene, assets, shadows, world)
-    if (world.legacyRamp !== false) interiorDetails(scene, shadows, world)
+  async function addVehicles(assets: TrainingAssets) {
+    await addFacades(scene, assets, shadows, world, options)
+    if (world.legacyRamp !== false) await interiorDetails(scene, shadows, world, options)
     for (const solid of MAP_SOLIDS.filter(s => s.id.startsWith('planter') || s.id.startsWith('street-bench-'))) {
       const tree = solid.id.startsWith('planter')
       const instance = (tree ? assets.tree : assets.bench).instantiateModelsToScene(n => `${solid.id}:${n}`, false)
@@ -532,19 +539,24 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     width: number,
     height: number,
   ) {
-    const texture = new DynamicTexture(text, { width: 1024, height: 256 }, scene, false)
-    texture.drawText(text, null, 155, 'bold 66px sans-serif', '#f1eee3', '#26333c', true)
-    const surface = new StandardMaterial(text, scene)
-    surface.diffuseTexture = texture
-    surface.emissiveColor = new Color3(0.25, 0.25, 0.25)
-    surface.specularColor = Color3.Black()
-    surface.backFaceCulling = false
+    let surface = signSurfaces.get(text)
+    if (!surface) {
+      const scale = options.mobile ? .5 : 1
+      const texture = new DynamicTexture(text, { width: 1024 * scale, height: 256 * scale }, scene, false)
+      texture.drawText(text, null, 155 * scale, `bold ${66 * scale}px sans-serif`, '#f1eee3', '#26333c', true)
+      surface = new StandardMaterial(text, scene)
+      surface.diffuseTexture = texture
+      surface.emissiveColor = new Color3(0.25, 0.25, 0.25)
+      surface.specularColor = Color3.Black()
+      surface.backFaceCulling = false
+      surface.freeze()
+      signSurfaces.set(text, surface)
+    }
     const plane = MeshBuilder.CreatePlane(text, { width, height }, scene)
     plane.position.set(x, y, z)
     plane.rotation.y = yaw
     plane.material = surface
     plane.freezeWorldMatrix()
-    surface.freeze()
   }
   // Batch immutable geometry by material. Rendering never performs gameplay collision.
   const groups = new Map<string, Mesh[]>()
@@ -556,7 +568,7 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     groups.set(key, group)
   }
   for (const group of groups.values()) {
-    const merged = Mesh.MergeMeshes(group, true, true)
+    const merged = geometry.merge(group)
     if (merged) {
       merged.receiveShadows = true
       merged.freezeWorldMatrix()
@@ -575,6 +587,10 @@ export function createUrbanScene(canvas: HTMLCanvasElement, world: WorldGeometry
     }
   }
   for (const surface of materials.values()) surface.freeze()
+  // addVehicles retains this scope for asset loading. Release disposed source
+  // meshes after batching, instead of holding them for the entire match.
+  staticMeshes.length = 0
+  groups.clear()
   const shadowTexel = shadowRadius * 2 / shadowSize
   scene.onBeforeRenderObservable.add(() => {
     const x = Math.round(camera.position.x / shadowTexel) * shadowTexel

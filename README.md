@@ -35,7 +35,7 @@ Only Campaign and Online Free-for-All are player-facing modes. References below 
 
 A / × selects menus and fires in play. Release it after selecting or resuming before pressing to shoot. Controller axes have an 18% radial deadzone; Controls → Assign fire trigger supports generic layouts. Losing focus, disconnecting the active controller, or losing mouse capture releases input. Campaign pauses the whole simulation; Online only pauses your controls and leaves your character vulnerable.
 
-Touch movement, look and fire support simultaneous fingers. Pointer cancellation, backgrounding and rotation to portrait release held input. Rotation back dismisses the blocker and resizes the renderer automatically, then requires Resume. The arena observes visual-viewport/orientation/foreground changes with bounded settling checks for installed WebKit viewports; no refresh or reinstall is required. Safe-area layout, a reduced render resolution and 1024px shadows are used on touch devices. Chrome touch emulation checks 667×375 and 932×430; physical Android/iPhone and Safari behavior remain unverified.
+Touch movement, look and fire support simultaneous fingers. Pointer cancellation, backgrounding and rotation to portrait release held input. Rotation back dismisses the blocker and resizes the renderer automatically, then requires Resume. The arena observes visual-viewport/orientation/foreground changes with bounded settling checks for installed WebKit viewports; no refresh or reinstall is required. Safe-area layout, bounded render density, 512px model maps and 1024px shadows are used on touch devices. Chrome touch emulation checks 667×375 and 932×430; physical Android/iPhone and Safari behavior remain unverified.
 
 ## Combat and recovery
 
@@ -207,3 +207,40 @@ Five map-only desktop and phone-emulated Chrome views on an Apple M4 Pro remaine
 Touch layout follows the visual viewport through rotation and foreground resume, including delayed mobile browser size updates. Portrait pauses play and clears held inputs; returning to landscape restores the canvas and controls without reloading, then requires Resume. The regression repeats three rotations with deliberately stale window dimensions and checks the same page/game survives. Physical iPhone standalone behavior remains unverified.
 
 Hosted offline verification on release `3a00043`: clean desktop and DPR-3 phone-emulated Chrome profiles downloaded the production pack, disabled networking and the ordinary HTTP cache, reloaded both local modes, moved/fired, then reconnected successfully. No game sockets or page exceptions occurred. Offline startup was 1.0–1.8 seconds in these short samples. The automation browser needed a temporary resolver mapping to the hosting IP after DNS/navigation stalls; no device or application DNS settings were changed.
+
+### Mobile arena memory budget
+
+Touch devices load 512px embedded model maps sequentially, reuse procedural
+surface textures, and render smaller building signs without MSAA. Static shapes
+are combined on the CPU before upload; facade and furniture batches use larger
+spatial tiles, bounded upload batches, and explicit graphics-context release
+when leaving a match. Desktop keeps its original model maps. Both retain the same geometry, collisions and 1.5x
+maximum render density. A narrower mobile field of view makes buildings and
+players roughly one third larger on screen. The minimap and objective panel
+share safe-area offsets so landscape iPhone cutouts cannot make them overlap.
+Regenerate mobile GLBs on macOS with
+`python3 scripts/assets/mobile-textures.py`; tests compare every non-image buffer
+against the original, including geometry and animations. The offline pack
+includes both sets of assets.
+
+`node scripts/render-profile.mjs` (with `pnpm dev` running) checks the mobile
+map's estimated RGBA8 texture storage stays under 200 MiB and its mesh batch
+count stays under 3,200. On October 6, the
+online map estimate fell from 571 to 184 MiB; this excludes players, render
+buffers, browser overhead and transient decoding memory and is not an iPhone
+process-memory measurement. Physical iPhone PWA stability still needs retesting.
+
+Run mobile WebKit checks after installing Playwright WebKit:
+
+```sh
+PLAYWRIGHT_BROWSER=webkit pnpm exec playwright test tests/browser/mobile-online.spec.ts tests/browser/mobile-hud.spec.ts tests/browser/rotation.spec.ts tests/browser/visuals.spec.ts --grep 'phone|rotation'
+```
+
+Desktop pointer capture and CDP-based offline tests use Chrome. Audio
+startup tolerates a zero output sample rate and releases pending work on exit.
+
+Validation for this pass: 171 unit tests; 15 Chrome browser checks covering
+mobile/desktop play, re-entry, rotation, safe-area HUD layout and offline reload;
+focused WebKit online, campaign, rotation and HUD checks; and four representative
+campaign arenas rendered without page errors. Physical iPhone 17 Pro PWA testing
+remains a release follow-up, not something browser emulation establishes.

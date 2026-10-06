@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test'
 export default defineConfig({
   testDir: './tests/browser', workers: 1, timeout: 45000,
   use: {
-    baseURL: 'http://127.0.0.1:3001', browserName: 'chromium', channel: process.env.PLAYWRIGHT_CHANNEL,
+    baseURL: 'http://127.0.0.1:3001', browserName: process.env.PLAYWRIGHT_BROWSER === 'webkit' ? 'webkit' : 'chromium', channel: process.env.PLAYWRIGHT_BROWSER === 'webkit' ? undefined : process.env.PLAYWRIGHT_CHANNEL,
     screenshot: 'only-on-failure',
     launchOptions: {
       args: process.env.PLAYWRIGHT_SOFTWARE_RENDERING === '1'

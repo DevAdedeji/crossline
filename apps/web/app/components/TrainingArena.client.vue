@@ -441,20 +441,25 @@ onMounted(async () => {
     let inputSequence=0,lastInputFrame=performance.now()
     const networkHealth=new NetworkHealth();resetConnection=()=>networkHealth.reset(performance.now());resetConnection()
     status.value = 'Loading models'
-    const [assets] = await Promise.all([loadTrainingAssets(scene), audio.prepare()])
+    const [assets] = await Promise.all([loadTrainingAssets(scene, {mobile:touchDevice.value}), audio.prepare()])
     if (stopped) {
       scene.dispose()
       return
     }
-    arena.addVehicles(assets)
+    status.value = 'Building arena'
+    await arena.addVehicles(assets)
+    if (stopped) return
     const grenadeVisuals=grenadePresentation(scene,camera)
     await grenadeVisuals.ready
+    if (stopped) return
     const missionVisuals = isCampaign.value ? campaignPresentation(scene, assets, arena.shadows, mission.value) : undefined
     const supplies = props.mode!=='training' ? healthPickups(scene) : undefined
     const labels=isOnline.value?playerLabels(scene,camera,world.value):undefined
     const visuals = combatPresentation(scene, camera, assets, arena.shadows, props.mode)
+    status.value = 'Preparing graphics'
     await Promise.all([scene.whenReadyAsync(),visuals.ready])
     if (stopped) return
+    status.value = 'Connecting'
     engine.runRenderLoop(() => {
       const dt = Math.min(engine!.getDeltaTime(), 50) / 1000
       now.value = performance.now()
@@ -714,6 +719,10 @@ onMounted(async () => {
       if(active.value && self.value && self.value.health>0)prediction.command(seq,input)
     }, TICK_MS)
   } catch (error) {
+    engine?.dispose()
+    engine = undefined
+    audio.dispose()
+    if (stopped) return
     const code=error && typeof error==='object' && 'code' in error ? error.code : undefined
     joinError.value=(code===4213||code===409)?'Arena is full. Wait for a free seat, then retry.':code===4214?'Sign in with your account to enter Online.':code===4215?'This account is already in the arena. Leave its other session or reconnect.':isOnline.value?'The arena could not connect. Check your connection and retry.':'Game assets unavailable. Connect and download offline play from the menu, then retry.'
     console.error('Arena initialization failed',typeof code==='number'?code:'unavailable')
@@ -728,6 +737,7 @@ onBeforeUnmount(() => {
   if(isOnline.value)try { sessionStorage.removeItem('crossline.ffa.reconnect') } catch {}
   void room?.leave()
   engine?.dispose()
+  engine = undefined
   audio.dispose()
   document.removeEventListener('mousemove', mouseLook)
   document.removeEventListener('mousedown', mouseDown)
@@ -980,9 +990,9 @@ footer{position:absolute;inset:auto 0 0;display:flex;justify-content:space-betwe
 .network-notice{position:absolute;top:90px;left:50%;transform:translateX(-50%);z-index:50;background:#191f24ed;color:var(--cl-accent);padding:8px 12px;max-width:80vw;font:12px/1.4 Arial;pointer-events:none;border:1px solid var(--cl-line);border-radius:5px}
 .leaderboard-launch{position:absolute;right:32px;top:98px;z-index:45;border:1px solid var(--cl-line);border-radius:5px;background:#191f24e8;padding:10px 12px;font-size:10px;color:var(--cl-text);pointer-events:auto}.leaderboard-launch span{color:var(--cl-muted);font-size:9px}.leaderboard-dialog{position:absolute;inset:0;z-index:60;background:#0b1013e8;display:grid;place-items:center;padding:24px}.leaderboard-dialog>div{width:min(720px,96vw);max-height:90dvh;overflow-y:auto;background:var(--cl-panel);border:1px solid var(--cl-line);border-top:3px solid var(--cl-accent);border-radius:8px;padding:24px}.leaderboard-close{display:block;width:100%;padding:12px;background:#ffffff15;margin-top:18px;font-size:12px;border-radius:5px}
 .rotate-phone{position:fixed;inset:0;z-index:100;background:var(--cl-bg);display:grid;place-items:center;padding:28px;text-align:center;touch-action:manipulation}.rotate-phone h1{font-size:27px;margin:18px 0}.rotate-phone p{max-width:300px;line-height:1.6;color:var(--cl-muted);font-size:14px}.rotate-phone a{display:inline-block;margin-top:24px;color:var(--cl-accent);padding:12px}.rotate-icon{font-size:64px;color:var(--cl-accent)}
-.touch-layout{min-height:0;touch-action:none;overscroll-behavior:none}.touch-layout header{padding:calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));height:50px}.touch-layout .brand{font-size:20px}.touch-layout .location{display:none}.touch-layout .timer{font-size:24px}.touch-layout .timer small{font-size:8px;margin-top:4px}.touch-layout .radar-panel{top:54px;left:calc(12px + env(safe-area-inset-left));width:84px}.touch-layout .radar-north{font-size:8px;top:2px}.touch-layout .radar-range{font-size:7px;right:3px;bottom:3px}.touch-menu-hidden{visibility:hidden}.touch-layout footer{padding:22px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));gap:14px}.touch-layout footer strong{font-size:34px}.touch-layout footer strong span{font-size:11px}.touch-layout footer small{font-size:8px}.touch-layout .health{width:130px}.touch-layout .health-bar{margin-top:5px;height:4px}.touch-layout .score strong{font-size:23px}.touch-layout .score small{font-size:8px}.arena[data-mode=campaign] .kill-feed{display:none}.touch-layout .kill-feed{top:54px;right:calc(50% - 90px);font-size:9px;max-width:180px}.touch-layout .kill-feed p{padding:5px 8px}.touch-layout .health-feedback{top:20%;padding:8px 12px;font-size:11px}.touch-layout .overlay{padding:10px}.touch-layout .menu-card{width:min(500px,94vw);max-height:calc(100dvh - 20px);padding:18px 24px;touch-action:pan-y}.touch-layout .menu-card h1{font-size:26px;margin:8px 0}.touch-layout .menu-card p{font-size:11px;line-height:1.5}.touch-layout .menu-actions{margin-top:16px}.touch-layout .menu-actions button{min-height:40px;padding:10px 14px;font-size:11px}.touch-layout .results{margin:14px 0;gap:6px}.touch-layout .results>div{padding:10px 7px}.touch-layout .results strong{font-size:22px}.touch-layout .leaderboard-launch{top:54px;right:calc(12px + env(safe-area-inset-right));padding:8px;font-size:9px}.touch-layout .leaderboard-dialog{padding:10px}.touch-layout .leaderboard-dialog>div{padding:16px;max-height:94dvh}
+.touch-layout{--hud-safe-left:env(safe-area-inset-left,0px);--hud-left:calc(12px + var(--hud-safe-left));--hud-top:calc(54px + env(safe-area-inset-top,0px));--radar-width:84px;min-height:0;touch-action:none;overscroll-behavior:none}.touch-layout header{padding:calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));height:50px}.touch-layout .brand{font-size:20px}.touch-layout .location{display:none}.touch-layout .timer{font-size:24px}.touch-layout .timer small{font-size:8px;margin-top:4px}.touch-layout .radar-panel{top:var(--hud-top);left:var(--hud-left);width:var(--radar-width)}.touch-layout .radar-north{font-size:8px;top:2px}.touch-layout .radar-range{font-size:7px;right:3px;bottom:3px}.touch-menu-hidden{visibility:hidden}.touch-layout footer{padding:22px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));gap:14px}.touch-layout footer strong{font-size:34px}.touch-layout footer strong span{font-size:11px}.touch-layout footer small{font-size:8px}.touch-layout .health{width:130px}.touch-layout .health-bar{margin-top:5px;height:4px}.touch-layout .score strong{font-size:23px}.touch-layout .score small{font-size:8px}.arena[data-mode=campaign] .kill-feed{display:none}.touch-layout .kill-feed{top:54px;right:calc(50% - 90px);font-size:9px;max-width:180px}.touch-layout .kill-feed p{padding:5px 8px}.touch-layout .health-feedback{top:20%;padding:8px 12px;font-size:11px}.touch-layout .overlay{padding:10px}.touch-layout .menu-card{width:min(500px,94vw);max-height:calc(100dvh - 20px);padding:18px 24px;touch-action:pan-y}.touch-layout .menu-card h1{font-size:26px;margin:8px 0}.touch-layout .menu-card p{font-size:11px;line-height:1.5}.touch-layout .menu-actions{margin-top:16px}.touch-layout .menu-actions button{min-height:40px;padding:10px 14px;font-size:11px}.touch-layout .results{margin:14px 0;gap:6px}.touch-layout .results>div{padding:10px 7px}.touch-layout .results strong{font-size:22px}.touch-layout .leaderboard-launch{top:54px;right:calc(12px + env(safe-area-inset-right));padding:8px;font-size:9px}.touch-layout .leaderboard-dialog{padding:10px}.touch-layout .leaderboard-dialog>div{padding:16px;max-height:94dvh}
 @media(max-width:650px){.location{display:none}.menu-card h1{font-size:28px}.results strong{font-size:20px}}
-@media(max-height:400px){.touch-layout .radar-panel{width:70px}.touch-layout .kill-feed p:nth-child(n+3){display:none}}
+@media(max-height:400px){.touch-layout{--radar-width:70px}.touch-layout .kill-feed p:nth-child(n+3){display:none}}
 </style>
 
 <style scoped>.grenade-inventory{position:absolute;right:32px;bottom:155px;color:#dae3d6;font:11px Arial;z-index:4}.grenade-inventory span{border:1px solid #ffffff55;border-radius:3px;padding:3px 6px;margin-left:7px}</style>

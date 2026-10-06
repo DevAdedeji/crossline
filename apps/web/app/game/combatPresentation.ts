@@ -22,6 +22,7 @@ export function combatPresentation(
   shadows: ShadowGenerator,
   mode: GameMode = 'training',
 ) {
+  const baseFieldOfView = camera.fov
   const material = (name: string, color: string) => {
     const m = new StandardMaterial(name, scene)
     m.diffuseColor = Color3.FromHexString(color)
@@ -449,7 +450,7 @@ export function combatPresentation(
       0.35 - kick * 0.035,
     )
     weapon.rotation.set(-kick * 0.05 + tilt * 0.15, -tilt * 0.12, -tilt * 0.45)
-    camera.fov += (1.2 - ads * 0.43 - camera.fov) * Math.min(1, dt * 15)
+    camera.fov += (baseFieldOfView - ads * 0.43 - camera.fov) * Math.min(1, dt * 15)
     for (let i = tracers.length - 1; i >= 0; i--) {
       const t = tracers[i]!
       if (t.remaining <= 0) continue

@@ -4,14 +4,16 @@ import { browserAccount } from './accounts'
 for (const scenario of [
   { name: 'retina-campaign', mode: 'campaign', mobile: false, width: 1280, height: 720, density: 2 },
   { name: 'phone-campaign', mode: 'campaign', mobile: true, width: 844, height: 390, density: 3 },
+  { name: 'phone-online', mode: 'online', mobile: true, width: 844, height: 390, density: 3 },
   { name: 'online-daylight', mode: 'online', mobile: false, width: 1280, height: 720, density: 1 },
 ]) test(`${scenario.name} renders clear daylight at bounded pixel density`, async ({ browser }, info) => {
   test.setTimeout(60000)
   const context = await browser.newContext({ viewport: { width: scenario.width, height: scenario.height }, deviceScaleFactor: scenario.density, isMobile: scenario.mobile, hasTouch: scenario.mobile })
   const page = await context.newPage(), errors: string[] = []
-  page.on('pageerror', error => errors.push(error.message))
+  // WebKit exposes Colyseus' caught Node-WebSocket-options probe as an error.
+  page.on('pageerror', error => { if(error.message!=="Wrong protocol for WebSocket '[object Object]'")errors.push(error.message) })
   try {
-    if (scenario.mode === 'online') await browserAccount(page, 'visualdaylight')
+    if (scenario.mode === 'online') await browserAccount(page, scenario.mobile ? 'phonedaylight' : 'visualdaylight')
     await page.goto(`http://127.0.0.1:3001/play?mode=${scenario.mode}`)
     await expect(page.locator('.radar-panel')).toContainText('Connected', { timeout: 30000 })
     const start = page.getByRole('button', { name: scenario.mode === 'online' ? 'Enter arena' : 'Start mission', exact: true })

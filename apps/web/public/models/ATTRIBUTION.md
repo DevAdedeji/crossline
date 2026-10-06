@@ -37,3 +37,9 @@ Recorded audio sources are documented separately in [audio attribution](../audio
 - `../textures/car-{blue,olive,sand}.jpg`: color variants derived from the existing CC0 rohezal coupe texture. Red body pixels recolored while neutral trim/glass pixels are retained. No new vehicle source or license.
 
 Preparation uses official `https://api.polyhaven.com/files/{asset_id}` manifests and `dl.polyhaven.org` files. Source downloads are excluded from the app; only prepared GLBs and maps are shipped. glTF Transform / sharp were temporary offline preparation tools, not runtime dependencies. Façade module hierarchy is preserved because runtime batching selects panel, blank and trim parts. Each spatial batch owns its instance buffer; collidable walls and doors remain shared with the server.
+
+Mobile variants (`rocketbox-soldier-mobile.glb` and `polyhaven-*-mobile.glb`)
+retain the same geometry, animation, materials and licenses as their originals.
+Embedded color, normal and material maps are resized to 512px with
+`scripts/assets/mobile-textures.py` before delivery, reducing decoded texture
+storage by 75%. Desktop continues to load the original models.

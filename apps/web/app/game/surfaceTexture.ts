@@ -1,8 +1,17 @@
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import type { Scene } from '@babylonjs/core/scene'
+const surfaces = new WeakMap<Scene, Map<string, DynamicTexture>>()
 /** Deterministic original surface artwork: no external texture requests. */
 export function surfaceTexture(kind: string, scene: Scene) {
+  let cache = surfaces.get(scene)
+  if (!cache) {
+    cache = new Map()
+    surfaces.set(scene, cache)
+    scene.onDisposeObservable.addOnce(() => surfaces.delete(scene))
+  }
+  const existing = cache.get(kind)
+  if (existing) return existing
   const size = 512,
     texture = new DynamicTexture(`surface-${kind}`, { width: size, height: size }, scene, true),
     ctx = texture.getContext()
@@ -44,5 +53,6 @@ export function surfaceTexture(kind: string, scene: Scene) {
   // entire floors and walls, making them look like flat white sheets.
   texture.wrapU = texture.wrapV = Texture.WRAP_ADDRESSMODE
   texture.anisotropicFilteringLevel = 4
+  cache.set(kind, texture)
   return texture
 }

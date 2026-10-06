@@ -1,5 +1,6 @@
 import { BUILDING_FINISHES, buildingFinishIndex } from './buildingFinishes'
 import { surfaceTexture } from './surfaceTexture'
+import { flushStaticUploads } from './staticGeometry'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
@@ -11,10 +12,12 @@ import type { TrainingAssets } from './trainingAssets'
 import { TRAINING_WORLD, type WorldGeometry } from '@crossline/shared'
 
 /** Selected CC0 Poly Haven modules; visual skins never close authoritative door openings. */
-export function addFacades(scene: Scene, assets: TrainingAssets, _shadows: ShadowGenerator, world: WorldGeometry = TRAINING_WORLD) {
+export async function addFacades(scene: Scene, assets: TrainingAssets, _shadows: ShadowGenerator, world: WorldGeometry = TRAINING_WORLD, options: {mobile?:boolean} = {}) {
   // One shared geometry buffer per source mesh, spatial tile and material. Avoid
   // instantiating the entire module kit (including disabled parts) for every window.
   const batches = new Map<string, {source: Mesh; matrices: number[]; tone: number}>()
+  // Keep spatial culling, with fewer duplicate geometry/buffer bindings on phones.
+  const tileSize = options.mobile ? 128 : 32
   let tone = 0
   function module(kit: 'apartment' | 'factory', part: 'panel' | 'blank' | 'trim',
     x: number, y: number, z: number, yaw: number, width = 3, height = 3) {
@@ -24,7 +27,7 @@ export function addFacades(scene: Scene, assets: TrainingAssets, _shadows: Shado
       let node = source.parent
       while (node && node.name !== part) node = node.parent
       if (!node) continue
-      const key = `${kit}/${part}/${source.uniqueId}/${tone}/${Math.floor(x / 32)}/${Math.floor(z / 32)}`
+      const key = `${kit}/${part}/${source.uniqueId}/${tone}/${Math.floor(x / tileSize)}/${Math.floor(z / tileSize)}`
       const batch = batches.get(key) ?? {source, matrices: [], tone}
       batch.matrices.push(...source.computeWorldMatrix(true).multiply(placement).asArray())
       batches.set(key, batch)
@@ -173,7 +176,9 @@ export function addFacades(scene: Scene, assets: TrainingAssets, _shadows: Shado
   }
   const surfaces = new Map<string, PBRMaterial>()
   const paintedPlaster = surfaceTexture('plaster', scene)
+  let uploaded = 0
   for (const [key, {source, matrices, tone}] of batches) {
+    if (options.mobile && uploaded++ % 64 === 0) await flushStaticUploads(scene)
     const mesh = source.clone(`facade-batch:${key}`, null, true)!
     mesh.parent = null; mesh.position.setAll(0); mesh.scaling.setAll(1)
     mesh.rotationQuaternion = Quaternion.Identity(); mesh.rotation.setAll(0)

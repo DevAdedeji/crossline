@@ -3,21 +3,34 @@ import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import type { Scene } from '@babylonjs/core/scene'
+import type { AssetContainer } from '@babylonjs/core/assetContainer'
 import '@babylonjs/loaders/glTF'
 
 /** Local, licensed GLB data only. See public/models/ATTRIBUTION.md. */
-export async function loadTrainingAssets(scene: Scene) {
-  const [soldier, rifle, sedan, apartment, factory, tree, bench] = await Promise.all(
-    [
-      'rocketbox-soldier',
-      'lamoot-ak47',
-      'rohezal-coupe',
-      'polyhaven-apartment',
-      'polyhaven-factory',
-      'polyhaven-street-tree',
-      'polyhaven-street-bench',
-    ].map((name) => LoadAssetContainerAsync(`/models/${name}.glb`, scene)),
-  )
+export async function loadTrainingAssets(scene: Scene, options: {mobile?: boolean} = {}) {
+  const names = [
+    'rocketbox-soldier',
+    'lamoot-ak47',
+    'rohezal-coupe',
+    'polyhaven-apartment',
+    'polyhaven-factory',
+    'polyhaven-street-tree',
+    'polyhaven-street-bench',
+  ]
+  async function load(name: string) {
+    if (scene.isDisposed) throw new Error('Arena closed during loading')
+    const mobile = options.mobile && (name.startsWith('polyhaven-') || name === 'rocketbox-soldier')
+    const container = await LoadAssetContainerAsync(`/models/${name}${mobile ? '-mobile' : ''}.glb`, scene)
+    // A route can close while a GLB is decoding, after scene disposal has fired.
+    if (scene.isDisposed) { container.dispose(); throw new Error('Arena closed during loading') }
+    return container
+  }
+  const containers: AssetContainer[] = []
+  if (options.mobile) {
+    // Bound simultaneous image decoding/upload, as well as retained texture size.
+    for (const name of names) containers.push(await load(name))
+  } else containers.push(...await Promise.all(names.map(load)))
+  const [soldier, rifle, sedan, apartment, factory, tree, bench] = containers
   for (const material of soldier!.materials) {
     if (material instanceof PBRMaterial) {
       material.metallic = 0; material.roughness = 0.82

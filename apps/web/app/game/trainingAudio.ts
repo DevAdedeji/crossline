@@ -6,6 +6,7 @@ export function trainingAudio(preparedContext?: AudioContext) {
   let context: AudioContext | undefined,
     master: GainNode | undefined,
     muted = false
+  let disposed = false
   let shots: AudioBuffer[] = [],
     healBuffer: AudioBuffer | undefined,
     explosionBuffer: AudioBuffer | undefined,
@@ -32,13 +33,17 @@ export function trainingAudio(preparedContext?: AudioContext) {
         return context!.decodeAudioData(await response.arrayBuffer())
       }),
     )
-    healBuffer=context.createBuffer(1,Math.ceil(context.sampleRate*.22),context.sampleRate)
+    if (disposed) return
+    // WebKit can report 0 before its audio output is available. Decoded audio
+    // has its own valid rate; sound initialization must not prevent arena entry.
+    const sampleRate = buffers[0]?.sampleRate || context.sampleRate || 48000
+    healBuffer=context.createBuffer(1,Math.ceil(sampleRate*.22),sampleRate)
     const chime=healBuffer.getChannelData(0)
-    for(let i=0;i<chime.length;i++){const t=i/context.sampleRate;chime[i]=Math.sin(2*Math.PI*(t<.1?660:880)*t)*Math.sin(Math.PI*i/chime.length)*.15}
-    explosionBuffer=context.createBuffer(1,Math.ceil(context.sampleRate*.8),context.sampleRate)
+    for(let i=0;i<chime.length;i++){const t=i/sampleRate;chime[i]=Math.sin(2*Math.PI*(t<.1?660:880)*t)*Math.sin(Math.PI*i/chime.length)*.15}
+    explosionBuffer=context.createBuffer(1,Math.ceil(sampleRate*.8),sampleRate)
     const boom=explosionBuffer.getChannelData(0)
     let low=0
-    for(let i=0;i<boom.length;i++){const t=i/context.sampleRate;low=low*.88+(Math.random()*2-1)*.12;boom[i]=(low*1.8+Math.sin(t*2*Math.PI*55)*.3)*Math.exp(-t*7)*Math.min(1,t*200)}
+    for(let i=0;i<boom.length;i++){const t=i/sampleRate;low=low*.88+(Math.random()*2-1)*.12;boom[i]=(low*1.8+Math.sin(t*2*Math.PI*55)*.3)*Math.exp(-t*7)*Math.min(1,t*200)}
     shots = buffers.slice(0, 2)
     reloadBuffer = buffers[2]
   }
@@ -126,8 +131,11 @@ export function trainingAudio(preparedContext?: AudioContext) {
       if (value) stop()
     },
     dispose() {
+      if (disposed) return
+      disposed = true
       stop()
-      void context?.close()
+      void context?.close().catch(() => {})
+      shots = []; healBuffer = explosionBuffer = reloadBuffer = undefined
     },
   }
 }

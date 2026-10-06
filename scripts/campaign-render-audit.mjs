@@ -20,7 +20,7 @@ try {
     const stats=await page.evaluate(async id=>{
       const a=window.audit;a.arena?.engine.dispose()
       const m=a.missions.find(m=>m.id===id),arena=a.createUrbanScene(document.querySelector('canvas'),m.world)
-      a.arena=arena;arena.addVehicles(await a.loadTrainingAssets(arena.scene))
+      a.arena=arena;await arena.addVehicles(await a.loadTrainingAssets(arena.scene))
       const b=m.world.buildings[0],center=m.world.environment==='airfield'?(m.tasks?.find(t=>t.kind==='defend')?.position??m.relay):{x:b.x,z:b.z}
       const dz=m.world.environment==='airfield'?38:b.depth/2+18
       const view=m.world.place?.preview

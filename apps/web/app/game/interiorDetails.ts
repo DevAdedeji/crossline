@@ -1,5 +1,7 @@
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
+import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData'
+import { StaticGeometry, flushStaticUploads } from './staticGeometry'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
@@ -9,15 +11,17 @@ import type { Solid, WorldGeometry } from '@crossline/shared'
 
 /** Replace furniture proxies inside their existing authoritative footprints. */
 export function detailedFurniture(s:Solid){return /^(cafe-counter|garage-bench|store-shelf)$/.test(s.id)||/^(landmark-tower-(desk|cabinet)|city-\d+-\d+-(desk|locker)|landmark-hospital-(locker|nurses))-/.test(s.id)}
-export function interiorDetails(scene:Scene,shadows:ShadowGenerator,world:WorldGeometry){
+export async function interiorDetails(scene:Scene,shadows:ShadowGenerator,world:WorldGeometry,options:{mobile?:boolean}={}){
+ const geometry=new StaticGeometry(scene)
+ const tileSize=options.mobile?128:32
  const groups=new Map<string,{material:PBRMaterial;meshes:Mesh[]}>()
  function surface(name:string,color:string,metallic=0,roughness=.7){const m=new PBRMaterial(name,scene);m.albedoColor=Color3.FromHexString(color);m.metallic=metallic;m.roughness=roughness;return m}
  const wood=surface('furniture oak','#b39c7c'),steel=surface('furniture steel','#4c575b',.65,.4),black=surface('equipment charcoal','#242d30',.15),white=surface('ceramic and paper','#e8e3d6',0,.38),enamel=surface('cabinet enamel','#a8b9b3',.12,.5),red=surface('workshop red','#813d34',.1),teal=surface('archive teal','#375e63'),card=surface('shipping cartons','#9a7951'),brass=surface('handles brass','#ac8f53',.65,.4),screen=surface('inactive display glass','#172d35',.2,.22)
  const grain=new DynamicTexture('original oak grain',{width:256,height:64},scene,false),ctx=grain.getContext() as CanvasRenderingContext2D;ctx.fillStyle='#b9a17e';ctx.fillRect(0,0,256,64)
  for(let i=0;i<34;i++){ctx.strokeStyle=i%3?'#9e836044':'#66503b55';ctx.lineWidth=i%4===0?1.5:.6;ctx.beginPath();ctx.moveTo(0,i*2);ctx.bezierCurveTo(70,i*2+Math.sin(i)*3,180,i*2-2,256,i*2+1);ctx.stroke()}grain.update();wood.albedoTexture=grain;wood.albedoColor=Color3.White()
- function add(mesh:Mesh,material:PBRMaterial){mesh.material=material;const p=mesh.position,key=`${material.uniqueId}/${Math.floor(p.x/32)}/${Math.floor(p.z/32)}`;let group=groups.get(key);if(!group){group={material,meshes:[]};groups.set(key,group)}group.meshes.push(mesh);return mesh}
- function box(name:string,x:number,y:number,z:number,w:number,h:number,d:number,m:PBRMaterial){const mesh=MeshBuilder.CreateBox(name,{width:w,height:h,depth:d},scene);mesh.position.set(x,y,z);return add(mesh,m)}
- function cylinder(name:string,x:number,y:number,z:number,diameter:number,height:number,m:PBRMaterial){const mesh=MeshBuilder.CreateCylinder(name,{diameter,height,tessellation:12},scene);mesh.position.set(x,y,z);return add(mesh,m)}
+ function add(mesh:Mesh,material:PBRMaterial){mesh.material=material;const p=mesh.position,key=`${material.uniqueId}/${Math.floor(p.x/tileSize)}/${Math.floor(p.z/tileSize)}`;let group=groups.get(key);if(!group){group={material,meshes:[]};groups.set(key,group)}group.meshes.push(mesh);return mesh}
+ function box(name:string,x:number,y:number,z:number,w:number,h:number,d:number,m:PBRMaterial){const mesh=geometry.create(name,VertexData.CreateBox({width:w,height:h,depth:d}));mesh.position.set(x,y,z);return add(mesh,m)}
+ function cylinder(name:string,x:number,y:number,z:number,diameter:number,height:number,m:PBRMaterial){const mesh=geometry.create(name,VertexData.CreateCylinder({diameter,height,tessellation:12}));mesh.position.set(x,y,z);return add(mesh,m)}
  const signs=new Map<string,PBRMaterial>()
  function sign(text:string,x:number,y:number,z:number,w:number,h:number){
   let m=signs.get(text);if(!m){m=surface(text,'#ffffff');const t=new DynamicTexture(text,{width:512,height:128},scene,false),c=t.getContext();c.fillStyle='#253c3e';c.fillRect(0,0,512,128);c.fillStyle='#d4bd86';c.fillRect(16,16,5,96);c.font='bold 25px Arial';c.fillStyle='#ece9df';c.fillText(text,38,73);t.update();m.albedoTexture=t;signs.set(text,m)}
@@ -90,7 +94,9 @@ export function interiorDetails(scene:Scene,shadows:ShadowGenerator,world:WorldG
   for(let n=0;n<3;n++){const button=cylinder('machine control button',s.x+.3+n*.28,s.y+.42,z-.04,.09,.028,n===0?red:brass);button.rotation.x=Math.PI/2}
   for(let n=0;n<6;n++)box('machine cooling slot',s.x+.4,s.y-.15-n*.08,z-.023,1.2,.035,.008,black)
  }
+ let uploaded=0
  for(const {material,meshes}of groups.values()){
-  const mesh=Mesh.MergeMeshes(meshes,true,true)!;mesh.receiveShadows=true;mesh.freezeWorldMatrix();shadows.addShadowCaster(mesh);material.freeze()
+  if(options.mobile&&uploaded++%64===0)await flushStaticUploads(scene)
+  const mesh=geometry.merge(meshes)!;mesh.receiveShadows=true;mesh.freezeWorldMatrix();shadows.addShadowCaster(mesh);material.freeze()
  }
 }
