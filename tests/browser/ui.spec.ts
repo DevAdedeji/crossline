@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test'
 
-test('classic mode list keeps the callsign above it and launches directly', async ({ page }, info) => {
+test('classic mode list keeps the callsign above it and launches directly', async ({
+  page,
+}, info) => {
   await page.goto('/')
   await expect(page.locator('main.lobby')).toHaveAttribute('data-ready', 'true')
   await expect(page.getByRole('heading', { name: 'Choose your battleground.' })).toBeVisible()
@@ -11,13 +13,18 @@ test('classic mode list keeps the callsign above it and launches directly', asyn
   expect(field.y + field.height).toBeLessThan(modes.y)
   await page.getByRole('button', { name: 'Campaign', exact: true }).hover()
   await expect(page).toHaveURL('/')
-  await expect(page.getByRole('button', { name: 'Campaign', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Campaign', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
   await page.evaluate(() => window.scrollTo(0, 0))
   await page.screenshot({ path: info.outputPath('desktop-lobby.png'), animations: 'disabled' })
   await page.getByRole('button', { name: 'Campaign', exact: true }).click()
-  await page.getByRole('button',{name:/The last signal/}).click()
-  await page.getByRole('button',{name:'Got it, let’s go'}).click()
-  await expect(page.locator('main.arena')).toHaveAttribute('data-phase', 'playing', { timeout: 30000 })
+  await page.getByRole('button', { name: /The last signal/ }).click()
+  await page.getByRole('button', { name: 'Got it, let’s go' }).click()
+  await expect(page.locator('main.arena')).toHaveAttribute('data-phase', 'playing', {
+    timeout: 30000,
+  })
   const box = (await page.locator('.radar').getAttribute('viewBox'))!.split(' ').map(Number)
   expect(box[2]).toBe(84)
   const id = await page.locator('main.arena').getAttribute('data-player-id')
@@ -30,9 +37,15 @@ test('classic mode list keeps the callsign above it and launches directly', asyn
   await page.screenshot({ path: info.outputPath('desktop-pause.png') })
 })
 
-test('touch preferences persist and largest controls fit a small landscape phone', async ({ browser }, info) => {
+test('touch preferences persist and largest controls fit a small landscape phone', async ({
+  browser,
+}, info) => {
   test.setTimeout(60000)
-  const context = await browser.newContext({ viewport: { width: 667, height: 375 }, isMobile: true, hasTouch: true })
+  const context = await browser.newContext({
+    viewport: { width: 667, height: 375 },
+    isMobile: true,
+    hasTouch: true,
+  })
   const page = await context.newPage()
   try {
     await page.goto('http://127.0.0.1:3001/')
@@ -53,15 +66,19 @@ test('touch preferences persist and largest controls fit a small landscape phone
     await expect(page.getByRole('slider', { name: 'Touch control opacity' })).toHaveValue('45')
     await page.getByRole('button', { name: 'CLOSE', exact: true }).tap()
     await page.getByRole('button', { name: 'Campaign', exact: true }).tap()
-    await page.getByRole('button',{name:/The last signal/}).tap()
-    await page.getByRole('button',{name:'Got it, let’s go'}).tap()
-    await expect(page.getByRole('button', { name: 'Fire', exact: true })).toBeVisible({ timeout: 30000 })
+    await page.getByRole('button', { name: /The last signal/ }).tap()
+    await page.getByRole('button', { name: 'Got it, let’s go' }).tap()
+    await expect(page.getByRole('button', { name: 'Fire', exact: true })).toBeVisible({
+      timeout: 30000,
+    })
     await expect(page.locator('.touch-controls')).toHaveCSS('--touch-scale', '1.2')
     await expect(page.locator('.touch-controls')).toHaveCSS('--touch-opacity', '0.45')
     for (const name of ['Fire', 'Aim', 'Reload', 'Crouch', 'Pause']) {
       const box = (await page.getByRole('button', { name, exact: true }).boundingBox())!
-      expect(box.x).toBeGreaterThanOrEqual(0); expect(box.y).toBeGreaterThanOrEqual(0)
-      expect(box.x + box.width).toBeLessThanOrEqual(667); expect(box.y + box.height).toBeLessThanOrEqual(375)
+      expect(box.x).toBeGreaterThanOrEqual(0)
+      expect(box.y).toBeGreaterThanOrEqual(0)
+      expect(box.x + box.width).toBeLessThanOrEqual(667)
+      expect(box.y + box.height).toBeLessThanOrEqual(375)
     }
     await page.screenshot({ path: info.outputPath('phone-largest-controls.png') })
     await page.getByRole('button', { name: 'Pause', exact: true }).tap()
@@ -74,5 +91,7 @@ test('touch preferences persist and largest controls fit a small landscape phone
     await page.getByRole('button', { name: 'Resume mission', exact: true }).tap()
     await expect(page.locator('.touch-controls')).toHaveCSS('--touch-scale', '1')
     await expect(page.locator('.touch-controls')).toHaveCSS('--touch-opacity', '0.8')
-  } finally { await context.close() }
+  } finally {
+    await context.close()
+  }
 })

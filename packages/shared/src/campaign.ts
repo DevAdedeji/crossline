@@ -6,12 +6,24 @@ import { TRAINING_WORLD, type Building, type Solid, type WorldGeometry } from '.
 import type { Position } from './index.ts'
 
 export const EXTRACTION_MISSION = {
-  id: 'last-signal', chapter: '01', title: 'The last signal', operation: 'Operation Breakwater',
-  briefing: 'Mercer has gone dark. An informant known as Finch has the evacuation routes, but a hostile unit is holding them at Harbour Relay. Cross the depot, disable its alarm relay, and bring Finch home.',
-  debrief: 'Finch is safe. The recovered routes point to a weapons shipment moving through the harbour. Breakwater has its first lead.',
-  relay: { x: 0, y: 0, z: 28 }, captive: { x: 60, y: 0, z: 54 }, extraction: { x: -66, y: 0, z: -64 },
-  spawn: { x: 0, y: 0, z: -70 }, rescueSpawn: { x: 54, y: 0, z: 44 }, escortSpawn: { x: 60, y: 0, z: 50 },
-  interactMs: 2200, extractMs: 5000, interactionRadius: 2.8, extractionRadius: 5,
+  id: 'last-signal',
+  chapter: '01',
+  title: 'The last signal',
+  operation: 'Operation Breakwater',
+  briefing:
+    'Mercer has gone dark. An informant known as Finch has the evacuation routes, but a hostile unit is holding them at Harbour Relay. Cross the depot, disable its alarm relay, and bring Finch home.',
+  debrief:
+    'Finch is safe. The recovered routes point to a weapons shipment moving through the harbour. Breakwater has its first lead.',
+  relay: { x: 0, y: 0, z: 28 },
+  captive: { x: 60, y: 0, z: 54 },
+  extraction: { x: -66, y: 0, z: -64 },
+  spawn: { x: 0, y: 0, z: -70 },
+  rescueSpawn: { x: 54, y: 0, z: 44 },
+  escortSpawn: { x: 60, y: 0, z: 50 },
+  interactMs: 2200,
+  extractMs: 5000,
+  interactionRadius: 2.8,
+  extractionRadius: 5,
 } as const
 export type CampaignStage = 'relay' | 'rescue' | 'extract'
 export interface CampaignProgress {
@@ -25,7 +37,13 @@ export interface CampaignProgress {
   bestTimeMs?: number
 }
 export interface CampaignState {
-  operation?: { index: number; remainingMs: number; contested: boolean; enemiesRemaining: number; targets: Position[] }
+  operation?: {
+    index: number
+    remainingMs: number
+    contested: boolean
+    enemiesRemaining: number
+    targets: Position[]
+  }
   missionId: string
   grenades: CampaignGrenade[]
   stage: CampaignStage
@@ -39,133 +57,551 @@ export interface CampaignState {
   radio: string
   save: CampaignProgress
 }
-export const CAMPAIGN_OBJECTIVES: Record<CampaignStage, { title: string; instruction: string; position: Position }> = {
-  relay: { title: 'Disable the alarm relay', instruction: 'Reach the relay in the north courtyard. Step into its circle and stay there to disable it.', position: EXTRACTION_MISSION.relay },
-  rescue: { title: 'Recover Finch', instruction: 'Find Finch inside the blue relay office. Step into their circle to release them automatically.', position: EXTRACTION_MISSION.captive },
-  extract: { title: 'Escort Finch to extraction', instruction: 'Keep Finch close. Reach the southwest extraction zone together and stay inside for five seconds.', position: EXTRACTION_MISSION.extraction },
+export const CAMPAIGN_OBJECTIVES: Record<
+  CampaignStage,
+  { title: string; instruction: string; position: Position }
+> = {
+  relay: {
+    title: 'Disable the alarm relay',
+    instruction:
+      'Reach the relay in the north courtyard. Step into its circle and stay there to disable it.',
+    position: EXTRACTION_MISSION.relay,
+  },
+  rescue: {
+    title: 'Recover Finch',
+    instruction:
+      'Find Finch inside the blue relay office. Step into their circle to release them automatically.',
+    position: EXTRACTION_MISSION.captive,
+  },
+  extract: {
+    title: 'Escort Finch to extraction',
+    instruction:
+      'Keep Finch close. Reach the southwest extraction zone together and stay inside for five seconds.',
+    position: EXTRACTION_MISSION.extraction,
+  },
 }
-export function parseCampaignProgress(value: unknown, missionId: string = EXTRACTION_MISSION.id): CampaignProgress {
+export function parseCampaignProgress(
+  value: unknown,
+  missionId: string = EXTRACTION_MISSION.id,
+): CampaignProgress {
   const mission = getCampaignMission(missionId)
-  const empty: CampaignProgress = { missionId: mission.id, version: 1, checkpoint: 'relay', cleared: [], completed: false }
-  if (!value || typeof value !== 'object' || !('version' in value) || value.version !== 1) return empty
+  const empty: CampaignProgress = {
+    missionId: mission.id,
+    version: 1,
+    checkpoint: 'relay',
+    cleared: [],
+    completed: false,
+  }
+  if (!value || typeof value !== 'object' || !('version' in value) || value.version !== 1)
+    return empty
   const data = value as Partial<CampaignProgress>
-  if (mission.tasks && data.objectiveIndex !== undefined && (!Number.isInteger(data.objectiveIndex) || data.objectiveIndex < 0 || data.objectiveIndex >= mission.tasks.length)) return empty
+  if (
+    mission.tasks &&
+    data.objectiveIndex !== undefined &&
+    (!Number.isInteger(data.objectiveIndex) ||
+      data.objectiveIndex < 0 ||
+      data.objectiveIndex >= mission.tasks.length)
+  )
+    return empty
   if (data.missionId && data.missionId !== mission.id) return empty
-  if (!['relay', 'rescue', 'extract'].includes(data.checkpoint ?? '') || typeof data.completed !== 'boolean') return empty
-  return { ...empty, checkpoint: data.checkpoint!, completed: data.completed,
-    ...(mission.tasks ? {objectiveIndex: data.objectiveIndex ?? 0} : {}),
-    cleared: Array.isArray(data.cleared) ? [...new Set(data.cleared.filter(id => typeof id === 'string' && /^bot-\d+$/.test(id) && Number(id.slice(4)) < mission.guards.length))] : [],
-    ...(typeof data.elapsedMs === 'number' && Number.isFinite(data.elapsedMs) && data.elapsedMs >= 0 ? { elapsedMs: Math.min(data.elapsedMs, 3600000) } : {}),
-    ...(typeof data.bestTimeMs === 'number' && Number.isFinite(data.bestTimeMs) && data.bestTimeMs > 0 ? { bestTimeMs: data.bestTimeMs } : {}),
+  if (
+    !['relay', 'rescue', 'extract'].includes(data.checkpoint ?? '') ||
+    typeof data.completed !== 'boolean'
+  )
+    return empty
+  return {
+    ...empty,
+    checkpoint: data.checkpoint!,
+    completed: data.completed,
+    ...(mission.tasks ? { objectiveIndex: data.objectiveIndex ?? 0 } : {}),
+    cleared: Array.isArray(data.cleared)
+      ? [
+          ...new Set(
+            data.cleared.filter(
+              (id) =>
+                typeof id === 'string' &&
+                /^bot-\d+$/.test(id) &&
+                Number(id.slice(4)) < mission.guards.length,
+            ),
+          ),
+        ]
+      : [],
+    ...(typeof data.elapsedMs === 'number' && Number.isFinite(data.elapsedMs) && data.elapsedMs >= 0
+      ? { elapsedMs: Math.min(data.elapsedMs, 3600000) }
+      : {}),
+    ...(typeof data.bestTimeMs === 'number' &&
+    Number.isFinite(data.bestTimeMs) &&
+    data.bestTimeMs > 0
+      ? { bestTimeMs: data.bestTimeMs }
+      : {}),
   }
 }
 
 // Harbour Relay retains the central block's proven ramp, then opens into a new
 // enclosed depot. Collision, AI routes and the renderer all use this geometry.
-const buildings: Building[] = [...TRAINING_WORLD.buildings.map(b=>({...b,doors:[...b.doors]})),
-  { id: 'relay-office', name: 'HARBOUR RELAY / OFFICE', x: 60, z: 54, width: 12, depth: 10, material: 'plaster', doors: ['south', 'west'] },
-  { id: 'depot-store', name: 'CUSTOMS / STORAGE', x: -32, z: 30, width: 12, depth: 10, material: 'brick', doors: ['south', 'east'] },
-  { id: 'customs-east', name: 'CUSTOMS / INSPECTION', x: 44, z: 14, width: 12, depth: 10, material: 'concrete', doors: ['south','north'] },
-  { id: 'dock-workshop', name: 'DOCK / WORKSHOP', x: 66, z: -14, width: 12, depth: 10, material: 'brick', doors: ['west','south'] },
-  { id: 'west-dispatch', name: 'WEST / DISPATCH', x: -60, z: 18, width: 12, depth: 10, material: 'plaster', doors: ['east','south'] },
-  { id: 'freight-office', name: 'FREIGHT / CONTROL', x: -48, z: -42, width: 12, depth: 10, material: 'metal', doors: ['east','north'] },
-  { id: 'south-barracks', name: 'HARBOUR / BAKERY', x: 22, z: -56, width: 12, depth: 10, material: 'plaster', doors: ['west','north'] },
-  { id: 'north-stores', name: 'NORTH / STORES', x: 22, z: 60, width: 12, depth: 10, material: 'brick', doors: ['east','south'] },
-  { id: 'harbour-security', name: 'HARBOUR / SECURITY', x: -28, z: 62, width: 12, depth: 10, material: 'concrete', doors: ['east','south'] },
+const buildings: Building[] = [
+  ...TRAINING_WORLD.buildings.map((b) => ({ ...b, doors: [...b.doors] })),
+  {
+    id: 'relay-office',
+    name: 'HARBOUR RELAY / OFFICE',
+    x: 60,
+    z: 54,
+    width: 12,
+    depth: 10,
+    material: 'plaster',
+    doors: ['south', 'west'],
+  },
+  {
+    id: 'depot-store',
+    name: 'CUSTOMS / STORAGE',
+    x: -32,
+    z: 30,
+    width: 12,
+    depth: 10,
+    material: 'brick',
+    doors: ['south', 'east'],
+  },
+  {
+    id: 'customs-east',
+    name: 'CUSTOMS / INSPECTION',
+    x: 44,
+    z: 14,
+    width: 12,
+    depth: 10,
+    material: 'concrete',
+    doors: ['south', 'north'],
+  },
+  {
+    id: 'dock-workshop',
+    name: 'DOCK / WORKSHOP',
+    x: 66,
+    z: -14,
+    width: 12,
+    depth: 10,
+    material: 'brick',
+    doors: ['west', 'south'],
+  },
+  {
+    id: 'west-dispatch',
+    name: 'WEST / DISPATCH',
+    x: -60,
+    z: 18,
+    width: 12,
+    depth: 10,
+    material: 'plaster',
+    doors: ['east', 'south'],
+  },
+  {
+    id: 'freight-office',
+    name: 'FREIGHT / CONTROL',
+    x: -48,
+    z: -42,
+    width: 12,
+    depth: 10,
+    material: 'metal',
+    doors: ['east', 'north'],
+  },
+  {
+    id: 'south-barracks',
+    name: 'HARBOUR / BAKERY',
+    x: 22,
+    z: -56,
+    width: 12,
+    depth: 10,
+    material: 'plaster',
+    doors: ['west', 'north'],
+  },
+  {
+    id: 'north-stores',
+    name: 'NORTH / STORES',
+    x: 22,
+    z: 60,
+    width: 12,
+    depth: 10,
+    material: 'brick',
+    doors: ['east', 'south'],
+  },
+  {
+    id: 'harbour-security',
+    name: 'HARBOUR / SECURITY',
+    x: -28,
+    z: 62,
+    width: 12,
+    depth: 10,
+    material: 'concrete',
+    doors: ['east', 'south'],
+  },
 ]
-for(const b of buildings)b.architecture=b.id==='relay-office'?'workshop':/cafe|barracks|dispatch/.test(b.id)?'shop':'house'
-const solids: Solid[] = TRAINING_WORLD.solids.filter(s => !s.id.startsWith('boundary-'))
-function box(id: string, x: number, y: number, z: number, width: number, height: number, depth: number, material: Solid['material']) {
+for (const b of buildings)
+  b.architecture =
+    b.id === 'relay-office' ? 'workshop' : /cafe|barracks|dispatch/.test(b.id) ? 'shop' : 'house'
+const solids: Solid[] = TRAINING_WORLD.solids.filter((s) => !s.id.startsWith('boundary-'))
+function box(
+  id: string,
+  x: number,
+  y: number,
+  z: number,
+  width: number,
+  height: number,
+  depth: number,
+  material: Solid['material'],
+) {
   solids.push({ id, x, y, z, width, height, depth, material })
 }
 for (const building of buildings.slice(TRAINING_WORLD.buildings.length)) {
   for (const side of ['north', 'south', 'east', 'west'] as const) {
-    const horizontal = side === 'north' || side === 'south', sign = side === 'north' || side === 'east' ? 1 : -1
+    const horizontal = side === 'north' || side === 'south',
+      sign = side === 'north' || side === 'east' ? 1 : -1
     const length = horizontal ? building.width : building.depth
-    const x = building.x + (horizontal ? 0 : sign * building.width / 2), z = building.z + (horizontal ? sign * building.depth / 2 : 0)
+    const x = building.x + (horizontal ? 0 : (sign * building.width) / 2),
+      z = building.z + (horizontal ? (sign * building.depth) / 2 : 0)
     if (building.doors.includes(side)) {
       const segment = (length - 3) / 2
       for (const direction of [-1, 1]) {
         const offset = direction * (1.5 + segment / 2)
-        box(`${building.id}-${side}-${direction}`, x + (horizontal ? offset : 0), 1.9, z + (horizontal ? 0 : offset), horizontal ? segment : .4, 3.8, horizontal ? .4 : segment, building.material)
+        box(
+          `${building.id}-${side}-${direction}`,
+          x + (horizontal ? offset : 0),
+          1.9,
+          z + (horizontal ? 0 : offset),
+          horizontal ? segment : 0.4,
+          3.8,
+          horizontal ? 0.4 : segment,
+          building.material,
+        )
       }
-      box(`${building.id}-${side}-lintel`, x, 3.4, z, horizontal ? 3 : .4, .8, horizontal ? .4 : 3, building.material)
-    } else box(`${building.id}-${side}`, x, 1.9, z, horizontal ? length : .4, 3.8, horizontal ? .4 : length, building.material)
+      box(
+        `${building.id}-${side}-lintel`,
+        x,
+        3.4,
+        z,
+        horizontal ? 3 : 0.4,
+        0.8,
+        horizontal ? 0.4 : 3,
+        building.material,
+      )
+    } else
+      box(
+        `${building.id}-${side}`,
+        x,
+        1.9,
+        z,
+        horizontal ? length : 0.4,
+        3.8,
+        horizontal ? 0.4 : length,
+        building.material,
+      )
   }
-  box(`${building.id}-roof`, building.x, 3.95, building.z, 12.6, .3, 10.6, 'roof')
+  box(`${building.id}-roof`, building.x, 3.95, building.z, 12.6, 0.3, 10.6, 'roof')
 }
-for (const [x,z,w,d] of [[0,85,171,.6],[0,-85,171,.6],[-85,0,.6,170],[85,0,.6,170]]) box(`depot-boundary-${x}-${z}`,x!,1.7,z!,w!,3.4,d!,'concrete')
-for (const [x,z] of [[-30,-10],[28,-20],[-15,32],[17,33],[-62,-10],[-54,-14],[-62,-18],[46,-42],[54,-44],[62,-42],[38,60],[38,68],[-50,52],[-58,56]]) {
-  box(`freight-${x}-${z}`,x!,1.4,z!,5.5,2.8,3,'metal')
-  for (const side of [-1,1]) box(`freight-rib-${x}-${z}-${side}`,x!+side*2.5,1.4,z!, .1,2.8,3.05,'metal')
+for (const [x, z, w, d] of [
+  [0, 85, 171, 0.6],
+  [0, -85, 171, 0.6],
+  [-85, 0, 0.6, 170],
+  [85, 0, 0.6, 170],
+])
+  box(`depot-boundary-${x}-${z}`, x!, 1.7, z!, w!, 3.4, d!, 'concrete')
+for (const [x, z] of [
+  [-30, -10],
+  [28, -20],
+  [-15, 32],
+  [17, 33],
+  [-62, -10],
+  [-54, -14],
+  [-62, -18],
+  [46, -42],
+  [54, -44],
+  [62, -42],
+  [38, 60],
+  [38, 68],
+  [-50, 52],
+  [-58, 56],
+]) {
+  box(`freight-${x}-${z}`, x!, 1.4, z!, 5.5, 2.8, 3, 'metal')
+  for (const side of [-1, 1])
+    box(`freight-rib-${x}-${z}-${side}`, x! + side * 2.5, 1.4, z!, 0.1, 2.8, 3.05, 'metal')
 }
 // Staggered barricades form approaches to the office without sealing either door.
-for (const [x,z,w,d] of [[50,47,5,.7],[70,46,5,.7],[49,61,.7,5],[73,61,.7,5],[-58,-56,5,.7],[-72,-56,5,.7]]) box(`checkpoint-cover-${x}-${z}`,x!, .6,z!,w!,1.2,d!,'concrete')
-for (const [x,z] of [[-74,44],[-72,-28],[72,26],[40,74]]) box(`planter-${x}-${z}`,x!, .4,z!,2.2,.8,2.2,'concrete')
-for (const [x,z] of [[-36,-54],[36,38],[66,42],[-66,-42]]) box(`lamp-${x}-${z}`,x!,2.3,z!,.16,4.6,.16,'metal')
-box('relay-terminal',0,.7,29.8,1.2,1.4,.5,'metal')
-box('relay-mast',-2,5,31,.3,10,.3,'metal')
-box('relay-crossbar',-2,8,31,4,.12,.12,'metal')
-const cars = [...TRAINING_WORLD.cars, { id: 'extraction-car', x: -71, z: -67, sideways: true, color: '#435b53' }]
+for (const [x, z, w, d] of [
+  [50, 47, 5, 0.7],
+  [70, 46, 5, 0.7],
+  [49, 61, 0.7, 5],
+  [73, 61, 0.7, 5],
+  [-58, -56, 5, 0.7],
+  [-72, -56, 5, 0.7],
+])
+  box(`checkpoint-cover-${x}-${z}`, x!, 0.6, z!, w!, 1.2, d!, 'concrete')
+for (const [x, z] of [
+  [-74, 44],
+  [-72, -28],
+  [72, 26],
+  [40, 74],
+])
+  box(`planter-${x}-${z}`, x!, 0.4, z!, 2.2, 0.8, 2.2, 'concrete')
+for (const [x, z] of [
+  [-36, -54],
+  [36, 38],
+  [66, 42],
+  [-66, -42],
+])
+  box(`lamp-${x}-${z}`, x!, 2.3, z!, 0.16, 4.6, 0.16, 'metal')
+box('relay-terminal', 0, 0.7, 29.8, 1.2, 1.4, 0.5, 'metal')
+box('relay-mast', -2, 5, 31, 0.3, 10, 0.3, 'metal')
+box('relay-crossbar', -2, 8, 31, 4, 0.12, 0.12, 'metal')
+const cars = [
+  ...TRAINING_WORLD.cars,
+  { id: 'extraction-car', x: -71, z: -67, sideways: true, color: '#435b53' },
+]
 export const CAMPAIGN_WORLD: WorldGeometry = {
-  id: 'harbour-relay', name: 'HARBOUR RELAY', limit: 84, buildings, solids, cars, roadCenters: [],
-  place:{identity:'Harbour streets and old town shops',atmosphere:'day',preview:{eye:[-4,3,-39],target:[-9,2,12]}},
-  surfaces:[{x:0,z:0,width:9,depth:157,kind:'asphalt'},{x:0,z:0,width:152,depth:8,kind:'asphalt'},{x:36,z:38,width:8,depth:76,kind:'asphalt'},{x:-37,z:-37,width:7,depth:73,kind:'asphalt'},{x:-7,z:-55,width:26,depth:18,kind:'grass'}],
-  colliders: [...solids, ...cars.map(car => ({ id: car.id, x: car.x, y: .78, z: car.z, width: car.sideways ? 4.5 : 2, height: 1.56, depth: car.sideways ? 2 : 4.5, material: 'metal' as const }))],
-  navigationPoints: [EXTRACTION_MISSION.relay, EXTRACTION_MISSION.captive, EXTRACTION_MISSION.extraction, ...buildings.slice(3).flatMap(b => [{x:b.x,y:0,z:b.z-7},{x:b.x,y:0,z:b.z-3},{x:b.x-8,y:0,z:b.z},{x:b.x+8,y:0,z:b.z}])],
+  id: 'harbour-relay',
+  name: 'HARBOUR RELAY',
+  limit: 84,
+  buildings,
+  solids,
+  cars,
+  roadCenters: [],
+  place: {
+    identity: 'Harbour streets and old town shops',
+    atmosphere: 'day',
+    preview: { eye: [-4, 3, -39], target: [-9, 2, 12] },
+  },
+  surfaces: [
+    { x: 0, z: 0, width: 9, depth: 157, kind: 'asphalt' },
+    { x: 0, z: 0, width: 152, depth: 8, kind: 'asphalt' },
+    { x: 36, z: 38, width: 8, depth: 76, kind: 'asphalt' },
+    { x: -37, z: -37, width: 7, depth: 73, kind: 'asphalt' },
+    { x: -7, z: -55, width: 26, depth: 18, kind: 'grass' },
+  ],
+  colliders: [
+    ...solids,
+    ...cars.map((car) => ({
+      id: car.id,
+      x: car.x,
+      y: 0.78,
+      z: car.z,
+      width: car.sideways ? 4.5 : 2,
+      height: 1.56,
+      depth: car.sideways ? 2 : 4.5,
+      material: 'metal' as const,
+    })),
+  ],
+  navigationPoints: [
+    EXTRACTION_MISSION.relay,
+    EXTRACTION_MISSION.captive,
+    EXTRACTION_MISSION.extraction,
+    ...buildings.slice(3).flatMap((b) => [
+      { x: b.x, y: 0, z: b.z - 7 },
+      { x: b.x, y: 0, z: b.z - 3 },
+      { x: b.x - 8, y: 0, z: b.z },
+      { x: b.x + 8, y: 0, z: b.z },
+    ]),
+  ],
 }
 export const CAMPAIGN_GUARDS: Position[] = [
-  { x: 5, y: 0, z: -48 }, { x: -5, y: 0, z: 7 }, { x: 5, y: 0, z: 23 },
-  { x: 52, y: 0, z: 44 }, { x: 60, y: 0, z: 52 }, { x: -24, y: 0, z: 23 }, { x: 24, y: 0, z: -28 },
-  { x: 68, y: 0, z: 44 }, { x: 55, y: 0, z: 56 }, { x: 64, y: 0, z: 56 },
-  { x: 50, y: 0, z: 63 }, { x: 71, y: 0, z: 62 }, { x: 44, y: 0, z: 28 },
-  { x: -56, y: 0, z: -28 }, { x: -26, y: 0, z: -54 }, { x: 15, y: 0, z: -44 },
+  { x: 5, y: 0, z: -48 },
+  { x: -5, y: 0, z: 7 },
+  { x: 5, y: 0, z: 23 },
+  { x: 52, y: 0, z: 44 },
+  { x: 60, y: 0, z: 52 },
+  { x: -24, y: 0, z: 23 },
+  { x: 24, y: 0, z: -28 },
+  { x: 68, y: 0, z: 44 },
+  { x: 55, y: 0, z: 56 },
+  { x: 64, y: 0, z: 56 },
+  { x: 50, y: 0, z: 63 },
+  { x: 71, y: 0, z: 62 },
+  { x: 44, y: 0, z: 28 },
+  { x: -56, y: 0, z: -28 },
+  { x: -26, y: 0, z: -54 },
+  { x: 15, y: 0, z: -44 },
 ]
 
 export interface CampaignMission {
-  id: string; chapter: string; title: string; operation: string; kind: 'extraction' | 'sabotage' | 'assault' | 'defense' | 'defusal' | 'intelligence'
-  briefing: string; debrief: string; companion: string; successTitle: string
-  relay: Position; captive: Position; extraction: Position
-  spawn: Position; rescueSpawn: Position; escortSpawn: Position
-  interactMs: number; extractMs: number; interactionRadius: number; extractionRadius: number
-  world: WorldGeometry; guards: readonly Position[]
+  id: string
+  chapter: string
+  title: string
+  operation: string
+  kind: 'extraction' | 'sabotage' | 'assault' | 'defense' | 'defusal' | 'intelligence'
+  briefing: string
+  debrief: string
+  companion: string
+  successTitle: string
+  relay: Position
+  captive: Position
+  extraction: Position
+  spawn: Position
+  rescueSpawn: Position
+  escortSpawn: Position
+  interactMs: number
+  extractMs: number
+  interactionRadius: number
+  extractionRadius: number
+  world: WorldGeometry
+  guards: readonly Position[]
   tasks?: readonly CampaignTask[]
   objectives: typeof CAMPAIGN_OBJECTIVES
 }
-const freightRelay = {x:0,y:0,z:-23}, freightCharge={x:62,y:0,z:49}, freightExit={x:-76,y:0,z:-78}
-const villageRelay={x:-48,y:0,z:21}, villageCaptive={x:40,y:0,z:44}, villageExit={x:58,y:0,z:-64}
+const freightRelay = { x: 0, y: 0, z: -23 },
+  freightCharge = { x: 62, y: 0, z: 49 },
+  freightExit = { x: -76, y: 0, z: -78 }
+const villageRelay = { x: -48, y: 0, z: 21 },
+  villageCaptive = { x: 40, y: 0, z: 44 },
+  villageExit = { x: 58, y: 0, z: -64 }
 export const CAMPAIGN_MISSIONS: readonly CampaignMission[] = [
-  { ...EXTRACTION_MISSION, kind:'extraction', companion:'Finch', successTitle:'Finch is safe.', world:CAMPAIGN_WORLD, guards:CAMPAIGN_GUARDS, objectives:CAMPAIGN_OBJECTIVES },
-  { id:'dead-freight',chapter:'02',title:'Dead freight',operation:'Operation Breakwater',kind:'sabotage',companion:'',successTitle:'Shipment destroyed.',
-    briefing:'Finch’s routes lead to North Quay. Slip through the container lanes, recover the shipment manifest from customs, then arm a charge inside Freight 07. Reach the western safe zone to trigger the demolition.',
-    debrief:'The shipment is destroyed. The manifest names Kite Ridge as the next target. A field medic there needs an evacuation before the hostile unit arrives.',
-    relay:freightRelay,captive:freightCharge,extraction:freightExit,spawn:{x:0,y:0,z:-82},rescueSpawn:{x:0,y:0,z:-24},escortSpawn:{x:62,y:0,z:46},
-    interactMs:2800,extractMs:5000,interactionRadius:2.8,extractionRadius:5,world:FREIGHT_PORT,
-    guards:[[-10,-54],[10,-40],[-5,-22],[12,-8],[-18,10],[18,20],[62,37],[66,46],[58,52],[72,38],[36,50],[-66,44],[-48,40],[-74,-44],[-8,-40],[8,-34],[-6,-17],[6,-17],[62,-48],[64,-40],[-76,-14],[-20,60],[70,51],[50,37]].map(([x,z])=>({x:x!,y:0,z:z!})),
-    objectives:{relay:{title:'Recover the manifest',instruction:'Enter the customs terminal circle and stay there to download the manifest.',position:freightRelay},rescue:{title:'Arm the demolition charge',instruction:'Reach Freight 07. Enter the marked circle to arm the charge automatically.',position:freightCharge},extract:{title:'Reach the safe zone',instruction:'Leave the freight shed. Stay in the western safe zone for five seconds to detonate the shipment.',position:freightExit}},
+  {
+    ...EXTRACTION_MISSION,
+    kind: 'extraction',
+    companion: 'Finch',
+    successTitle: 'Finch is safe.',
+    world: CAMPAIGN_WORLD,
+    guards: CAMPAIGN_GUARDS,
+    objectives: CAMPAIGN_OBJECTIVES,
   },
-  { id:'safe-passage',chapter:'03',title:'Safe passage',operation:'Operation Breakwater',kind:'extraction',companion:'Iris',successTitle:'Iris is safe.',
-    briefing:'The clinic at Kite Ridge is surrounded. Open an evacuation channel at the western watch post, reach medic Iris in the northeast clinic, then escort her through the village gardens to the southern pickup.',
-    debrief:'Iris and the evacuation records are safe. With the harbour shipment stopped and the ridge route open, Breakwater has bought the district another day.',
-    relay:villageRelay,captive:villageCaptive,extraction:villageExit,spawn:{x:-58,y:0,z:-64},rescueSpawn:{x:-48,y:0,z:20},escortSpawn:{x:40,y:0,z:41},
-    interactMs:2200,extractMs:5000,interactionRadius:2.8,extractionRadius:5,world:HILL_VILLAGE,
-    guards:[[-58,-42],[-40,-18],[-42,14],[-50,24],[-10,0],[16,24],[32,34],[46,34],[38,46],[46,48],[20,56],[56,4],[54,-32],[-18,40]].map(([x,z])=>({x:x!,y:0,z:z!})),
-    objectives:{relay:{title:'Open the evacuation channel',instruction:'Enter the watch post radio circle to contact the evacuation team.',position:villageRelay},rescue:{title:'Recover Iris',instruction:'Find Iris in the field clinic. Enter her circle to start the rescue.',position:villageCaptive},extract:{title:'Escort Iris to the pickup',instruction:'Keep Iris within 18 metres. Stay together in the southern pickup circle for five seconds.',position:villageExit}},
+  {
+    id: 'dead-freight',
+    chapter: '02',
+    title: 'Dead freight',
+    operation: 'Operation Breakwater',
+    kind: 'sabotage',
+    companion: '',
+    successTitle: 'Shipment destroyed.',
+    briefing:
+      'Finch’s routes lead to North Quay. Slip through the container lanes, recover the shipment manifest from customs, then arm a charge inside Freight 07. Reach the western safe zone to trigger the demolition.',
+    debrief:
+      'The shipment is destroyed. The manifest names Kite Ridge as the next target. A field medic there needs an evacuation before the hostile unit arrives.',
+    relay: freightRelay,
+    captive: freightCharge,
+    extraction: freightExit,
+    spawn: { x: 0, y: 0, z: -82 },
+    rescueSpawn: { x: 0, y: 0, z: -24 },
+    escortSpawn: { x: 62, y: 0, z: 46 },
+    interactMs: 2800,
+    extractMs: 5000,
+    interactionRadius: 2.8,
+    extractionRadius: 5,
+    world: FREIGHT_PORT,
+    guards: [
+      [-10, -54],
+      [10, -40],
+      [-5, -22],
+      [12, -8],
+      [-18, 10],
+      [18, 20],
+      [62, 37],
+      [66, 46],
+      [58, 52],
+      [72, 38],
+      [36, 50],
+      [-66, 44],
+      [-48, 40],
+      [-74, -44],
+      [-8, -40],
+      [8, -34],
+      [-6, -17],
+      [6, -17],
+      [62, -48],
+      [64, -40],
+      [-76, -14],
+      [-20, 60],
+      [70, 51],
+      [50, 37],
+    ].map(([x, z]) => ({ x: x!, y: 0, z: z! })),
+    objectives: {
+      relay: {
+        title: 'Recover the manifest',
+        instruction: 'Enter the customs terminal circle and stay there to download the manifest.',
+        position: freightRelay,
+      },
+      rescue: {
+        title: 'Arm the demolition charge',
+        instruction: 'Reach Freight 07. Enter the marked circle to arm the charge automatically.',
+        position: freightCharge,
+      },
+      extract: {
+        title: 'Reach the safe zone',
+        instruction:
+          'Leave the freight shed. Stay in the western safe zone for five seconds to detonate the shipment.',
+        position: freightExit,
+      },
+    },
+  },
+  {
+    id: 'safe-passage',
+    chapter: '03',
+    title: 'Safe passage',
+    operation: 'Operation Breakwater',
+    kind: 'extraction',
+    companion: 'Iris',
+    successTitle: 'Iris is safe.',
+    briefing:
+      'The clinic at Kite Ridge is surrounded. Open an evacuation channel at the western watch post, reach medic Iris in the northeast clinic, then escort her through the village gardens to the southern pickup.',
+    debrief:
+      'Iris and the evacuation records are safe. With the harbour shipment stopped and the ridge route open, Breakwater has bought the district another day.',
+    relay: villageRelay,
+    captive: villageCaptive,
+    extraction: villageExit,
+    spawn: { x: -58, y: 0, z: -64 },
+    rescueSpawn: { x: -48, y: 0, z: 20 },
+    escortSpawn: { x: 40, y: 0, z: 41 },
+    interactMs: 2200,
+    extractMs: 5000,
+    interactionRadius: 2.8,
+    extractionRadius: 5,
+    world: HILL_VILLAGE,
+    guards: [
+      [-58, -42],
+      [-40, -18],
+      [-42, 14],
+      [-50, 24],
+      [-10, 0],
+      [16, 24],
+      [32, 34],
+      [46, 34],
+      [38, 46],
+      [46, 48],
+      [20, 56],
+      [56, 4],
+      [54, -32],
+      [-18, 40],
+    ].map(([x, z]) => ({ x: x!, y: 0, z: z! })),
+    objectives: {
+      relay: {
+        title: 'Open the evacuation channel',
+        instruction: 'Enter the watch post radio circle to contact the evacuation team.',
+        position: villageRelay,
+      },
+      rescue: {
+        title: 'Recover Iris',
+        instruction: 'Find Iris in the field clinic. Enter her circle to start the rescue.',
+        position: villageCaptive,
+      },
+      extract: {
+        title: 'Escort Iris to the pickup',
+        instruction:
+          'Keep Iris within 18 metres. Stay together in the southern pickup circle for five seconds.',
+        position: villageExit,
+      },
+    },
   },
   ...OPERATION_MISSIONS,
 ]
 export function getCampaignMission(id: unknown = 'last-signal'): CampaignMission {
-  return CAMPAIGN_MISSIONS.find(mission=>mission.id===id) ?? CAMPAIGN_MISSIONS[0]!
+  return CAMPAIGN_MISSIONS.find((mission) => mission.id === id) ?? CAMPAIGN_MISSIONS[0]!
 }
 
 export function getMissionTasks(mission: CampaignMission): readonly CampaignTask[] {
   if (mission.tasks) return mission.tasks
-  return (['relay','rescue','extract'] as const).map((stage,index)=>({
-    ...mission.objectives[stage], id:`${mission.id}-${stage}`,kind: index===2?'extract':index===1&&mission.companion?'rescue':'interact',
-    durationMs:index===2?mission.extractMs:mission.interactMs,radius:index===2?mission.extractionRadius:mission.interactionRadius,
+  return (['relay', 'rescue', 'extract'] as const).map((stage, index) => ({
+    ...mission.objectives[stage],
+    id: `${mission.id}-${stage}`,
+    kind: index === 2 ? 'extract' : index === 1 && mission.companion ? 'rescue' : 'interact',
+    durationMs: index === 2 ? mission.extractMs : mission.interactMs,
+    radius: index === 2 ? mission.extractionRadius : mission.interactionRadius,
   }))
 }
 export function activeCampaignTask(state: CampaignState): CampaignTask {
-  const mission=getCampaignMission(state.missionId)
-  return getMissionTasks(mission)[state.operation?.index ?? (state.stage==='relay'?0:state.stage==='rescue'?1:2)]!
+  const mission = getCampaignMission(state.missionId)
+  return getMissionTasks(mission)[
+    state.operation?.index ?? (state.stage === 'relay' ? 0 : state.stage === 'rescue' ? 1 : 2)
+  ]!
 }

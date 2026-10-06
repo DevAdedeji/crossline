@@ -26,19 +26,36 @@ export function trainingAudio(preparedContext?: AudioContext) {
     master.connect(limiter)
     limiter.connect(context.destination)
     const buffers = await Promise.all(
-      ['ak47-shot-1-8f2b986d6d', 'ak47-shot-2-39946610b0', 'ak47-reload-d5c4b39405'].map(async (name) => {
-        const response = await fetch(`/audio/${name}.wav`)
-        if (!response.ok) throw new Error(`Audio unavailable: ${name}`)
-        return context!.decodeAudioData(await response.arrayBuffer())
-      }),
+      ['ak47-shot-1-8f2b986d6d', 'ak47-shot-2-39946610b0', 'ak47-reload-d5c4b39405'].map(
+        async (name) => {
+          const response = await fetch(`/audio/${name}.wav`)
+          if (!response.ok) throw new Error(`Audio unavailable: ${name}`)
+          return context!.decodeAudioData(await response.arrayBuffer())
+        },
+      ),
     )
-    healBuffer=context.createBuffer(1,Math.ceil(context.sampleRate*.22),context.sampleRate)
-    const chime=healBuffer.getChannelData(0)
-    for(let i=0;i<chime.length;i++){const t=i/context.sampleRate;chime[i]=Math.sin(2*Math.PI*(t<.1?660:880)*t)*Math.sin(Math.PI*i/chime.length)*.15}
-    explosionBuffer=context.createBuffer(1,Math.ceil(context.sampleRate*.8),context.sampleRate)
-    const boom=explosionBuffer.getChannelData(0)
-    let low=0
-    for(let i=0;i<boom.length;i++){const t=i/context.sampleRate;low=low*.88+(Math.random()*2-1)*.12;boom[i]=(low*1.8+Math.sin(t*2*Math.PI*55)*.3)*Math.exp(-t*7)*Math.min(1,t*200)}
+    healBuffer = context.createBuffer(1, Math.ceil(context.sampleRate * 0.22), context.sampleRate)
+    const chime = healBuffer.getChannelData(0)
+    for (let i = 0; i < chime.length; i++) {
+      const t = i / context.sampleRate
+      chime[i] =
+        Math.sin(2 * Math.PI * (t < 0.1 ? 660 : 880) * t) *
+        Math.sin((Math.PI * i) / chime.length) *
+        0.15
+    }
+    explosionBuffer = context.createBuffer(
+      1,
+      Math.ceil(context.sampleRate * 0.8),
+      context.sampleRate,
+    )
+    const boom = explosionBuffer.getChannelData(0)
+    let low = 0
+    for (let i = 0; i < boom.length; i++) {
+      const t = i / context.sampleRate
+      low = low * 0.88 + (Math.random() * 2 - 1) * 0.12
+      boom[i] =
+        (low * 1.8 + Math.sin(t * 2 * Math.PI * 55) * 0.3) * Math.exp(-t * 7) * Math.min(1, t * 200)
+    }
     shots = buffers.slice(0, 2)
     reloadBuffer = buffers[2]
   }
@@ -74,7 +91,10 @@ export function trainingAudio(preparedContext?: AudioContext) {
     listener?: Position,
     yaw = 0,
   ) {
-    if(kind==='heal'){if(healBuffer)play(healBuffer,1);return}
+    if (kind === 'heal') {
+      if (healBuffer) play(healBuffer, 1)
+      return
+    }
     if (kind !== 'explosion' && (kind !== 'shot' || !shots.length)) return
     const dx = (source?.x ?? 0) - (listener?.x ?? 0),
       dz = (source?.z ?? 0) - (listener?.z ?? 0),
@@ -83,7 +103,10 @@ export function trainingAudio(preparedContext?: AudioContext) {
     const pan = own
       ? 0
       : Math.max(-1, Math.min(1, (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / Math.max(distance, 1)))
-    if(kind==='explosion'){if(explosionBuffer)play(explosionBuffer,volume,pan);return}
+    if (kind === 'explosion') {
+      if (explosionBuffer) play(explosionBuffer, volume, pan)
+      return
+    }
     play(shots[Math.floor(Math.random() * shots.length)]!, volume, pan)
   }
   function stopReload() {

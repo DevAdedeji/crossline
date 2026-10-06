@@ -1,5 +1,31 @@
-import { PLAYER_GRENADES, GRENADE_FUSE_MS, grenadeDamage, stepPlayerGrenade, type PlayerGrenade } from '../campaignGrenades.js'
-import { SOLO, SOLO_HEALTH_PACKS, type HealthPickup, moveHuman, stanceAmount, stanceHeight, stanceEye, stanceAim, stanceHead, TICK_MS, move, isBlocked, COMBAT_WORLD, TRAINING_WORLD, COMBAT_SPAWNS, COMBAT_BOT_COUNT, type WorldGeometry, type Position, type MoveInput } from '@crossline/shared'
+import {
+  PLAYER_GRENADES,
+  GRENADE_FUSE_MS,
+  grenadeDamage,
+  stepPlayerGrenade,
+  type PlayerGrenade,
+} from '../campaignGrenades.js'
+import {
+  SOLO,
+  SOLO_HEALTH_PACKS,
+  type HealthPickup,
+  moveHuman,
+  stanceAmount,
+  stanceHeight,
+  stanceEye,
+  stanceAim,
+  stanceHead,
+  TICK_MS,
+  move,
+  isBlocked,
+  COMBAT_WORLD,
+  TRAINING_WORLD,
+  COMBAT_SPAWNS,
+  COMBAT_BOT_COUNT,
+  type WorldGeometry,
+  type Position,
+  type MoveInput,
+} from '@crossline/shared'
 import {
   TRAINING,
   RIFLE,
@@ -37,12 +63,21 @@ interface BotMemory {
   pursuing?: boolean
 }
 const DEFAULT_BOT_PROFILE = {
-  sightRange: 44, nearAwareness: 0, halfFov: 1.25, searchMs: 2500, patrolRadius: 32,
-  reactionMs: SOLO.reactionMs, reactionJitterMs: SOLO.reactionJitterMs,
-  shotIntervalMs: SOLO.shotIntervalMs, burstShots: SOLO.burstShots,
-  burstRestMs: SOLO.burstRestMs, burstRestJitterMs: SOLO.burstRestJitterMs,
-  maxAttackers: SOLO.maxAttackers, bodyDamage: SOLO.botBodyDamage,
-  headDamage: SOLO.botHeadDamage, damageGraceMs: SOLO.damageGraceMs,
+  sightRange: 44,
+  nearAwareness: 0,
+  halfFov: 1.25,
+  searchMs: 2500,
+  patrolRadius: 32,
+  reactionMs: SOLO.reactionMs,
+  reactionJitterMs: SOLO.reactionJitterMs,
+  shotIntervalMs: SOLO.shotIntervalMs,
+  burstShots: SOLO.burstShots,
+  burstRestMs: SOLO.burstRestMs,
+  burstRestJitterMs: SOLO.burstRestJitterMs,
+  maxAttackers: SOLO.maxAttackers,
+  bodyDamage: SOLO.botBodyDamage,
+  headDamage: SOLO.botHeadDamage,
+  damageGraceMs: SOLO.damageGraceMs,
 }
 type BotProfile = { [Key in keyof typeof DEFAULT_BOT_PROFILE]: number }
 export interface SimulationScenario {
@@ -56,7 +91,7 @@ export interface SimulationScenario {
 }
 export class TrainingGame {
   grenades = new Map<string, PlayerGrenade>()
-  private grenadeSequence=0
+  private grenadeSequence = 0
   actors = new Map<string, Combatant>()
   phase: Phase = 'ready'
   elapsed = 0
@@ -64,11 +99,21 @@ export class TrainingGame {
   input: CombatInput = { ...IDLE_INPUT }
   events: GameEvent[] = []
   healthPacks = new Map<string, HealthPickup>()
-  get world() { return this.scenario?.world ?? (this.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD) }
-  get spawns() { return this.scenario?.spawns ?? (this.mode !== 'training' ? COMBAT_SPAWNS : TRAINING_SPAWNS) }
-  get navigation() { return getNavigation(this.world) }
-  private move(position: Position, input: MoveInput, dt: number) { return move(position, input, dt, this.world, stanceHeight(position as Combatant)) }
-  private worldHit(origin: Position, ray: Position) { return worldHit(origin, ray, RIFLE.range, this.world) }
+  get world() {
+    return this.scenario?.world ?? (this.mode !== 'training' ? COMBAT_WORLD : TRAINING_WORLD)
+  }
+  get spawns() {
+    return this.scenario?.spawns ?? (this.mode !== 'training' ? COMBAT_SPAWNS : TRAINING_SPAWNS)
+  }
+  get navigation() {
+    return getNavigation(this.world)
+  }
+  private move(position: Position, input: MoveInput, dt: number) {
+    return move(position, input, dt, this.world, stanceHeight(position as Combatant))
+  }
+  private worldHit(origin: Position, ray: Position) {
+    return worldHit(origin, ray, RIFLE.range, this.world)
+  }
   private lastNoise?: { id: string; position: Position; at: number }
   private humanInputs = new Map<string, CombatInput>()
   private spawnHistory = new Map<string, string[]>()
@@ -90,12 +135,15 @@ export class TrainingGame {
       name,
       bot,
       ...position,
-      yaw: bot ? [Math.PI / 2, 0, -Math.PI / 3, 0, Math.PI * 0.75][Number(id.split('-')[1]) % 5]! : 0,
+      yaw: bot
+        ? [Math.PI / 2, 0, -Math.PI / 3, 0, Math.PI * 0.75][Number(id.split('-')[1]) % 5]!
+        : 0,
       pitch: 0,
       crouch: 0,
       health: 100,
       ammo: RIFLE.magazine,
-      grenades: PLAYER_GRENADES, grenadeReadyAt: 0,
+      grenades: PLAYER_GRENADES,
+      grenadeReadyAt: 0,
       kills: 0,
       deaths: 0,
       score: 0,
@@ -110,25 +158,54 @@ export class TrainingGame {
     }
   }
   reset() {
-    this.grenades.clear();this.grenadeSequence=0
+    this.grenades.clear()
+    this.grenadeSequence = 0
     this.lastNoise = undefined
     this.spawnHistory.clear()
     this.humanInputs.clear()
     this.actors.clear()
     this.memories.clear()
     this.healthPacks.clear()
-    if(this.mode !== 'training')for(const pack of this.scenario?.healthPacks ?? SOLO_HEALTH_PACKS)this.healthPacks.set(pack.id,{...pack,availableAt:0})
+    if (this.mode !== 'training')
+      for (const pack of this.scenario?.healthPacks ?? SOLO_HEALTH_PACKS)
+        this.healthPacks.set(pack.id, { ...pack, availableAt: 0 })
     this.elapsed = 0
     this.phase = 'ready'
     this.input = { ...IDLE_INPUT }
     this.events = []
-    if (this.mode === 'online') { this.phase = 'playing'; return }
+    if (this.mode === 'online') {
+      this.phase = 'playing'
+      return
+    }
     this.actors.set(this.humanId, this.actor(this.humanId, 'YOU', false, this.spawns[0]!))
-    for (let i = 0; i < (this.scenario?.botCount ?? (this.mode === 'solo' ? COMBAT_BOT_COUNT : TRAINING.botCount)); i++) {
+    for (
+      let i = 0;
+      i <
+      (this.scenario?.botCount ?? (this.mode === 'solo' ? COMBAT_BOT_COUNT : TRAINING.botCount));
+      i++
+    ) {
       const id = `bot-${i}`
       this.actors.set(
         id,
-        this.actor(id, ['ROOK', 'MAKO', 'ECHO', 'SABLE', 'VEX', 'ASH', 'NOVA', 'FLINT', 'GHOST', 'ONYX', 'REED', 'VALE'][i] ?? `GUARD ${i+1}`, true, this.spawns[i + 1]!),
+        this.actor(
+          id,
+          [
+            'ROOK',
+            'MAKO',
+            'ECHO',
+            'SABLE',
+            'VEX',
+            'ASH',
+            'NOVA',
+            'FLINT',
+            'GHOST',
+            'ONYX',
+            'REED',
+            'VALE',
+          ][i] ?? `GUARD ${i + 1}`,
+          true,
+          this.spawns[i + 1]!,
+        ),
       )
       this.memories.set(id, {
         path: [],
@@ -154,31 +231,42 @@ export class TrainingGame {
     this.input = { ...IDLE_INPUT }
   }
   addHuman(id: string, name: string) {
-    if(this.mode !== 'online' || this.actors.has(id)) return
-    const actor=this.actor(id,name,false,this.spawns[0]!)
-    actor.connected=true; actor.participating=false
-    this.actors.set(id,actor); this.humanInputs.set(id,{...IDLE_INPUT})
+    if (this.mode !== 'online' || this.actors.has(id)) return
+    const actor = this.actor(id, name, false, this.spawns[0]!)
+    actor.connected = true
+    actor.participating = false
+    this.actors.set(id, actor)
+    this.humanInputs.set(id, { ...IDLE_INPUT })
   }
   enterHuman(id: string) {
-    const actor=this.actors.get(id)
-    if(this.phase !== 'playing' || !actor || actor.participating !== false) return
-    actor.participating=true; this.respawn(actor)
+    const actor = this.actors.get(id)
+    if (this.phase !== 'playing' || !actor || actor.participating !== false) return
+    actor.participating = true
+    this.respawn(actor)
   }
   stopHuman(id: string) {
-    const actor=this.actors.get(id)
-    if(actor) this.humanInputs.set(id,{...IDLE_INPUT,yaw:actor.yaw,pitch:actor.pitch,crouch:stanceAmount(actor)>0})
+    const actor = this.actors.get(id)
+    if (actor)
+      this.humanInputs.set(id, {
+        ...IDLE_INPUT,
+        yaw: actor.yaw,
+        pitch: actor.pitch,
+        crouch: stanceAmount(actor) > 0,
+      })
   }
   removeHuman(id: string) {
-    for(const [key,g] of this.grenades)if(g.sourceId===id)this.grenades.delete(key)
-    this.actors.delete(id); this.humanInputs.delete(id); this.spawnHistory.delete(id)
+    for (const [key, g] of this.grenades) if (g.sourceId === id) this.grenades.delete(key)
+    this.actors.delete(id)
+    this.humanInputs.delete(id)
+    this.spawnHistory.delete(id)
   }
   acceptInput(value: unknown, id = this.humanId): boolean {
     const input = parseCombatInput(value)
     if (!input) return false
-    if(this.mode === 'online') {
-      const actor=this.actors.get(id)
-      if(!actor || !actor.connected || !actor.participating) return false
-      this.humanInputs.set(id,input)
+    if (this.mode === 'online') {
+      const actor = this.actors.get(id)
+      if (!actor || !actor.connected || !actor.participating) return false
+      this.humanInputs.set(id, input)
     } else this.input = input
     return true
   }
@@ -196,46 +284,101 @@ export class TrainingGame {
     actor.reloadUntil = this.elapsed + RIFLE.reloadMs
     return true
   }
-  throwGrenade(id:string):boolean {
-    const actor=this.actors.get(id)
-    if(this.phase!=='playing'||!actor||actor.bot||actor.participating===false||actor.connected===false||actor.health<=0||!actor.grenades||(actor.grenadeReadyAt??0)>this.elapsed||this.grenades.size>=128)return false
-    const ray=direction(actor.yaw,actor.pitch),key=`grenade-${++this.grenadeSequence}`
-    actor.grenades--;actor.grenadeReadyAt=this.elapsed+1000
+  throwGrenade(id: string): boolean {
+    const actor = this.actors.get(id)
+    if (
+      this.phase !== 'playing' ||
+      !actor ||
+      actor.bot ||
+      actor.participating === false ||
+      actor.connected === false ||
+      actor.health <= 0 ||
+      !actor.grenades ||
+      (actor.grenadeReadyAt ?? 0) > this.elapsed ||
+      this.grenades.size >= 128
+    )
+      return false
+    const ray = direction(actor.yaw, actor.pitch),
+      key = `grenade-${++this.grenadeSequence}`
+    actor.grenades--
+    actor.grenadeReadyAt = this.elapsed + 1000
     // Throwing, like firing, ends spawn protection.
-    actor.protectedUntil=this.elapsed
-    this.lastNoise={id:actor.id,position:{x:actor.x,y:actor.y,z:actor.z},at:this.elapsed}
-    this.grenades.set(key,{id:key,sourceId:id,x:actor.x,y:actor.y+stanceEye(actor)-.15,z:actor.z,vx:ray.x*16,vy:ray.y*16+5,vz:ray.z*16,remainingMs:GRENADE_FUSE_MS})
-    this.events.push({type:'grenade-thrown',sourceId:id})
+    actor.protectedUntil = this.elapsed
+    this.lastNoise = {
+      id: actor.id,
+      position: { x: actor.x, y: actor.y, z: actor.z },
+      at: this.elapsed,
+    }
+    this.grenades.set(key, {
+      id: key,
+      sourceId: id,
+      x: actor.x,
+      y: actor.y + stanceEye(actor) - 0.15,
+      z: actor.z,
+      vx: ray.x * 16,
+      vy: ray.y * 16 + 5,
+      vz: ray.z * 16,
+      remainingMs: GRENADE_FUSE_MS,
+    })
+    this.events.push({ type: 'grenade-thrown', sourceId: id })
     return true
   }
-  private stepGrenades(dt:number){
-    for(const [id,g] of this.grenades){
-      stepPlayerGrenade(g,this.world,dt)
-      if(g.remainingMs>0)continue
-      this.grenades.delete(id);this.events.push({type:'explosion',position:{x:g.x,y:g.y,z:g.z}})
-      const source=this.actors.get(g.sourceId)
-      if(!source)continue
-      for(const victim of this.actors.values()){
-        if(victim.health<=0||victim.participating===false||victim.protectedUntil>this.elapsed)continue
-        const damage=grenadeDamage(victim,g,this.world,110)
-        if(!damage)continue
-        victim.health=Math.max(0,victim.health-damage);victim.lastDamage=this.elapsed
-        this.events.push({type:'damage',sourceId:source.id,targetId:victim.id,damage,health:victim.health})
-        if(!victim.health){
-          victim.deaths++;victim.respawnUntil=this.elapsed+TRAINING.respawnMs;victim.reloadUntil=0
-          if(victim!==source){source.kills++;source.score+=100}
-          this.events.push({type:'kill',killerId:source.id,victimId:victim.id,killer:victim===source?'OWN GRENADE':source.name,victim:victim.name,humanKill:source.id===this.humanId&&victim!==source})
+  private stepGrenades(dt: number) {
+    for (const [id, g] of this.grenades) {
+      stepPlayerGrenade(g, this.world, dt)
+      if (g.remainingMs > 0) continue
+      this.grenades.delete(id)
+      this.events.push({ type: 'explosion', position: { x: g.x, y: g.y, z: g.z } })
+      const source = this.actors.get(g.sourceId)
+      if (!source) continue
+      for (const victim of this.actors.values()) {
+        if (
+          victim.health <= 0 ||
+          victim.participating === false ||
+          victim.protectedUntil > this.elapsed
+        )
+          continue
+        const damage = grenadeDamage(victim, g, this.world, 110)
+        if (!damage) continue
+        victim.health = Math.max(0, victim.health - damage)
+        victim.lastDamage = this.elapsed
+        this.events.push({
+          type: 'damage',
+          sourceId: source.id,
+          targetId: victim.id,
+          damage,
+          health: victim.health,
+        })
+        if (!victim.health) {
+          victim.deaths++
+          victim.respawnUntil = this.elapsed + TRAINING.respawnMs
+          victim.reloadUntil = 0
+          if (victim !== source) {
+            source.kills++
+            source.score += 100
+          }
+          this.events.push({
+            type: 'kill',
+            killerId: source.id,
+            victimId: victim.id,
+            killer: victim === source ? 'OWN GRENADE' : source.name,
+            victim: victim.name,
+            humanKill: source.id === this.humanId && victim !== source,
+          })
         }
       }
     }
   }
   private respawn(actor: Combatant) {
-    const others = [...this.actors.values()].filter((other) => other.id !== actor.id && other.participating !== false && other.health > 0)
+    const others = [...this.actors.values()].filter(
+      (other) => other.id !== actor.id && other.participating !== false && other.health > 0,
+    )
     const key = (point: Position) => `${point.x}/${point.y}/${point.z}`
     const history = this.spawnHistory.get(actor.id) ?? []
     const separation = (point: Position) =>
       Math.min(
-        100, ...others.map(
+        100,
+        ...others.map(
           (other) =>
             Math.hypot(other.x - point.x, other.z - point.z) + Math.abs(other.y - point.y) * 3,
         ),
@@ -248,17 +391,32 @@ export class TrainingGame {
     )
     const fresh = candidates.filter((point) => !history.includes(key(point)))
     const pool = fresh.length ? fresh : candidates
-    const safety = (point: Position) => separation(point) + (this.mode !== 'training'
-      ? others.filter(other => other.health > 0 && this.worldHit(
-        { x: other.x, y: other.y + stanceEye(other), z: other.z },
-        direction(Math.atan2(point.x - other.x, point.z - other.z),
-          -Math.atan2(point.y + 1.1 - other.y - stanceEye(other), Math.hypot(point.x - other.x, point.z - other.z))),
-      ) < Math.hypot(point.x - other.x, point.z - other.z) - 0.5).length * 6
-      : 0)
-    const nearby = this.mode !== 'training' ? pool.filter(p=>separation(p)>=12 && separation(p)<=45) : []
+    const safety = (point: Position) =>
+      separation(point) +
+      (this.mode !== 'training'
+        ? others.filter(
+            (other) =>
+              other.health > 0 &&
+              this.worldHit(
+                { x: other.x, y: other.y + stanceEye(other), z: other.z },
+                direction(
+                  Math.atan2(point.x - other.x, point.z - other.z),
+                  -Math.atan2(
+                    point.y + 1.1 - other.y - stanceEye(other),
+                    Math.hypot(point.x - other.x, point.z - other.z),
+                  ),
+                ),
+              ) <
+                Math.hypot(point.x - other.x, point.z - other.z) - 0.5,
+          ).length * 6
+        : 0)
+    const nearby =
+      this.mode !== 'training' ? pool.filter((p) => separation(p) >= 12 && separation(p) <= 45) : []
     // Score each candidate once; comparator raycasts multiplied respawn work by sort comparisons.
-    const ranked = (nearby.length ? nearby : pool).map(point=>({point,score:safety(point)}))
-      .sort((a,b)=>b.score-a.score).map(entry=>entry.point)
+    const ranked = (nearby.length ? nearby : pool)
+      .map((point) => ({ point, score: safety(point) }))
+      .sort((a, b) => b.score - a.score)
+      .map((entry) => entry.point)
     const spawn = actor.bot
       ? (ranked[Math.floor(this.random() * Math.min(4, ranked.length))] ?? this.spawns[0]!)
       : (ranked[0] ?? this.spawns[0]!)
@@ -266,11 +424,14 @@ export class TrainingGame {
     Object.assign(actor, spawn, {
       health: 100,
       ammo: RIFLE.magazine,
-      grenades: PLAYER_GRENADES, grenadeReadyAt: 0,
+      grenades: PLAYER_GRENADES,
+      grenadeReadyAt: 0,
       reloadUntil: 0,
       respawnUntil: 0,
       crouch: 0,
-      protectedUntil: this.elapsed + (this.mode === 'solo' && !actor.bot ? SOLO.protectionMs : TRAINING.protectionMs),
+      protectedUntil:
+        this.elapsed +
+        (this.mode === 'solo' && !actor.bot ? SOLO.protectionMs : TRAINING.protectionMs),
       lastDamage: this.elapsed,
       lastShot: this.elapsed,
     })
@@ -280,9 +441,23 @@ export class TrainingGame {
     this.events.push({ type: 'spawn', actorId: actor.id, yaw: actor.yaw })
     const memory = this.memories.get(actor.id)
     if (memory) {
-      Object.assign(memory, { path: [], nextPlan: 0, targetId: undefined, lastSeenId: undefined, lastSeen: undefined,
-        seenAt: undefined, reactAt: undefined, nextShot: undefined, burstLeft: 0, nextScan: 0,
-        goal: undefined, intent: undefined, holdUntil: 0, stalledMs: 0, pursuing: false })
+      Object.assign(memory, {
+        path: [],
+        nextPlan: 0,
+        targetId: undefined,
+        lastSeenId: undefined,
+        lastSeen: undefined,
+        seenAt: undefined,
+        reactAt: undefined,
+        nextShot: undefined,
+        burstLeft: 0,
+        nextScan: 0,
+        goal: undefined,
+        intent: undefined,
+        holdUntil: 0,
+        stalledMs: 0,
+        pursuing: false,
+      })
     }
   }
   fire(actor: Combatant, yaw: number, pitch: number, aiming = false): boolean {
@@ -291,7 +466,9 @@ export class TrainingGame {
       this.phase !== 'playing' ||
       (actor.bot && this.mode === 'training') ||
       actor.participating === false ||
-      (this.mode !== 'training' && actor.protectedUntil > this.elapsed && (actor.bot || !this.scenario?.fireEndsProtection)) ||
+      (this.mode !== 'training' &&
+        actor.protectedUntil > this.elapsed &&
+        (actor.bot || !this.scenario?.fireEndsProtection)) ||
       actor.health <= 0 ||
       actor.reloadUntil ||
       actor.ammo <= 0 ||
@@ -299,8 +476,13 @@ export class TrainingGame {
     )
       return false
     // Campaign players may shoot immediately; a successful shot gives up their safe-entry window.
-    if(this.scenario?.fireEndsProtection&&!actor.bot)actor.protectedUntil=Math.min(actor.protectedUntil,this.elapsed)
-    this.lastNoise = { id: actor.id, position: { x: actor.x, y: actor.y, z: actor.z }, at: this.elapsed }
+    if (this.scenario?.fireEndsProtection && !actor.bot)
+      actor.protectedUntil = Math.min(actor.protectedUntil, this.elapsed)
+    this.lastNoise = {
+      id: actor.id,
+      position: { x: actor.x, y: actor.y, z: actor.z },
+      at: this.elapsed,
+    }
     actor.lastShot = this.elapsed
     actor.ammo--
     actor.shots++
@@ -313,7 +495,8 @@ export class TrainingGame {
     let distance = this.worldHit(origin, ray)
     let victim: Combatant | undefined
     for (const candidate of this.actors.values()) {
-      if (candidate.id === actor.id || candidate.health <= 0 || candidate.participating === false) continue
+      if (candidate.id === actor.id || candidate.health <= 0 || candidate.participating === false)
+        continue
       const hit = actorHit(origin, ray, candidate, distance)
       if (hit !== null && hit < distance) {
         distance = hit
@@ -329,12 +512,24 @@ export class TrainingGame {
     let headshot = false
     let eliminated = false
     // Friendly bots still block the ray, but Solo bot shots can only damage humans.
-    if (victim && victim.protectedUntil <= this.elapsed &&
-        !(this.mode === 'solo' && actor.bot && (victim.bot || this.elapsed-victim.lastDamage<this.botProfile.damageGraceMs))) {
+    if (
+      victim &&
+      victim.protectedUntil <= this.elapsed &&
+      !(
+        this.mode === 'solo' &&
+        actor.bot &&
+        (victim.bot || this.elapsed - victim.lastDamage < this.botProfile.damageGraceMs)
+      )
+    ) {
       headshot = end.y >= victim.y + stanceHead(victim)
-      damage = this.mode === 'solo' && actor.bot
-        ? headshot ? this.botProfile.headDamage : this.botProfile.bodyDamage
-        : headshot ? RIFLE.headDamage : RIFLE.damage
+      damage =
+        this.mode === 'solo' && actor.bot
+          ? headshot
+            ? this.botProfile.headDamage
+            : this.botProfile.bodyDamage
+          : headshot
+            ? RIFLE.headDamage
+            : RIFLE.damage
       victim.health = Math.max(0, victim.health - damage)
       victim.lastDamage = this.elapsed
       actor.hits++
@@ -356,7 +551,8 @@ export class TrainingGame {
         actor.score += 100 + (headshot ? 25 : 0)
         this.events.push({
           type: 'kill',
-          killerId:actor.id,victimId:victim.id,
+          killerId: actor.id,
+          victimId: victim.id,
           killer: actor.name,
           victim: victim.name,
           humanKill: actor.id === this.humanId,
@@ -425,55 +621,109 @@ export class TrainingGame {
   protected investigate(ids: readonly string[], position: Position) {
     for (const id of ids) {
       const memory = this.memories.get(id)
-      if (memory) { memory.lastSeen = {...position}; memory.lastSeenId=undefined; memory.seenAt=this.elapsed; memory.nextPlan=0 }
+      if (memory) {
+        memory.lastSeen = { ...position }
+        memory.lastSeenId = undefined
+        memory.seenAt = this.elapsed
+        memory.nextPlan = 0
+      }
     }
   }
   private canSee(bot: Combatant, target: Combatant): boolean {
-    const dx = target.x - bot.x, dz = target.z - bot.z
+    const dx = target.x - bot.x,
+      dz = target.z - bot.z
     const distance = Math.hypot(dx, dz)
     if (distance > this.botProfile.sightRange) return false
     const yaw = Math.atan2(dx, dz)
     const angle = Math.atan2(Math.sin(yaw - bot.yaw), Math.cos(yaw - bot.yaw))
-    if (distance > this.botProfile.nearAwareness && Math.abs(angle) > this.botProfile.halfFov && this.elapsed - bot.lastDamage > 1200) return false
-    const ray = direction(yaw, -Math.atan2(target.y + stanceAim(target) - bot.y - stanceEye(bot), distance))
-    return this.worldHit({ x: bot.x, y: bot.y + stanceEye(bot), z: bot.z }, ray) >
+    if (
+      distance > this.botProfile.nearAwareness &&
+      Math.abs(angle) > this.botProfile.halfFov &&
+      this.elapsed - bot.lastDamage > 1200
+    )
+      return false
+    const ray = direction(
+      yaw,
+      -Math.atan2(target.y + stanceAim(target) - bot.y - stanceEye(bot), distance),
+    )
+    return (
+      this.worldHit({ x: bot.x, y: bot.y + stanceEye(bot), z: bot.z }, ray) >
       Math.hypot(dx, dz, target.y + stanceAim(target) - bot.y - stanceEye(bot)) - 0.4
+    )
   }
   private humanTarget(actor: Combatant | undefined): actor is Combatant {
-    return !!actor && !actor.bot && actor.participating !== false &&
-      actor.health > 0 && actor.protectedUntil <= this.elapsed
+    return (
+      !!actor &&
+      !actor.bot &&
+      actor.participating !== false &&
+      actor.health > 0 &&
+      actor.protectedUntil <= this.elapsed
+    )
   }
   private combatBotStep(bot: Combatant, dt: number) {
     const memory = this.memories.get(bot.id)!
     // Invalidate before flinch/reload/scan delays, including last-seen pursuit after sight loss.
-    if ((memory.targetId && !this.humanTarget(this.actors.get(memory.targetId))) ||
-        (memory.lastSeenId && !this.humanTarget(this.actors.get(memory.lastSeenId)))) {
-      Object.assign(memory, { targetId: undefined, lastSeenId: undefined, lastSeen: undefined,
-        seenAt: undefined, reactAt: undefined, nextShot: undefined, burstLeft: 0,
-        path: [], nextPlan: 0, nextScan: 0, goal: undefined, intent: undefined,
-        holdUntil: 0, stalledMs: 0, pursuing: false })
+    if (
+      (memory.targetId && !this.humanTarget(this.actors.get(memory.targetId))) ||
+      (memory.lastSeenId && !this.humanTarget(this.actors.get(memory.lastSeenId)))
+    ) {
+      Object.assign(memory, {
+        targetId: undefined,
+        lastSeenId: undefined,
+        lastSeen: undefined,
+        seenAt: undefined,
+        reactAt: undefined,
+        nextShot: undefined,
+        burstLeft: 0,
+        path: [],
+        nextPlan: 0,
+        nextScan: 0,
+        goal: undefined,
+        intent: undefined,
+        holdUntil: 0,
+        stalledMs: 0,
+        pursuing: false,
+      })
     }
     if (this.elapsed - bot.lastDamage < 300) return
     if (bot.ammo === 0) this.reload(bot.id)
     if (this.elapsed >= (memory.nextScan ?? 0)) {
-      const candidates = [...this.actors.values()].filter((actor) =>
-        this.humanTarget(actor) && this.canSee(bot, actor))
-      candidates.sort((a, b) =>
-        Math.hypot(a.x - bot.x, a.z - bot.z) * (a.id === memory.targetId ? 0.75 : 1) -
-        Math.hypot(b.x - bot.x, b.z - bot.z) * (b.id === memory.targetId ? 0.75 : 1))
+      const candidates = [...this.actors.values()].filter(
+        (actor) => this.humanTarget(actor) && this.canSee(bot, actor),
+      )
+      candidates.sort(
+        (a, b) =>
+          Math.hypot(a.x - bot.x, a.z - bot.z) * (a.id === memory.targetId ? 0.75 : 1) -
+          Math.hypot(b.x - bot.x, b.z - bot.z) * (b.id === memory.targetId ? 0.75 : 1),
+      )
       const target = candidates[0]
       if (target) {
         if (target.id !== memory.targetId) {
-          memory.reactAt = this.elapsed + this.botProfile.reactionMs + this.random() * this.botProfile.reactionJitterMs
+          memory.reactAt =
+            this.elapsed +
+            this.botProfile.reactionMs +
+            this.random() * this.botProfile.reactionJitterMs
           memory.burstLeft = 0
           memory.nextShot = memory.reactAt
           // A confirmed sighting alerts nearby squadmates to investigate the
           // last seen position. Every shot still requires individual sight.
-          if (this.scenario) for (const other of this.actors.values()) {
-            if (!other.bot || other.id === bot.id || other.health <= 0 || Math.hypot(other.x-bot.x,other.z-bot.z)>34) continue
-            const squad = this.memories.get(other.id)!
-            if (!squad.targetId) { squad.lastSeenId=target.id; squad.lastSeen={x:target.x,y:target.y,z:target.z}; squad.seenAt=this.elapsed; squad.nextPlan=0 }
-          }
+          if (this.scenario)
+            for (const other of this.actors.values()) {
+              if (
+                !other.bot ||
+                other.id === bot.id ||
+                other.health <= 0 ||
+                Math.hypot(other.x - bot.x, other.z - bot.z) > 34
+              )
+                continue
+              const squad = this.memories.get(other.id)!
+              if (!squad.targetId) {
+                squad.lastSeenId = target.id
+                squad.lastSeen = { x: target.x, y: target.y, z: target.z }
+                squad.seenAt = this.elapsed
+                squad.nextPlan = 0
+              }
+            }
         }
         memory.targetId = target.id
         memory.lastSeenId = target.id
@@ -487,45 +737,80 @@ export class TrainingGame {
     let destination: Position | undefined
     let intent: BotMemory['intent']
     if (visible) {
-      const dx = target.x - bot.x, dz = target.z - bot.z, distance = Math.hypot(dx, dz)
+      const dx = target.x - bot.x,
+        dz = target.z - bot.z,
+        distance = Math.hypot(dx, dz)
       const wanted = Math.atan2(dx, dz)
       const delta = Math.atan2(Math.sin(wanted - bot.yaw), Math.cos(wanted - bot.yaw))
       bot.yaw += Math.max(-dt * 0.0025, Math.min(dt * 0.0025, delta))
       bot.pitch = -Math.atan2(target.y + stanceAim(target) - bot.y - stanceEye(bot), distance)
-      if (this.elapsed >= (memory.reactAt ?? Infinity) && !bot.reloadUntil &&
-          Math.abs(delta) < 0.12 && this.elapsed >= (memory.nextShot ?? 0) &&
-          [...this.actors.values()].filter(other=>other.bot && other.id!==bot.id && other.health>0 &&
-            this.memories.get(other.id)?.targetId===target.id && this.elapsed-other.lastShot<900).length < this.botProfile.maxAttackers) {
+      if (
+        this.elapsed >= (memory.reactAt ?? Infinity) &&
+        !bot.reloadUntil &&
+        Math.abs(delta) < 0.12 &&
+        this.elapsed >= (memory.nextShot ?? 0) &&
+        [...this.actors.values()].filter(
+          (other) =>
+            other.bot &&
+            other.id !== bot.id &&
+            other.health > 0 &&
+            this.memories.get(other.id)?.targetId === target.id &&
+            this.elapsed - other.lastShot < 900,
+        ).length < this.botProfile.maxAttackers
+      ) {
         if (!memory.burstLeft) {
           memory.burstLeft = this.botProfile.burstShots
           memory.aimYaw = (this.random() - 0.5) * 0.075
           memory.aimPitch = (this.random() - 0.5) * 0.04
         }
-        if (this.fire(bot, bot.yaw + (memory.aimYaw ?? 0), bot.pitch + (memory.aimPitch ?? 0), true)) {
+        if (
+          this.fire(bot, bot.yaw + (memory.aimYaw ?? 0), bot.pitch + (memory.aimPitch ?? 0), true)
+        ) {
           memory.burstLeft--
-          memory.nextShot = this.elapsed + (memory.burstLeft ? this.botProfile.shotIntervalMs : this.botProfile.burstRestMs + this.random() * this.botProfile.burstRestJitterMs)
+          memory.nextShot =
+            this.elapsed +
+            (memory.burstLeft
+              ? this.botProfile.shotIntervalMs
+              : this.botProfile.burstRestMs + this.random() * this.botProfile.burstRestJitterMs)
         }
       }
-      if ((bot.reloadUntil || bot.health < 45) && memory.intent === 'cover' && memory.goal && this.elapsed < (memory.holdUntil ?? 0)) {
+      if (
+        (bot.reloadUntil || bot.health < 45) &&
+        memory.intent === 'cover' &&
+        memory.goal &&
+        this.elapsed < (memory.holdUntil ?? 0)
+      ) {
         destination = memory.goal
         intent = 'cover'
       } else if (bot.reloadUntil || bot.health < 45) {
         // Seek nearby geometry that breaks the opponent's line of sight while recovering.
-        const cover = this.navigation.points.filter((point) => Math.hypot(point.x - bot.x, point.z - bot.z) < 12 &&
-          Math.abs(point.y - bot.y) < 0.5 &&
-          this.worldHit({ x: target.x, y: target.y + stanceEye(target), z: target.z },
-            direction(Math.atan2(point.x - target.x, point.z - target.z),
-              -Math.atan2(point.y + 1.1 - target.y - stanceEye(target), Math.hypot(point.x - target.x, point.z - target.z)))) <
-            Math.hypot(point.x - target.x, point.z - target.z) - 0.5)
-        cover.sort((a, b) => Math.hypot(a.x - bot.x, a.z - bot.z) - Math.hypot(b.x - bot.x, b.z - bot.z))
+        const cover = this.navigation.points.filter(
+          (point) =>
+            Math.hypot(point.x - bot.x, point.z - bot.z) < 12 &&
+            Math.abs(point.y - bot.y) < 0.5 &&
+            this.worldHit(
+              { x: target.x, y: target.y + stanceEye(target), z: target.z },
+              direction(
+                Math.atan2(point.x - target.x, point.z - target.z),
+                -Math.atan2(
+                  point.y + 1.1 - target.y - stanceEye(target),
+                  Math.hypot(point.x - target.x, point.z - target.z),
+                ),
+              ),
+            ) <
+              Math.hypot(point.x - target.x, point.z - target.z) - 0.5,
+        )
+        cover.sort(
+          (a, b) => Math.hypot(a.x - bot.x, a.z - bot.z) - Math.hypot(b.x - bot.x, b.z - bot.z),
+        )
         destination = cover[0]
         intent = 'cover'
         memory.holdUntil = this.elapsed + 2500
       } else {
         // Different stop/resume distances prevent shuffling at the engagement edge.
-        memory.pursuing = distance > (memory.pursuing ? 14 : 21) || Math.abs(target.y-bot.y)>.7
+        memory.pursuing = distance > (memory.pursuing ? 14 : 21) || Math.abs(target.y - bot.y) > 0.7
         if (memory.pursuing) {
-          destination = {x:target.x,y:target.y,z:target.z}
+          destination = { x: target.x, y: target.y, z: target.z }
           intent = 'pursue'
         }
       }
@@ -543,62 +828,96 @@ export class TrainingGame {
     } else {
       const noise = this.lastNoise
       // A nearby human shot interrupts wandering instead of expiring behind a long patrol route.
-      if(noise && this.humanTarget(this.actors.get(noise.id)) && this.elapsed-noise.at < 5000 && Math.hypot(noise.position.x-bot.x,noise.position.z-bot.z)<55) {
-        destination=noise.position
-        intent='search'
-      } else if(!memory.path.length && this.elapsed >= (memory.holdUntil ?? 0)) {
+      if (
+        noise &&
+        this.humanTarget(this.actors.get(noise.id)) &&
+        this.elapsed - noise.at < 5000 &&
+        Math.hypot(noise.position.x - bot.x, noise.position.z - bot.z) < 55
+      ) {
+        destination = noise.position
+        intent = 'search'
+      } else if (!memory.path.length && this.elapsed >= (memory.holdUntil ?? 0)) {
         // Campaign patrols stay near their assigned post; Solo patrols follow the active district.
-        const human=this.scenario ? this.scenario.spawns[Number(bot.id.split('-')[1])+1] : [...this.actors.values()].find(actor=>!actor.bot && actor.participating!==false)
-        const local=human ? this.navigation.points.filter(p=>Math.hypot(p.x-human.x,p.z-human.z)<this.botProfile.patrolRadius && Math.abs(p.y-human.y)<4.2 && Math.hypot(p.x-bot.x,p.z-bot.z)>8) : []
-        const patrol=local.length?local:this.navigation.points
-        destination=patrol[Math.floor(this.random()*patrol.length)]
-        intent='patrol'
+        const human = this.scenario
+          ? this.scenario.spawns[Number(bot.id.split('-')[1]) + 1]
+          : [...this.actors.values()].find((actor) => !actor.bot && actor.participating !== false)
+        const local = human
+          ? this.navigation.points.filter(
+              (p) =>
+                Math.hypot(p.x - human.x, p.z - human.z) < this.botProfile.patrolRadius &&
+                Math.abs(p.y - human.y) < 4.2 &&
+                Math.hypot(p.x - bot.x, p.z - bot.z) > 8,
+            )
+          : []
+        const patrol = local.length ? local : this.navigation.points
+        destination = patrol[Math.floor(this.random() * patrol.length)]
+        intent = 'patrol'
       }
     }
-    const goalChanged = destination && (!memory.goal || intent !== memory.intent ||
-      Math.hypot(destination.x-memory.goal.x,destination.z-memory.goal.z)>4 || Math.abs(destination.y-memory.goal.y)>.6)
+    const goalChanged =
+      destination &&
+      (!memory.goal ||
+        intent !== memory.intent ||
+        Math.hypot(destination.x - memory.goal.x, destination.z - memory.goal.z) > 4 ||
+        Math.abs(destination.y - memory.goal.y) > 0.6)
     if (destination && goalChanged && this.elapsed >= memory.nextPlan) {
       memory.path = this.navigation.findPath(bot, destination)
-      memory.goal = {...destination}
+      memory.goal = { ...destination }
       memory.intent = intent
       memory.nextPlan = this.elapsed + 1200
       memory.stalledMs = 0
       if (!memory.path.length) memory.holdUntil = this.elapsed + 1500
     }
     // Consume reached points in the same tick; a waypoint must also be on this floor.
-    while (memory.path[0] && Math.hypot(memory.path[0].x-bot.x,memory.path[0].z-bot.z)<.12 && Math.abs(memory.path[0].y-bot.y)<.3) memory.path.shift()
+    while (
+      memory.path[0] &&
+      Math.hypot(memory.path[0].x - bot.x, memory.path[0].z - bot.z) < 0.12 &&
+      Math.abs(memory.path[0].y - bot.y) < 0.3
+    )
+      memory.path.shift()
     const waypoint = memory.path[0]
     if (waypoint && (!visible || destination)) {
-      const dx = waypoint.x - bot.x, dz = waypoint.z - bot.z, distance = Math.hypot(dx, dz)
-      if (distance > .001) {
+      const dx = waypoint.x - bot.x,
+        dz = waypoint.z - bot.z,
+        distance = Math.hypot(dx, dz)
+      if (distance > 0.001) {
         // 1.8 m/s: a deliberate combat walk, rather than the old 3 m/s jog.
-        let speed = .3
+        let speed = 0.3
         if (!visible) {
-          const delta = Math.atan2(Math.sin(Math.atan2(dx, dz) - bot.yaw), Math.cos(Math.atan2(dx, dz) - bot.yaw))
+          const delta = Math.atan2(
+            Math.sin(Math.atan2(dx, dz) - bot.yaw),
+            Math.cos(Math.atan2(dx, dz) - bot.yaw),
+          )
           bot.yaw += Math.max(-dt * 0.0025, Math.min(dt * 0.0025, delta))
           bot.pitch *= 0.9
           // Turn before walking away, instead of sliding sideways through sharp corners.
-          speed *= Math.max(0,Math.cos(delta))
+          speed *= Math.max(0, Math.cos(delta))
         }
-        speed = Math.min(speed,distance / Math.max(.001,6*dt/1000))
-        const next = this.move(bot, { x: dx / distance * speed, z: dz / distance * speed }, dt)
-        memory.stalledMs = speed>.1 && Math.hypot(next.x-bot.x,next.z-bot.z)<.002 ? (memory.stalledMs ?? 0)+dt : 0
-        Object.assign(bot,next)
-      } else memory.stalledMs = (memory.stalledMs ?? 0)+dt
-      if ((memory.stalledMs ?? 0)>800) {
-        memory.path=[];memory.goal=undefined;memory.stalledMs=0
-        memory.nextPlan=this.elapsed+500
+        speed = Math.min(speed, distance / Math.max(0.001, (6 * dt) / 1000))
+        const next = this.move(bot, { x: (dx / distance) * speed, z: (dz / distance) * speed }, dt)
+        memory.stalledMs =
+          speed > 0.1 && Math.hypot(next.x - bot.x, next.z - bot.z) < 0.002
+            ? (memory.stalledMs ?? 0) + dt
+            : 0
+        Object.assign(bot, next)
+      } else memory.stalledMs = (memory.stalledMs ?? 0) + dt
+      if ((memory.stalledMs ?? 0) > 800) {
+        memory.path = []
+        memory.goal = undefined
+        memory.stalledMs = 0
+        memory.nextPlan = this.elapsed + 500
       }
     } else if (!visible && !memory.path.length && memory.intent === 'patrol') {
-      memory.intent=undefined;memory.goal=undefined
-      memory.holdUntil=this.elapsed+1000
+      memory.intent = undefined
+      memory.goal = undefined
+      memory.holdUntil = this.elapsed + 1000
     }
   }
 
   step(delta = TICK_MS) {
     if (this.phase !== 'playing') return
     const dt = Math.max(0, Math.min(delta, TICK_MS))
-    if(this.mode==='online' && ![...this.actors.values()].some(a=>a.participating))return
+    if (this.mode === 'online' && ![...this.actors.values()].some((a) => a.participating)) return
     this.elapsed += dt
     if (this.durationMs > 0 && this.elapsed >= this.durationMs) {
       this.elapsed = this.durationMs
@@ -608,7 +927,8 @@ export class TrainingGame {
     for (const actor of this.actors.values()) {
       if (actor.participating === false) continue
       if (actor.health <= 0) {
-        if (this.scenario?.respawn !== false && actor.respawnUntil <= this.elapsed) this.respawn(actor)
+        if (this.scenario?.respawn !== false && actor.respawnUntil <= this.elapsed)
+          this.respawn(actor)
         continue
       }
       if (actor.reloadUntil && actor.reloadUntil <= this.elapsed) {
@@ -619,11 +939,12 @@ export class TrainingGame {
         actor.health = Math.min(100, actor.health + dt * 0.01)
       if (actor.bot) this.botStep(actor, dt)
       else {
-        const input = this.mode === 'online' ? this.humanInputs.get(actor.id) ?? IDLE_INPUT : this.input
+        const input =
+          this.mode === 'online' ? (this.humanInputs.get(actor.id) ?? IDLE_INPUT) : this.input
         actor.yaw = input.yaw
         actor.pitch = input.pitch
-        Object.assign(actor,moveHuman(actor,input,dt,this.world))
-        if(input.seq!==undefined)actor.inputSeq=input.seq
+        Object.assign(actor, moveHuman(actor, input, dt, this.world))
+        if (input.seq !== undefined) actor.inputSeq = input.seq
         if (input.fire) this.fire(actor, input.yaw, input.pitch, input.aim)
       }
     }
@@ -631,19 +952,50 @@ export class TrainingGame {
     this.collectHealth()
   }
   private collectHealth() {
-    if(this.mode === 'training')return
-    for(const actor of this.actors.values()) {
-      if(actor.bot || actor.participating===false || actor.protectedUntil>this.elapsed || actor.health<=0 || actor.health>=SOLO.maxHealth)continue
-      for(const pack of this.healthPacks.values()) {
-        if(pack.availableAt>this.elapsed || Math.abs(actor.y-pack.y)>SOLO.pickupFloorTolerance)continue
-        const dx=pack.x-actor.x,dy=pack.y+.35-(actor.y+.5),dz=pack.z-actor.z
-        const length=Math.hypot(dx,dy,dz)
-        if(Math.hypot(dx,dz)>SOLO.pickupRadius || isBlocked(actor,this.world,stanceHeight(actor)))continue
-        if(length>.001 && this.worldHit({x:actor.x,y:actor.y+.5,z:actor.z},{x:dx/length,y:dy/length,z:dz/length})<length-.02)continue
-        const amount=Math.min(SOLO.heal,SOLO.maxHealth-actor.health)
-        pack.availableAt=this.elapsed+SOLO.pickupCooldownMs
-        actor.health+=amount
-        this.events.push({type:'heal',targetId:actor.id,pickupId:pack.id,amount,health:actor.health})
+    if (this.mode === 'training') return
+    for (const actor of this.actors.values()) {
+      if (
+        actor.bot ||
+        actor.participating === false ||
+        actor.protectedUntil > this.elapsed ||
+        actor.health <= 0 ||
+        actor.health >= SOLO.maxHealth
+      )
+        continue
+      for (const pack of this.healthPacks.values()) {
+        if (
+          pack.availableAt > this.elapsed ||
+          Math.abs(actor.y - pack.y) > SOLO.pickupFloorTolerance
+        )
+          continue
+        const dx = pack.x - actor.x,
+          dy = pack.y + 0.35 - (actor.y + 0.5),
+          dz = pack.z - actor.z
+        const length = Math.hypot(dx, dy, dz)
+        if (
+          Math.hypot(dx, dz) > SOLO.pickupRadius ||
+          isBlocked(actor, this.world, stanceHeight(actor))
+        )
+          continue
+        if (
+          length > 0.001 &&
+          this.worldHit(
+            { x: actor.x, y: actor.y + 0.5, z: actor.z },
+            { x: dx / length, y: dy / length, z: dz / length },
+          ) <
+            length - 0.02
+        )
+          continue
+        const amount = Math.min(SOLO.heal, SOLO.maxHealth - actor.health)
+        pack.availableAt = this.elapsed + SOLO.pickupCooldownMs
+        actor.health += amount
+        this.events.push({
+          type: 'heal',
+          targetId: actor.id,
+          pickupId: pack.id,
+          amount,
+          health: actor.health,
+        })
         break
       }
     }

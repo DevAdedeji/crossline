@@ -1,6 +1,16 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { move, isBlocked, TICK_MS, PARKED_CARS, BUILDINGS, SPAWNS, ROOF_HEIGHT, type Position, type MoveInput } from '../packages/shared/src/index.ts'
+import {
+  move,
+  isBlocked,
+  TICK_MS,
+  PARKED_CARS,
+  BUILDINGS,
+  SPAWNS,
+  ROOF_HEIGHT,
+  type Position,
+  type MoveInput,
+} from '../packages/shared/src/index.ts'
 
 function walk(start: Position, input: MoveInput, ticks: number): Position {
   let position = start
@@ -13,7 +23,8 @@ function walk(start: Position, input: MoveInput, ticks: number): Position {
 function to(start: Position, target: { x: number; z: number }): Position {
   let position = start
   for (let tick = 0; tick < 1500; tick++) {
-    const dx = target.x - position.x; const dz = target.z - position.z
+    const dx = target.x - position.x
+    const dz = target.z - position.z
     const distance = Math.hypot(dx, dz)
     if (distance < 0.2) return position
     position = move(position, { x: dx / distance, z: dz / distance }, TICK_MS)
@@ -52,7 +63,17 @@ test('a player can slide alongside cover without passing through it', () => {
 })
 test('the west alley and ramp form a continuous accessible rooftop route', () => {
   let position = SPAWNS[0]!
-  for (const waypoint of [{ x: -21, z: -22 }, { x: -21, z: -20 }, { x: -24, z: -20 }, { x: -24, z: 5.2 }, { x: -20, z: 5.2 }, { x: -20, z: 15.4 }, { x: -15, z: 15.3 }, { x: -12, z: 11 }]) position = to(position, waypoint)
+  for (const waypoint of [
+    { x: -21, z: -22 },
+    { x: -21, z: -20 },
+    { x: -24, z: -20 },
+    { x: -24, z: 5.2 },
+    { x: -20, z: 5.2 },
+    { x: -20, z: 15.4 },
+    { x: -15, z: 15.3 },
+    { x: -12, z: 11 },
+  ])
+    position = to(position, waypoint)
   assert.ok(Math.abs(position.y - ROOF_HEIGHT) < 0.001)
 })
 test('a high ramp side cannot be entered from street level', () => {

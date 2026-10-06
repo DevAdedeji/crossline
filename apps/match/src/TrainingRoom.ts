@@ -22,7 +22,8 @@ export const Actor = schema(
     pitch: t.number(),
     health: t.number(),
     ammo: t.number(),
-    grenades: t.number().default(2), grenadeReadyAt: t.number().default(0),
+    grenades: t.number().default(2),
+    grenadeReadyAt: t.number().default(0),
     kills: t.number(),
     deaths: t.number(),
     score: t.number(),
@@ -37,8 +38,24 @@ export const Actor = schema(
   },
   'Actor',
 )
-export const HealthPack = schema({ id:t.string(), x:t.number(), y:t.number(), z:t.number(), availableAt:t.number() },'HealthPack')
-export const Grenade = schema({id:t.string(),sourceId:t.string(),x:t.number(),y:t.number(),z:t.number(),vx:t.number(),vy:t.number(),vz:t.number(),remainingMs:t.number()},'Grenade')
+export const HealthPack = schema(
+  { id: t.string(), x: t.number(), y: t.number(), z: t.number(), availableAt: t.number() },
+  'HealthPack',
+)
+export const Grenade = schema(
+  {
+    id: t.string(),
+    sourceId: t.string(),
+    x: t.number(),
+    y: t.number(),
+    z: t.number(),
+    vx: t.number(),
+    vy: t.number(),
+    vz: t.number(),
+    remainingMs: t.number(),
+  },
+  'Grenade',
+)
 export const TrainingState = schema(
   {
     actors: t.map(Actor),
@@ -59,15 +76,26 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
   maxMessagesPerSecond = 120
   private game?: TrainingGame
   private lastInput = 0
-  static async onAuth(_token:unknown,_options:unknown,context:AuthContext){return {ip:context.headers.get('x-crossline-client-ip')??'127.0.0.1'}}
+  static async onAuth(_token: unknown, _options: unknown, context: AuthContext) {
+    return { ip: context.headers.get('x-crossline-client-ip') ?? '127.0.0.1' }
+  }
   onCreate() {
-    try{guestBudget.reserve(this.roomId)}catch{throw new ServerError(503,'Guest rooms are busy. Try again shortly.')}
-    this.clock.setTimeout(()=>{void this.disconnect()},30*60*1000)
-    let idleSince=this.clock.elapsedTime
-    this.clock.setInterval(()=>{
-      if(this.game?.phase==='playing')idleSince=this.clock.elapsedTime
-      else if(this.clock.elapsedTime-idleSince>120000)void this.disconnect()
-    },10000)
+    try {
+      guestBudget.reserve(this.roomId)
+    } catch {
+      throw new ServerError(503, 'Guest rooms are busy. Try again shortly.')
+    }
+    this.clock.setTimeout(
+      () => {
+        void this.disconnect()
+      },
+      30 * 60 * 1000,
+    )
+    let idleSince = this.clock.elapsedTime
+    this.clock.setInterval(() => {
+      if (this.game?.phase === 'playing') idleSince = this.clock.elapsedTime
+      else if (this.clock.elapsedTime - idleSince > 120000) void this.disconnect()
+    }, 10000)
     this.setState(new TrainingState())
     this.setPrivate(true)
     this.setPatchRate(TICK_MS)
@@ -87,9 +115,9 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
         value === 'restart' &&
         (this.game.phase === 'finished' || this.game.phase === 'paused')
       ) {
-        const name=this.game.actors.get(this.game.humanId)?.name
+        const name = this.game.actors.get(this.game.humanId)?.name
         this.game.restart()
-        if(name)this.game.actors.get(this.game.humanId)!.name=name
+        if (name) this.game.actors.get(this.game.humanId)!.name = name
       }
       this.sync()
     })
@@ -98,34 +126,46 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
       if (this.game.phase === 'playing' && this.clock.elapsedTime - this.lastInput > 1200)
         this.game.pause()
       if (this.clock.elapsedTime - this.lastInput > 250)
-        this.game.input = { ...IDLE_INPUT, yaw: this.game.input.yaw, pitch: this.game.input.pitch, crouch: this.game.input.crouch }
+        this.game.input = {
+          ...IDLE_INPUT,
+          yaw: this.game.input.yaw,
+          pitch: this.game.input.pitch,
+          crouch: this.game.input.crouch,
+        }
       this.game.step(TICK_MS)
       this.sync()
       for (const event of this.game.drainEvents()) this.broadcast('event', event)
     }, TICK_MS)
   }
-  onJoin(client: Client, options: {name?:unknown}|undefined, auth:{ip:string}) {
-    try{guestBudget.attach(this.roomId,auth.ip)}catch{throw new ServerError(4216,'Close another Solo or Practice session first.')}
+  onJoin(client: Client, options: { name?: unknown } | undefined, auth: { ip: string }) {
+    try {
+      guestBudget.attach(this.roomId, auth.ip)
+    } catch {
+      throw new ServerError(4216, 'Close another Solo or Practice session first.')
+    }
     const testDuration =
       process.env.NODE_ENV === 'test' ? Number(process.env.TRAINING_TEST_DURATION_MS) : NaN
-    const defaultDuration=this.mode==='solo'?QUICK_MATCH_MS:TRAINING.durationMs
+    const defaultDuration = this.mode === 'solo' ? QUICK_MATCH_MS : TRAINING.durationMs
     const duration =
       Number.isFinite(testDuration) && testDuration >= 1000 && testDuration <= TRAINING.durationMs
         ? testDuration
         : defaultDuration
     this.game = new TrainingGame(client.sessionId, duration, Math.random, this.mode)
-    this.game.actors.get(client.sessionId)!.name=playerName(options?.name,client.sessionId)
+    this.game.actors.get(client.sessionId)!.name = playerName(options?.name, client.sessionId)
     this.lastInput = this.clock.elapsedTime
     this.sync()
   }
   private sync() {
     if (!this.game) return
-    for(const [id,value] of this.game.healthPacks) {
-      let pack=this.state.healthPacks.get(id)
-      if(!pack){pack=new HealthPack();this.state.healthPacks.set(id,pack)}
-      Object.assign(pack,value)
+    for (const [id, value] of this.game.healthPacks) {
+      let pack = this.state.healthPacks.get(id)
+      if (!pack) {
+        pack = new HealthPack()
+        this.state.healthPacks.set(id, pack)
+      }
+      Object.assign(pack, value)
     }
-    syncGrenades(this.state,this.game)
+    syncGrenades(this.state, this.game)
     this.state.phase = this.game.phase
     this.state.elapsed = this.game.elapsed
     this.state.duration = this.game.durationMs
@@ -139,7 +179,9 @@ export class TrainingRoom extends Room<{ state: TrainingState }> {
       Object.assign(actor, value)
     }
   }
-  onDispose(){guestBudget.release(this.roomId)}
+  onDispose() {
+    guestBudget.release(this.roomId)
+  }
   onLeave() {
     this.game?.pause()
     this.game = undefined
@@ -152,7 +194,14 @@ export class SoloRoom extends TrainingRoom {
   protected override mode = 'solo' as const
 }
 
-export function syncGrenades(state:TrainingState,game:TrainingGame){
-  for(const id of state.grenades.keys())if(!game.grenades.has(id))state.grenades.delete(id)
-  for(const [id,value] of game.grenades){let grenade=state.grenades.get(id);if(!grenade){grenade=new Grenade();state.grenades.set(id,grenade)}Object.assign(grenade,value)}
+export function syncGrenades(state: TrainingState, game: TrainingGame) {
+  for (const id of state.grenades.keys()) if (!game.grenades.has(id)) state.grenades.delete(id)
+  for (const [id, value] of game.grenades) {
+    let grenade = state.grenades.get(id)
+    if (!grenade) {
+      grenade = new Grenade()
+      state.grenades.set(id, grenade)
+    }
+    Object.assign(grenade, value)
+  }
 }

@@ -20,10 +20,13 @@ export async function loadTrainingAssets(scene: Scene) {
   )
   for (const material of soldier!.materials) {
     if (material instanceof PBRMaterial) {
-      material.metallic = 0; material.roughness = 0.82
+      material.metallic = 0
+      material.roughness = 0.82
       if (['sm002_body', 'sm002_helmet', 'sm002_equipment'].includes(material.name)) {
         // Keep fabric/gear detail and skin tones while making the uniform charcoal black.
-        material.albedoColor = Color3.FromHexString(material.name === 'sm002_equipment' ? '#343b43' : '#252b33')
+        material.albedoColor = Color3.FromHexString(
+          material.name === 'sm002_equipment' ? '#343b43' : '#252b33',
+        )
       }
     }
   }
@@ -49,6 +52,14 @@ export async function loadTrainingAssets(scene: Scene) {
     model.position.x = (1.08008 * length) / 5.493686
     return root
   }
-  return { soldier: soldier!, sedan: sedan!, apartment: apartment!, factory: factory!, tree: tree!, bench: bench!, gun }
+  return {
+    soldier: soldier!,
+    sedan: sedan!,
+    apartment: apartment!,
+    factory: factory!,
+    tree: tree!,
+    bench: bench!,
+    gun,
+  }
 }
 export type TrainingAssets = Awaited<ReturnType<typeof loadTrainingAssets>>

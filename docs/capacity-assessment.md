@@ -8,14 +8,14 @@ Apple M4 Pro, 24 GiB RAM, macOS 26.5.2, Node v24.14.1, one local match process w
 
 The tick and loop p95 columns report the **worst one-second p95** within the window, not a pooled 25-second percentile. CPU is the mean server-process percentage, where 100% equals one core. RSS is peak server-process resident memory. TX/RX are aggregate application payload rates across all clients.
 
-| Players in one arena | Scenario | Tick p95 ms | Max tick ms | Loop p95 ms | RSS MiB | CPU mean | TX KiB/s | RX KiB/s |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 8 | idle-connected | 0.22 | 0.29 | 11.56 | 759 | 2.9% | 7.0 | 10.7 |
-| 8 | movement-and-fire | 1.45 | 2.24 | 11.56 | 651 | 2.9% | 87.3 | 14.4 |
-| 16 | idle-connected | 0.30 | 0.30 | 11.57 | 1079 | 4.3% | 16.5 | 21.4 |
-| 16 | movement-and-fire | 1.19 | 6.53 | 11.74 | 585 | 4.4% | 333.8 | 28.9 |
-| 32 | idle-connected | 0.43 | 0.50 | 11.67 | 998 | 5.0% | 33.1 | 42.9 |
-| 32 | movement-and-fire | 14.72 | 15.22 | 11.58 | 675 | 8.2% | 1299.7 | 57.8 |
+| Players in one arena | Scenario          | Tick p95 ms | Max tick ms | Loop p95 ms | RSS MiB | CPU mean | TX KiB/s | RX KiB/s |
+| -------------------- | ----------------- | ----------: | ----------: | ----------: | ------: | -------: | -------: | -------: |
+| 8                    | idle-connected    |        0.22 |        0.29 |       11.56 |     759 |     2.9% |      7.0 |     10.7 |
+| 8                    | movement-and-fire |        1.45 |        2.24 |       11.56 |     651 |     2.9% |     87.3 |     14.4 |
+| 16                   | idle-connected    |        0.30 |        0.30 |       11.57 |    1079 |     4.3% |     16.5 |     21.4 |
+| 16                   | movement-and-fire |        1.19 |        6.53 |       11.74 |     585 |     4.4% |    333.8 |     28.9 |
+| 32                   | idle-connected    |        0.43 |        0.50 |       11.67 |     998 |     5.0% |     33.1 |     42.9 |
+| 32                   | movement-and-fire |       14.72 |       15.22 |       11.58 |     675 |     8.2% |   1299.7 |     57.8 |
 
 Raw one-second samples: [capacity-results.json](capacity-results.json). This verifies only the bounded workloads above; normal admission now defaults to 100, and 100 remains untested. During movement/fire, aggregate payload rose from 333.8 KiB/s at 16 clients to 1,299.7 KiB/s at 32. Full-state fan-out and all-player event broadcasts still grow with audience size, so these samples do not establish a safe larger public cap.
 

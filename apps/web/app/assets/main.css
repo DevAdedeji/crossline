@@ -1,20 +1,33 @@
-@import "tailwindcss";
-@import "@nuxt/ui";
+@import 'tailwindcss';
+@import '@nuxt/ui';
 
 @layer base {
-  body { @apply m-0 bg-[#141916] font-sans text-[#ebece3] antialiased; }
-  a, button { touch-action: manipulation; }
+  body {
+    @apply m-0 bg-[#141916] font-sans text-[#ebece3] antialiased;
+  }
+  a,
+  button {
+    touch-action: manipulation;
+  }
 }
 
 /* Decorative map grid; interface layout and styling use Tailwind utilities. */
 .field-art {
-  background: repeating-linear-gradient(0deg, transparent, transparent 49px, #738265 50px), repeating-linear-gradient(90deg, transparent, transparent 49px, #738265 50px);
+  background:
+    repeating-linear-gradient(0deg, transparent, transparent 49px, #738265 50px),
+    repeating-linear-gradient(90deg, transparent, transparent 49px, #738265 50px);
   mask-image: linear-gradient(to left, black, transparent);
 }
 
 @media (display-mode: standalone) {
-  .lobby>header { padding-top: max(1rem, env(safe-area-inset-top)); padding-left: max(1.5rem, env(safe-area-inset-left)); padding-right: max(1.5rem, env(safe-area-inset-right)); }
-  .lobby>footer { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+  .lobby > header {
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-left: max(1.5rem, env(safe-area-inset-left));
+    padding-right: max(1.5rem, env(safe-area-inset-right));
+  }
+  .lobby > footer {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
 }
 
 :root {
@@ -25,8 +38,20 @@
   --cl-accent: #ffbb70;
   --cl-line: #ffffff24;
 }
-button { cursor: pointer; }
-button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--cl-accent); outline-offset: 4px; }
+button {
+  cursor: pointer;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--cl-accent);
+  outline-offset: 4px;
+}
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

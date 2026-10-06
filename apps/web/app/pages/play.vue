@@ -1,10 +1,22 @@
 <script setup lang="ts">
-definePageMeta({ middleware: to => {
-  if(to.query.mode!=='campaign'&&to.query.mode!=='online')return navigateTo('/campaign',{replace:true})
-} })
+definePageMeta({
+  middleware: (to) => {
+    if (to.query.mode !== 'campaign' && to.query.mode !== 'online')
+      return navigateTo('/campaign', { replace: true })
+  },
+})
 const route = useRoute()
-const mode = computed(() => route.query.mode === 'online' ? 'online' : 'campaign')
+const mode = computed(() => (route.query.mode === 'online' ? 'online' : 'campaign'))
 </script>
 <template>
-  <main class="relative overflow-hidden"><ClientOnly><OnlineEntry v-if="mode==='online'" :key="route.fullPath" /><TrainingArena v-else :key="route.fullPath" :mode="mode" :mission-id="typeof route.query.mission === 'string' ? route.query.mission : undefined" /><template #fallback><div class="p-12">Preparing the arena…</div></template></ClientOnly></main>
+  <main class="relative overflow-hidden">
+    <ClientOnly
+      ><OnlineEntry v-if="mode === 'online'" :key="route.fullPath" /><TrainingArena
+        v-else
+        :key="route.fullPath"
+        :mode="mode"
+        :mission-id="typeof route.query.mission === 'string' ? route.query.mission : undefined"
+      /><template #fallback><div class="p-12">Preparing the arena…</div></template></ClientOnly
+    >
+  </main>
 </template>

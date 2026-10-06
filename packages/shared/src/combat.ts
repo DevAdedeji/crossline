@@ -43,7 +43,7 @@ export function parseCombatInput(value: unknown): CombatInput | null {
     !('aim' in value)
   )
     return null
-  if ('seq' in value && (!Number.isSafeInteger(value.seq) || (value.seq as number)<1)) return null
+  if ('seq' in value && (!Number.isSafeInteger(value.seq) || (value.seq as number) < 1)) return null
   if ('crouch' in value && typeof value.crouch !== 'boolean') return null
   const { yaw, pitch, fire, aim } = value
   if (
@@ -57,7 +57,15 @@ export function parseCombatInput(value: unknown): CombatInput | null {
     typeof aim !== 'boolean'
   )
     return null
-  return { ...('seq' in value ? {seq:value.seq as number} : {}), ...movement, yaw: yaw % (Math.PI * 2), pitch, fire, aim, crouch: 'crouch' in value ? value.crouch as boolean : false }
+  return {
+    ...('seq' in value ? { seq: value.seq as number } : {}),
+    ...movement,
+    yaw: yaw % (Math.PI * 2),
+    pitch,
+    fire,
+    aim,
+    crouch: 'crouch' in value ? (value.crouch as boolean) : false,
+  }
 }
 export interface Combatant extends Position {
   grenades?: number
@@ -102,7 +110,14 @@ export type GameEvent =
   | ShotEvent
   | { type: 'damage'; targetId: string; sourceId: string; damage: number; health: number }
   | { type: 'spawn'; actorId: string; yaw: number }
-  | { type: 'kill'; killer: string; victim: string; killerId:string; victimId:string; humanKill: boolean }
+  | {
+      type: 'kill'
+      killer: string
+      victim: string
+      killerId: string
+      victimId: string
+      humanKill: boolean
+    }
 export function direction(yaw: number, pitch: number): Position {
   return {
     x: Math.sin(yaw) * Math.cos(pitch),
@@ -132,9 +147,14 @@ export function rayBox(
   }
   return near <= range && far >= 0 ? near : null
 }
-export function worldHit(origin: Position, ray: Position, range: number = RIFLE.range, world: WorldGeometry = TRAINING_WORLD): number {
+export function worldHit(
+  origin: Position,
+  ray: Position,
+  range: number = RIFLE.range,
+  world: WorldGeometry = TRAINING_WORLD,
+): number {
   let distance = range
-  for (const box of raySolids(world,origin,ray,range)) {
+  for (const box of raySolids(world, origin, ray, range)) {
     const hit = rayBox(
       origin,
       ray,

@@ -39,43 +39,104 @@ export function combatPresentation(
     mesh.isPickable = false
   }
   // Find the barrel tip from the imported model rather than guessing an offset.
-  const localVertices:Vector3[]=[]
-  const inverseWeapon=Matrix.Invert(weapon.computeWorldMatrix(true))
-  for(const mesh of gun.getChildMeshes()){
-    const positions=mesh.getVerticesData('position');if(!positions)continue
-    const matrix=mesh.computeWorldMatrix(true).multiply(inverseWeapon)
-    for(let i=0;i<positions.length;i+=3)localVertices.push(Vector3.TransformCoordinates(new Vector3(positions[i],positions[i+1],positions[i+2]),matrix))
+  const localVertices: Vector3[] = []
+  const inverseWeapon = Matrix.Invert(weapon.computeWorldMatrix(true))
+  for (const mesh of gun.getChildMeshes()) {
+    const positions = mesh.getVerticesData('position')
+    if (!positions) continue
+    const matrix = mesh.computeWorldMatrix(true).multiply(inverseWeapon)
+    for (let i = 0; i < positions.length; i += 3)
+      localVertices.push(
+        Vector3.TransformCoordinates(
+          new Vector3(positions[i], positions[i + 1], positions[i + 2]),
+          matrix,
+        ),
+      )
   }
-  const tipZ=Math.max(...localVertices.map(p=>p.z))
-  const rim=localVertices.filter(p=>p.z>tipZ-.006)
-  const muzzlePoint=new Vector3((Math.min(...rim.map(p=>p.x))+Math.max(...rim.map(p=>p.x)))/2,(Math.min(...rim.map(p=>p.y))+Math.max(...rim.map(p=>p.y)))/2,tipZ+.003)
+  const tipZ = Math.max(...localVertices.map((p) => p.z))
+  const rim = localVertices.filter((p) => p.z > tipZ - 0.006)
+  const muzzlePoint = new Vector3(
+    (Math.min(...rim.map((p) => p.x)) + Math.max(...rim.map((p) => p.x))) / 2,
+    (Math.min(...rim.map((p) => p.y)) + Math.max(...rim.map((p) => p.y))) / 2,
+    tipZ + 0.003,
+  )
   // Two narrow crossed flame sheets point down the barrel; no camera-facing yellow orb.
-  const flash = new TransformNode('directional muzzle flash',scene)
-  flash.parent=weapon;flash.position.copyFrom(muzzlePoint)
-  const flameTexture=new DynamicTexture('muzzle flame texture',{width:64,height:128},scene,false)
-  flameTexture.hasAlpha=true
-  const flameInk=flameTexture.getContext() as CanvasRenderingContext2D
-  flameInk.clearRect(0,0,64,128)
-  const flameGradient=flameInk.createLinearGradient(0,128,0,0)
-  flameGradient.addColorStop(0,'rgba(255,250,217,.9)');flameGradient.addColorStop(.3,'rgba(255,194,89,.8)');flameGradient.addColorStop(1,'rgba(245,105,35,0)')
-  flameInk.fillStyle=flameGradient;flameInk.beginPath()
-  flameInk.moveTo(24,128);flameInk.lineTo(10,79);flameInk.lineTo(24,93);flameInk.lineTo(29,4);flameInk.lineTo(39,68);flameInk.lineTo(53,37);flameInk.lineTo(43,106);flameInk.lineTo(39,128);flameInk.closePath();flameInk.fill();flameTexture.update()
-  const glow=material('muzzle flame','#ffffff')
-  glow.diffuseTexture=flameTexture;glow.useAlphaFromDiffuseTexture=true;glow.disableLighting=true;glow.emissiveColor=Color3.White();glow.backFaceCulling=false
-  const flameMeshes:Mesh[]=[]
-  for(const angle of [0,Math.PI/2]){
-    const turn=new TransformNode('flame orientation',scene);turn.parent=flash;turn.rotation.z=angle
-    const flame=MeshBuilder.CreatePlane('barrel flame',{width:.03,height:.10},scene)
-    flame.parent=turn;flame.rotation.x=Math.PI/2;flame.position.z=.045;flame.material=glow;flame.renderingGroupId=2;flame.isPickable=false;flameMeshes.push(flame)
+  const flash = new TransformNode('directional muzzle flash', scene)
+  flash.parent = weapon
+  flash.position.copyFrom(muzzlePoint)
+  const flameTexture = new DynamicTexture(
+    'muzzle flame texture',
+    { width: 64, height: 128 },
+    scene,
+    false,
+  )
+  flameTexture.hasAlpha = true
+  const flameInk = flameTexture.getContext() as CanvasRenderingContext2D
+  flameInk.clearRect(0, 0, 64, 128)
+  const flameGradient = flameInk.createLinearGradient(0, 128, 0, 0)
+  flameGradient.addColorStop(0, 'rgba(255,250,217,.9)')
+  flameGradient.addColorStop(0.3, 'rgba(255,194,89,.8)')
+  flameGradient.addColorStop(1, 'rgba(245,105,35,0)')
+  flameInk.fillStyle = flameGradient
+  flameInk.beginPath()
+  flameInk.moveTo(24, 128)
+  flameInk.lineTo(10, 79)
+  flameInk.lineTo(24, 93)
+  flameInk.lineTo(29, 4)
+  flameInk.lineTo(39, 68)
+  flameInk.lineTo(53, 37)
+  flameInk.lineTo(43, 106)
+  flameInk.lineTo(39, 128)
+  flameInk.closePath()
+  flameInk.fill()
+  flameTexture.update()
+  const glow = material('muzzle flame', '#ffffff')
+  glow.diffuseTexture = flameTexture
+  glow.useAlphaFromDiffuseTexture = true
+  glow.disableLighting = true
+  glow.emissiveColor = Color3.White()
+  glow.backFaceCulling = false
+  const flameMeshes: Mesh[] = []
+  for (const angle of [0, Math.PI / 2]) {
+    const turn = new TransformNode('flame orientation', scene)
+    turn.parent = flash
+    turn.rotation.z = angle
+    const flame = MeshBuilder.CreatePlane('barrel flame', { width: 0.03, height: 0.1 }, scene)
+    flame.parent = turn
+    flame.rotation.x = Math.PI / 2
+    flame.position.z = 0.045
+    flame.material = glow
+    flame.renderingGroupId = 2
+    flame.isPickable = false
+    flameMeshes.push(flame)
   }
   flash.setEnabled(false)
-  const smokeTexture=new DynamicTexture('muzzle smoke texture',64,scene,false);smokeTexture.hasAlpha=true
-  const smokeInk=smokeTexture.getContext() as CanvasRenderingContext2D
-  smokeInk.clearRect(0,0,64,64)
-  const haze=smokeInk.createRadialGradient(30,35,2,32,32,30);haze.addColorStop(0,'rgba(192,198,200,.35)');haze.addColorStop(1,'rgba(192,198,200,0)');smokeInk.fillStyle=haze;smokeInk.fillRect(0,0,64,64);smokeTexture.update()
-  const smokeMaterial=material('muzzle smoke','#c0c6c8');smokeMaterial.diffuseTexture=smokeTexture;smokeMaterial.useAlphaFromDiffuseTexture=true;smokeMaterial.disableLighting=true;smokeMaterial.emissiveColor=Color3.White();smokeMaterial.backFaceCulling=false;smokeMaterial.disableDepthWrite=true
-  const smoke=Array.from({length:3},()=>{const mesh=MeshBuilder.CreatePlane('brief muzzle smoke',{size:.09},scene);mesh.material=smokeMaterial;mesh.billboardMode=Mesh.BILLBOARDMODE_ALL;mesh.isPickable=false;mesh.setEnabled(false);return {mesh,remaining:0}})
-  let smokeIndex=0
+  const smokeTexture = new DynamicTexture('muzzle smoke texture', 64, scene, false)
+  smokeTexture.hasAlpha = true
+  const smokeInk = smokeTexture.getContext() as CanvasRenderingContext2D
+  smokeInk.clearRect(0, 0, 64, 64)
+  const haze = smokeInk.createRadialGradient(30, 35, 2, 32, 32, 30)
+  haze.addColorStop(0, 'rgba(192,198,200,.35)')
+  haze.addColorStop(1, 'rgba(192,198,200,0)')
+  smokeInk.fillStyle = haze
+  smokeInk.fillRect(0, 0, 64, 64)
+  smokeTexture.update()
+  const smokeMaterial = material('muzzle smoke', '#c0c6c8')
+  smokeMaterial.diffuseTexture = smokeTexture
+  smokeMaterial.useAlphaFromDiffuseTexture = true
+  smokeMaterial.disableLighting = true
+  smokeMaterial.emissiveColor = Color3.White()
+  smokeMaterial.backFaceCulling = false
+  smokeMaterial.disableDepthWrite = true
+  const smoke = Array.from({ length: 3 }, () => {
+    const mesh = MeshBuilder.CreatePlane('brief muzzle smoke', { size: 0.09 }, scene)
+    mesh.material = smokeMaterial
+    mesh.billboardMode = Mesh.BILLBOARDMODE_ALL
+    mesh.isPickable = false
+    mesh.setEnabled(false)
+    return { mesh, remaining: 0 }
+  })
+  let smokeIndex = 0
   scene.setRenderingAutoClearDepthStencil(2, true, true, true)
   const bots = new Map<
     string,
@@ -146,27 +207,44 @@ export function combatPresentation(
   // Reuse bounded transient geometry so sustained fire does not create and
   // dispose GPU buffers in the middle of a frame.
   const makeImpactPool = (name: string, count: number, surface: StandardMaterial, plane = false) =>
-    Array.from({length: count}, () => {
-      const mesh = plane ? MeshBuilder.CreatePlane(name, {size: .62}, scene)
-        : MeshBuilder.CreateSphere(name, {diameter: 1, segments: 4}, scene)
-      mesh.material = surface; mesh.isPickable = false; mesh.setEnabled(false)
+    Array.from({ length: count }, () => {
+      const mesh = plane
+        ? MeshBuilder.CreatePlane(name, { size: 0.62 }, scene)
+        : MeshBuilder.CreateSphere(name, { diameter: 1, segments: 4 }, scene)
+      mesh.material = surface
+      mesh.isPickable = false
+      mesh.setEnabled(false)
       if (plane) mesh.billboardMode = Mesh.BILLBOARDMODE_ALL
-      return {mesh, velocity: new Vector3(), remaining: 0, duration: 1}
+      return { mesh, velocity: new Vector3(), remaining: 0, duration: 1 }
     })
   const bloodPool = makeImpactPool('blood impact', 64, blood)
   const dustPool = makeImpactPool('world impact', 40, dust)
   const splashPool = makeImpactPool('blood splash', 12, splashMaterial, true)
   const impacts = [...bloodPool, ...dustPool, ...splashPool]
-  let bloodCursor = 0, dustCursor = 0, splashCursor = 0, tracerCursor = 0
-  const tracers = Array.from({length: 24}, () => {
-    const mesh = MeshBuilder.CreateLines('tracer', {points: [Vector3.Zero(), new Vector3(0,0,.01)], updatable: true}, scene)
-    mesh.isPickable = false; mesh.setEnabled(false)
-    return {mesh, remaining: 0}
+  let bloodCursor = 0,
+    dustCursor = 0,
+    splashCursor = 0,
+    tracerCursor = 0
+  const tracers = Array.from({ length: 24 }, () => {
+    const mesh = MeshBuilder.CreateLines(
+      'tracer',
+      { points: [Vector3.Zero(), new Vector3(0, 0, 0.01)], updatable: true },
+      scene,
+    )
+    mesh.isPickable = false
+    mesh.setEnabled(false)
+    return { mesh, remaining: 0 }
   })
   function sync(actors: Combatant[]) {
-    const visibleActors = actors.filter(a=>(a.bot || mode === 'online') && a.participating !== false)
-    const ids = new Set(visibleActors.map(a=>a.id))
-    for(const [id, actor] of bots) if(!ids.has(id)) { actor.dispose(); bots.delete(id) }
+    const visibleActors = actors.filter(
+      (a) => (a.bot || mode === 'online') && a.participating !== false,
+    )
+    const ids = new Set(visibleActors.map((a) => a.id))
+    for (const [id, actor] of bots)
+      if (!ids.has(id)) {
+        actor.dispose()
+        bots.delete(id)
+      }
     for (const actor of visibleActors) {
       let bot = bots.get(actor.id)
       if (!bot) {
@@ -195,29 +273,47 @@ export function combatPresentation(
         const gun = assets.gun(`${actor.id}-carbine`, root, 0.7)
         gun.position.set(0.18, 1.13, 0.3)
         // Barrel tip in the imported 70cm rifle's local coordinates.
-        const muzzle = new TransformNode(`${actor.id}-muzzle`,scene)
-        muzzle.parent=gun;muzzle.position.set(0,.015,.075)
-        for(const angle of [0,Math.PI/2]) {
-          const flame=MeshBuilder.CreatePlane(`${actor.id}-muzzle-flash`,{width:.035,height:.13},scene)
-          flame.parent=muzzle;flame.rotation.set(Math.PI/2,angle,0);flame.position.z=.05;flame.material=glow;flame.isPickable=false
+        const muzzle = new TransformNode(`${actor.id}-muzzle`, scene)
+        muzzle.parent = gun
+        muzzle.position.set(0, 0.015, 0.075)
+        for (const angle of [0, Math.PI / 2]) {
+          const flame = MeshBuilder.CreatePlane(
+            `${actor.id}-muzzle-flash`,
+            { width: 0.035, height: 0.13 },
+            scene,
+          )
+          flame.parent = muzzle
+          flame.rotation.set(Math.PI / 2, angle, 0)
+          flame.position.z = 0.05
+          flame.material = glow
+          flame.isPickable = false
         }
         muzzle.setEnabled(false)
-        const poseState={amount:0}
-        const disposePose=crouchPose(scene,root,()=>poseState.amount)
-        const disposeWeapon=mode === 'training' ? () => {} : weaponPose(scene,root,gun,()=>({
-          alive:bot?.alive ?? false,pitch:bot?.pitch ?? 0,reload:bot?.reloading ?? false,
-          recoil:Math.max(0,((bot?.shootUntil ?? 0)-clock-.5)/.15),
-        }))
+        const poseState = { amount: 0 }
+        const disposePose = crouchPose(scene, root, () => poseState.amount)
+        const disposeWeapon =
+          mode === 'training'
+            ? () => {}
+            : weaponPose(scene, root, gun, () => ({
+                alive: bot?.alive ?? false,
+                pitch: bot?.pitch ?? 0,
+                reload: bot?.reloading ?? false,
+                recoil: Math.max(0, ((bot?.shootUntil ?? 0) - clock - 0.5) / 0.15),
+              }))
         bot = {
-          get crouch(){return poseState.amount},
-          set crouch(value:number){poseState.amount=value},
+          get crouch() {
+            return poseState.amount
+          },
+          set crouch(value: number) {
+            poseState.amount = value
+          },
           dispose: () => {
             disposePose()
             disposeWeapon()
-            for(const mesh of root.getChildMeshes())shadows.removeShadowCaster(mesh)
-            for(const group of instance.animationGroups)group.dispose()
-            for(const skeleton of instance.skeletons)skeleton.dispose()
-            root.dispose(false,false)
+            for (const mesh of root.getChildMeshes()) shadows.removeShadowCaster(mesh)
+            for (const group of instance.animationGroups) group.dispose()
+            for (const skeleton of instance.skeletons) skeleton.dispose()
+            root.dispose(false, false)
           },
           spawnStamp: actor.protectedUntil,
           rest: root
@@ -271,7 +367,7 @@ export function combatPresentation(
       bot.moving = clock < bot.motionUntil
       bot.previous.set(actor.x, actor.y, actor.z)
       bot.alive = actor.health > 0
-      bot.crouch = bot.alive ? actor.crouch ?? 0 : 0
+      bot.crouch = bot.alive ? (actor.crouch ?? 0) : 0
       if (Vector3.Distance(bot.root.position, bot.previous) > 3)
         bot.root.position.copyFrom(bot.previous)
       bot.yaw = actor.yaw
@@ -285,27 +381,41 @@ export function combatPresentation(
           : bot.stationary
             ? 'Idle_Neutral'
             : bot.moving
-                ? 'Walk'
-                : 'Idle_Neutral'
+              ? 'Walk'
+              : 'Idle_Neutral'
 
       if (action !== bot.action) {
         for (const group of bot.animations) group.stop()
         const animation = bot.animations.find((group) => group.name.endsWith(`|${action}`))
         animation?.start(
           action !== 'Death' && action !== 'HitRecieve',
-          action === 'HitRecieve' ? 2.5 : action === 'Walk' ? (actor.bot && (mode === 'solo' || mode === 'campaign') ? 0.5 : 0.7) : 1,
+          action === 'HitRecieve'
+            ? 2.5
+            : action === 'Walk'
+              ? actor.bot && (mode === 'solo' || mode === 'campaign')
+                ? 0.5
+                : 0.7
+              : 1,
         )
         bot.action = action
       }
     }
   }
-  function fire(){
-    kick=1;flashTime=.025;flash.rotation.z=Math.random()*Math.PI;flash.setEnabled(true)
-    const puff=smoke[smokeIndex++%smoke.length]!;puff.remaining=.24
-    puff.mesh.position.copyFrom(Vector3.TransformCoordinates(muzzlePoint,weapon.computeWorldMatrix(true)))
-    puff.mesh.scaling.setAll(1);puff.mesh.visibility=.28;puff.mesh.setEnabled(true)
+  function fire() {
+    kick = 1
+    flashTime = 0.025
+    flash.rotation.z = Math.random() * Math.PI
+    flash.setEnabled(true)
+    const puff = smoke[smokeIndex++ % smoke.length]!
+    puff.remaining = 0.24
+    puff.mesh.position.copyFrom(
+      Vector3.TransformCoordinates(muzzlePoint, weapon.computeWorldMatrix(true)),
+    )
+    puff.mesh.scaling.setAll(1)
+    puff.mesh.visibility = 0.28
+    puff.mesh.setEnabled(true)
   }
-  function shot(event: ShotEvent, own: boolean, feedback=true) {
+  function shot(event: ShotEvent, own: boolean, feedback = true) {
     const shooter = bots.get(event.shooterId)
     if (shooter) shooter.shootUntil = clock + 0.65
     if (event.damage > 0 && event.hitId) {
@@ -316,9 +426,10 @@ export function combatPresentation(
     }
     // Resolve presentation against the visible victim surface, not an interior hitbox point.
     const damagingHit = event.damage > 0 && !!event.hitId
-    const start = shooter && !own
-      ? shooter.muzzle.getAbsolutePosition().clone()
-      : new Vector3(event.start.x, event.start.y, event.start.z)
+    const start =
+      shooter && !own
+        ? shooter.muzzle.getAbsolutePosition().clone()
+        : new Vector3(event.start.x, event.start.y, event.start.z)
     let contact = new Vector3(event.end.x, event.end.y, event.end.z)
     const direction = contact.subtract(start).normalize()
     // Maintain a readable angular size at range; cap growth so close hits stay restrained.
@@ -331,21 +442,29 @@ export function combatPresentation(
         new Ray(start, direction, Vector3.Distance(start, contact) + 2),
         (mesh) => meshes.has(mesh),
       )
-      contact = (surface?.pickedPoint ?? contact.subtract(direction.scale(0.25)))
-        .subtract(direction.scale(0.08))
+      contact = (surface?.pickedPoint ?? contact.subtract(direction.scale(0.25))).subtract(
+        direction.scale(0.08),
+      )
       const effect = splashPool[splashCursor++ % splashPool.length]!
-      effect.mesh.position.copyFrom(contact); effect.mesh.scaling.setAll(bloodScale)
-      effect.velocity.copyFrom(direction).scaleInPlace(-.15)
-      effect.remaining = effect.duration = .65; effect.mesh.visibility = 1; effect.mesh.setEnabled(true)
+      effect.mesh.position.copyFrom(contact)
+      effect.mesh.scaling.setAll(bloodScale)
+      effect.velocity.copyFrom(direction).scaleInPlace(-0.15)
+      effect.remaining = effect.duration = 0.65
+      effect.mesh.visibility = 1
+      effect.mesh.setEnabled(true)
     }
     // Misses at maximum range and protected/dead actors produce no blood.
     if (damagingHit || (!event.hitId && Vector3.Distance(start, contact) < 79)) {
       const duration = damagingHit ? 0.65 : 0.22
       for (let i = 0; i < (damagingHit ? 9 : 5); i++) {
-        const effect = damagingHit ? bloodPool[bloodCursor++ % bloodPool.length]! : dustPool[dustCursor++ % dustPool.length]!
+        const effect = damagingHit
+          ? bloodPool[bloodCursor++ % bloodPool.length]!
+          : dustPool[dustCursor++ % dustPool.length]!
         const particle = effect.mesh
-        particle.scaling.setAll(damagingHit ? .08 * Math.sqrt(bloodScale) : .022)
-        particle.position.copyFrom(contact); particle.visibility = 1; particle.setEnabled(true)
+        particle.scaling.setAll(damagingHit ? 0.08 * Math.sqrt(bloodScale) : 0.022)
+        particle.position.copyFrom(contact)
+        particle.visibility = 1
+        particle.setEnabled(true)
         const spread = damagingHit ? 1.5 : 0.7
         const velocity = new Vector3(
           (Math.random() - 0.5) * spread,
@@ -353,18 +472,23 @@ export function combatPresentation(
           (Math.random() - 0.5) * spread,
         )
         if (damagingHit) velocity.subtractInPlace(direction.scale(0.6))
-        effect.velocity.copyFrom(velocity); effect.remaining = effect.duration = duration
+        effect.velocity.copyFrom(velocity)
+        effect.remaining = effect.duration = duration
       }
     }
 
     if (own && feedback) fire()
     const tracer = tracers[tracerCursor++ % tracers.length]!
-    MeshBuilder.CreateLines('tracer', {points: [
-      own ? Vector3.TransformCoordinates(muzzlePoint,weapon.computeWorldMatrix(true)) : start,
-      new Vector3(event.end.x,event.end.y,event.end.z),
-    ], instance: tracer.mesh})
-    tracer.mesh.color = own ? new Color3(.85, .78, .6) : new Color3(1, .38, .15)
-    tracer.remaining = .045; tracer.mesh.setEnabled(true)
+    MeshBuilder.CreateLines('tracer', {
+      points: [
+        own ? Vector3.TransformCoordinates(muzzlePoint, weapon.computeWorldMatrix(true)) : start,
+        new Vector3(event.end.x, event.end.y, event.end.z),
+      ],
+      instance: tracer.mesh,
+    })
+    tracer.mesh.color = own ? new Color3(0.85, 0.78, 0.6) : new Color3(1, 0.38, 0.15)
+    tracer.remaining = 0.045
+    tracer.mesh.setEnabled(true)
   }
 
   function frame(
@@ -376,7 +500,7 @@ export function combatPresentation(
     running = true,
   ) {
     for (const bot of bots.values()) {
-      bot.muzzle.setEnabled(bot.alive && clock < bot.shootUntil-.61)
+      bot.muzzle.setEnabled(bot.alive && clock < bot.shootUntil - 0.61)
       if (running) {
         Vector3.LerpToRef(bot.root.position, bot.previous, Math.min(1, dt * 20), bot.root.position)
         const delta = Math.atan2(
@@ -390,7 +514,8 @@ export function combatPresentation(
       bot.root.setEnabled(Vector3.DistanceSquared(bot.root.position, camera.position) < 95 * 95)
       for (const group of bot.animations)
         if (group.isStarted) {
-          if (running && bot.root.isEnabled() && group.isPlaying === false) group.play(group.loopAnimation)
+          if (running && bot.root.isEnabled() && group.isPlaying === false)
+            group.play(group.loopAnimation)
           else if ((!running || !bot.root.isEnabled()) && group.isPlaying) group.pause()
         }
     }
@@ -407,11 +532,13 @@ export function combatPresentation(
       }
     }
     kick = Math.max(0, kick - effectDt * 9)
-    for(const puff of smoke){
-      if(puff.remaining<=0)continue
-      puff.remaining-=dt;puff.mesh.position.y+=dt*.12;puff.mesh.scaling.setAll(1+(.24-puff.remaining)*2)
-      puff.mesh.visibility=Math.max(0,puff.remaining/.24)*.28
-      if(puff.remaining<=0)puff.mesh.setEnabled(false)
+    for (const puff of smoke) {
+      if (puff.remaining <= 0) continue
+      puff.remaining -= dt
+      puff.mesh.position.y += dt * 0.12
+      puff.mesh.scaling.setAll(1 + (0.24 - puff.remaining) * 2)
+      puff.mesh.visibility = Math.max(0, puff.remaining / 0.24) * 0.28
+      if (puff.remaining <= 0) puff.mesh.setEnabled(false)
     }
     flashTime -= dt
     if (flashTime <= 0) flash.setEnabled(false)
@@ -464,12 +591,23 @@ export function combatPresentation(
     flashTime = 0
     ads = 0
     flash.setEnabled(false)
-    for(const puff of smoke){puff.remaining=0;puff.mesh.setEnabled(false)}
-    for (const effect of [...impacts, ...tracers]) { effect.remaining = 0; effect.mesh.setEnabled(false) }
+    for (const puff of smoke) {
+      puff.remaining = 0
+      puff.mesh.setEnabled(false)
+    }
+    for (const effect of [...impacts, ...tracers]) {
+      effect.remaining = 0
+      effect.mesh.setEnabled(false)
+    }
   }
-  const ready=Promise.all([glow.forceCompilationAsync(flameMeshes[0]!),smokeMaterial.forceCompilationAsync(smoke[0]!.mesh),
-    dust.forceCompilationAsync(dustPool[0]!.mesh), blood.forceCompilationAsync(bloodPool[0]!.mesh),
-    splashMaterial.forceCompilationAsync(splashPool[0]!.mesh), tracers[0]!.mesh.material!.forceCompilationAsync(tracers[0]!.mesh)])
+  const ready = Promise.all([
+    glow.forceCompilationAsync(flameMeshes[0]!),
+    smokeMaterial.forceCompilationAsync(smoke[0]!.mesh),
+    dust.forceCompilationAsync(dustPool[0]!.mesh),
+    blood.forceCompilationAsync(bloodPool[0]!.mesh),
+    splashMaterial.forceCompilationAsync(splashPool[0]!.mesh),
+    tracers[0]!.mesh.material!.forceCompilationAsync(tracers[0]!.mesh),
+  ])
   return { sync, shot, fire, frame, reset, ready }
 }
 

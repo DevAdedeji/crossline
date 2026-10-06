@@ -7,34 +7,75 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { Scene } from '@babylonjs/core/scene'
 import type { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import type { TrainingAssets } from './trainingAssets'
-import { activeCampaignTask, type CampaignMission, type CampaignState } from '@crossline/shared/campaign'
+import {
+  activeCampaignTask,
+  type CampaignMission,
+  type CampaignState,
+} from '@crossline/shared/campaign'
 
-export function campaignPresentation(scene: Scene, assets: TrainingAssets, shadows: ShadowGenerator, mission: CampaignMission) {
+export function campaignPresentation(
+  scene: Scene,
+  assets: TrainingAssets,
+  shadows: ShadowGenerator,
+  mission: CampaignMission,
+) {
   const root = new TransformNode(mission.companion || 'charge marker', scene)
   root.setEnabled(Boolean(mission.companion))
-  const instance = assets.soldier.instantiateModelsToScene(name => `finch-${name}`, true, { doNotInstantiate: true })
-  for (const node of instance.rootNodes) { node.parent = root; (node as TransformNode).scaling.scaleInPlace(.962) }
+  const instance = assets.soldier.instantiateModelsToScene((name) => `finch-${name}`, true, {
+    doNotInstantiate: true,
+  })
+  for (const node of instance.rootNodes) {
+    node.parent = root
+    ;(node as TransformNode).scaling.scaleInPlace(0.962)
+  }
   for (const mesh of root.getChildMeshes()) {
-    mesh.receiveShadows = true; mesh.isPickable = false; shadows.addShadowCaster(mesh)
+    mesh.receiveShadows = true
+    mesh.isPickable = false
+    shadows.addShadowCaster(mesh)
     if (mesh.material instanceof PBRMaterial && /body|equipment|helmet/.test(mesh.material.name)) {
-      mesh.material.albedoColor = Color3.FromHexString(mesh.material.name.includes('body') ? '#c4a16c' : '#6b8d88')
+      mesh.material.albedoColor = Color3.FromHexString(
+        mesh.material.name.includes('body') ? '#c4a16c' : '#6b8d88',
+      )
     }
   }
   root.position.set(mission.captive.x, 0, mission.captive.z)
-  let animation = '', last = root.position.clone(), state: CampaignState | undefined
+  let animation = '',
+    last = root.position.clone(),
+    state: CampaignState | undefined
   const signal = new StandardMaterial('objective amber', scene)
-  signal.emissiveColor = Color3.FromHexString('#ffc171'); signal.disableLighting = true
-  const ring = MeshBuilder.CreateTorus('mission objective', { diameter: mission.interactionRadius * 2, thickness: .045, tessellation: 40 }, scene)
-  ring.material = signal; ring.isPickable = false
-  const beacon = MeshBuilder.CreatePolyhedron('objective beacon', { type: 1, size: .2 }, scene)
-  beacon.material = signal; beacon.isPickable = false
-  const charge = MeshBuilder.CreateBox('demolition charge', {width:.5,height:.3,depth:.35}, scene)
-  charge.position.set(mission.captive.x,.15,mission.captive.z); charge.material=signal
-  charge.setEnabled(mission.kind === 'sabotage'); charge.isPickable=false
+  signal.emissiveColor = Color3.FromHexString('#ffc171')
+  signal.disableLighting = true
+  const ring = MeshBuilder.CreateTorus(
+    'mission objective',
+    { diameter: mission.interactionRadius * 2, thickness: 0.045, tessellation: 40 },
+    scene,
+  )
+  ring.material = signal
+  ring.isPickable = false
+  const beacon = MeshBuilder.CreatePolyhedron('objective beacon', { type: 1, size: 0.2 }, scene)
+  beacon.material = signal
+  beacon.isPickable = false
+  const charge = MeshBuilder.CreateBox(
+    'demolition charge',
+    { width: 0.5, height: 0.3, depth: 0.35 },
+    scene,
+  )
+  charge.position.set(mission.captive.x, 0.15, mission.captive.z)
+  charge.material = signal
+  charge.setEnabled(mission.kind === 'sabotage')
+  charge.isPickable = false
   const friend = new StandardMaterial('friendly marker', scene)
-  friend.emissiveColor = Color3.FromHexString('#92e6ce'); friend.disableLighting = true
-  const marker = MeshBuilder.CreateTorus('Finch friendly marker', { diameter: .35, thickness: .045, tessellation: 20 }, scene)
-  marker.material = friend; marker.parent = root; marker.position.y = 2.25; marker.isPickable = false
+  friend.emissiveColor = Color3.FromHexString('#92e6ce')
+  friend.disableLighting = true
+  const marker = MeshBuilder.CreateTorus(
+    'Finch friendly marker',
+    { diameter: 0.35, thickness: 0.045, tessellation: 20 },
+    scene,
+  )
+  marker.material = friend
+  marker.parent = root
+  marker.position.y = 2.25
+  marker.isPickable = false
   scene.onBeforeRenderObservable.add(() => {
     if (!state) return
     const dt = Math.min(scene.getEngine().getDeltaTime(), 50) / 1000
@@ -43,14 +84,28 @@ export function campaignPresentation(scene: Scene, assets: TrainingAssets, shado
     if (Vector3.Distance(root.position, target) > 3) root.position.copyFrom(target)
     else Vector3.LerpToRef(root.position, target, 1 - Math.exp(-14 * dt), root.position)
     root.rotation.y = state.captive.yaw
-    const next = Vector3.Distance(last, root.position) > .002 ? 'Walk' : 'Idle_Neutral'
-    if (next !== animation) { instance.animationGroups.forEach(group => group.stop()); instance.animationGroups.find(group => group.name.endsWith(`|${next}`))?.start(true, next === 'Walk' ? .8 : 1); animation = next }
+    const next = Vector3.Distance(last, root.position) > 0.002 ? 'Walk' : 'Idle_Neutral'
+    if (next !== animation) {
+      instance.animationGroups.forEach((group) => group.stop())
+      instance.animationGroups
+        .find((group) => group.name.endsWith(`|${next}`))
+        ?.start(true, next === 'Walk' ? 0.8 : 1)
+      animation = next
+    }
     last.copyFrom(root.position)
-    const task=activeCampaignTask(state),objective=task.position
-    const scale=task.radius / mission.interactionRadius
+    const task = activeCampaignTask(state),
+      objective = task.position
+    const scale = task.radius / mission.interactionRadius
     ring.scaling.set(scale, 1, scale)
-    ring.position.set(objective.x, objective.y + .045, objective.z)
-    beacon.position.set(objective.x, objective.y + 2.4, objective.z); beacon.rotation.y += dt
+    ring.position.set(objective.x, objective.y + 0.045, objective.z)
+    beacon.position.set(objective.x, objective.y + 2.4, objective.z)
+    beacon.rotation.y += dt
   })
-  return { sync(value: CampaignState) { state = value; ring.setEnabled(value.outcome === 'active'); beacon.setEnabled(value.outcome === 'active') } }
+  return {
+    sync(value: CampaignState) {
+      state = value
+      ring.setEnabled(value.outcome === 'active')
+      beacon.setEnabled(value.outcome === 'active')
+    },
+  }
 }

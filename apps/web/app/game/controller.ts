@@ -11,15 +11,22 @@ export function controllerActivity(pad: Gamepad): boolean {
 }
 
 /** Prefer the device being used, including generic USB pads without a browser mapping label. */
-export function selectController(pads: (Gamepad | null)[], preferred?: number): Gamepad | undefined {
+export function selectController(
+  pads: (Gamepad | null)[],
+  preferred?: number,
+): Gamepad | undefined {
   const connected = pads.filter((pad): pad is Gamepad => Boolean(pad?.connected))
-  return connected.find(controllerActivity)
-    ?? connected.find((pad) => pad.index === preferred)
-    ?? connected.find((pad) => pad.mapping === 'standard')
-    ?? connected[0]
+  return (
+    connected.find(controllerActivity) ??
+    connected.find((pad) => pad.index === preferred) ??
+    connected.find((pad) => pad.mapping === 'standard') ??
+    connected[0]
+  )
 }
 
-export type FireBinding = { kind: 'button'; index: number } | { kind: 'axis'; index: number; rest: number; direction: number }
+export type FireBinding =
+  | { kind: 'button'; index: number }
+  | { kind: 'axis'; index: number; rest: number; direction: number }
 export const DEFAULT_FIRE_BINDING: FireBinding = { kind: 'button', index: 7 }
 export function controllerFire(pad: Gamepad, binding: FireBinding = DEFAULT_FIRE_BINDING): boolean {
   if (binding.kind === 'button') {
@@ -34,8 +41,16 @@ export function loadFireBinding(id: string): FireBinding {
     const saved = JSON.parse(localStorage.getItem(`crossline.fire.${id}`) ?? 'null')
     if (saved && Number.isInteger(saved.index) && saved.index >= 0 && saved.index < 32) {
       if (saved.kind === 'button') return saved
-      if (saved.kind === 'axis' && Number.isFinite(saved.rest) && Math.abs(saved.rest) <= 1 && Math.abs(saved.direction) === 1) return saved
+      if (
+        saved.kind === 'axis' &&
+        Number.isFinite(saved.rest) &&
+        Math.abs(saved.rest) <= 1 &&
+        Math.abs(saved.direction) === 1
+      )
+        return saved
     }
-  } catch { /* A blocked or unavailable preference store must not disable controls. */ }
+  } catch {
+    /* A blocked or unavailable preference store must not disable controls. */
+  }
   return DEFAULT_FIRE_BINDING
 }

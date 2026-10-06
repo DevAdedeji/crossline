@@ -3,14 +3,21 @@
     <NuxtLink to="/" class="underline">← Back to Crossline</NuxtLink>
     <h1 class="mt-12 mb-6 text-4xl font-bold">Asset credits</h1>
     <p class="mb-5 max-w-2xl">
-      MIT-licensed Microsoft Rocketbox character and CC0 assets from Lamoot, rohezal, Quaternius and Poly Haven, adapted for Crossline. All assets
-      load locally. No creator endorsement is implied.
+      MIT-licensed Microsoft Rocketbox character and CC0 assets from Lamoot, rohezal, Quaternius and
+      Poly Haven, adapted for Crossline. All assets load locally. No creator endorsement is implied.
     </p>
     <ul class="space-y-4 [&_a]:underline">
-      <li><a href="https://github.com/microsoft/Microsoft-Rocketbox">Military character — Microsoft Rocketbox</a> · <a href="/models/ROCKETBOX-LICENSE.txt">MIT notice</a></li>
+      <li>
+        <a href="https://github.com/microsoft/Microsoft-Rocketbox"
+          >Military character — Microsoft Rocketbox</a
+        >
+        · <a href="/models/ROCKETBOX-LICENSE.txt">MIT notice</a>
+      </li>
       <li><a href="https://poly.pizza/m/Btfn3G5Xv4">Combat animation source — Quaternius</a></li>
       <li><a href="https://opengameart.org/content/high-poly-ak-47">AK rifle — Lamoot</a></li>
-      <li><a href="https://opengameart.org/content/car-vw-corradon-2">Textured car — rohezal</a></li>
+      <li>
+        <a href="https://opengameart.org/content/car-vw-corradon-2">Textured car — rohezal</a>
+      </li>
       <li>
         <a href="https://polyhaven.com/a/modular_urban_apartments_facade"
           >Apartment facade — Poly Haven</a
@@ -30,7 +37,8 @@
       </li>
       <li>
         <a href="https://opengameart.org/content/the-free-firearm-sound-library"
-          >Recorded AK rifle shots and reload mechanisms — Ben Jaszczak, Brian Nelson, Kevin Heras and Matthew Nanney</a
+          >Recorded AK rifle shots and reload mechanisms — Ben Jaszczak, Brian Nelson, Kevin Heras
+          and Matthew Nanney</a
         >
       </li>
       <li>

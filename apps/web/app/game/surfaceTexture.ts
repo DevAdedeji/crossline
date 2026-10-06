@@ -24,13 +24,15 @@ export function surfaceTexture(kind: string, scene: Scene) {
         shade = 170 + 35 * Math.sin(x * 0.35 + Math.sin(y * 0.02)) + random() * 22
       if (kind === 'interior-floor' || kind === 'paving') {
         const slab = kind === 'paving' ? 128 : 256
-        const xx = x % slab, yy = y % slab
+        const xx = x % slab,
+          yy = y % slab
         const joint = xx < 2 || yy < 2
         const edge = xx < 5 || yy < 5 || xx > slab - 4 || yy > slab - 4
         const variation = Math.sin(Math.floor(x / slab) * 13 + Math.floor(y / slab) * 29) * 6
-        shade = joint ? 142 : (edge ? 208 : 232) + variation + (random() - .5) * 10
+        shade = joint ? 142 : (edge ? 208 : 232) + variation + (random() - 0.5) * 10
       }
-      if (kind === 'aggregate') shade=178+(random()-.5)*65+7*Math.sin(x*.061)*Math.cos(y*.049)
+      if (kind === 'aggregate')
+        shade = 178 + (random() - 0.5) * 65 + 7 * Math.sin(x * 0.061) * Math.cos(y * 0.049)
       if (kind === 'roof') shade = y % 64 < 2 ? 140 : 210 + random() * 25
       const i = (y * size + x) * 4
       pixels.data[i] = shade

@@ -197,7 +197,10 @@ test('target hint respects nearest living actors, cover, range, protection and r
   const nearer = { ...bot, id: 'other-player', z: -19 }
   assert.equal(aimedTarget(origin, ray, [bot, nearer], 'human', game.elapsed), nearer.id)
   Object.assign(bot, { x: -3, z: 9 })
-  assert.equal(aimedTarget({ x: -12, y: 1.6, z: 9 }, { x: 1, y: 0, z: 0 }, [bot], 'human', game.elapsed), undefined)
+  assert.equal(
+    aimedTarget({ x: -12, y: 1.6, z: 9 }, { x: 1, y: 0, z: 0 }, [bot], 'human', game.elapsed),
+    undefined,
+  )
 })
 test('stationary target heading stays assigned when the player moves around it', () => {
   const game = setup(),

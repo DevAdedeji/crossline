@@ -13,7 +13,8 @@ const port = 2568,
   child = spawn(process.execPath, ['apps/match/dist/index.js'], {
     env: {
       ...process.env,
-      NODE_ENV: 'test', DATABASE_URL: '',
+      NODE_ENV: 'test',
+      DATABASE_URL: '',
       TRAINING_TEST_DURATION_MS: '7000',
       MATCH_PORT: String(port),
     },

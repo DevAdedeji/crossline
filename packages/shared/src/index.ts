@@ -1,5 +1,12 @@
 import { CROUCH, stanceAmount, stanceHeight } from './stance.ts'
-import { TRAINING_WORLD, nearbySolids, RAMP, rampHeight, type Solid, type WorldGeometry } from './urban-map.ts'
+import {
+  TRAINING_WORLD,
+  nearbySolids,
+  RAMP,
+  rampHeight,
+  type Solid,
+  type WorldGeometry,
+} from './urban-map.ts'
 export * from './urban-map.ts'
 export * from './combat-map.ts'
 export * from './landmarks.ts'
@@ -11,8 +18,15 @@ export const TICK_MS = 1000 / 30
 export const MOVE_SPEED = 6
 export const ARENA_LIMIT = 26
 export const INPUT_TIMEOUT_MS = 250
-export interface MoveInput { x: number; z: number }
-export interface Position { x: number; y: number; z: number }
+export interface MoveInput {
+  x: number
+  z: number
+}
+export interface Position {
+  x: number
+  y: number
+  z: number
+}
 export const PLAYER_RADIUS = 0.36
 export const PLAYER_HEIGHT = 1.75
 const STEP_HEIGHT = 0.24
@@ -20,7 +34,8 @@ const STEP_HEIGHT = 0.24
 export function parseInput(value: unknown): MoveInput | null {
   if (typeof value !== 'object' || value === null || !('x' in value) || !('z' in value)) return null
   const { x, z } = value
-  if (typeof x !== 'number' || typeof z !== 'number' || !Number.isFinite(x) || !Number.isFinite(z)) return null
+  if (typeof x !== 'number' || typeof z !== 'number' || !Number.isFinite(x) || !Number.isFinite(z))
+    return null
   if (Math.abs(x) > 1 || Math.abs(z) > 1) return null
   const length = Math.max(1, Math.hypot(x, z))
   return { x: x / length, z: z / length }
@@ -38,7 +53,12 @@ function supportHeight(position: Position, world: WorldGeometry): number {
   let height = 0
   for (const solid of nearbySolids(world, position.x, position.z)) {
     const top = solid.y + solid.height / 2
-    if (top <= position.y + STEP_HEIGHT && top > height && overlapsFootprint(position.x, position.z, solid)) height = top
+    if (
+      top <= position.y + STEP_HEIGHT &&
+      top > height &&
+      overlapsFootprint(position.x, position.z, solid)
+    )
+      height = top
   }
   if (world.legacyRamp !== false && onRamp(position.x, position.z)) {
     const ramp = rampHeight(position.z)
@@ -46,19 +66,35 @@ function supportHeight(position: Position, world: WorldGeometry): number {
   }
   return height
 }
-export function isBlocked(position: Position, world: WorldGeometry = TRAINING_WORLD, height = PLAYER_HEIGHT): boolean {
+export function isBlocked(
+  position: Position,
+  world: WorldGeometry = TRAINING_WORLD,
+  height = PLAYER_HEIGHT,
+): boolean {
   for (const solid of nearbySolids(world, position.x, position.z)) {
-    if (position.y >= solid.y + solid.height / 2 - 0.0001 || position.y + height <= solid.y - solid.height / 2 + 0.0001) continue
+    if (
+      position.y >= solid.y + solid.height / 2 - 0.0001 ||
+      position.y + height <= solid.y - solid.height / 2 + 0.0001
+    )
+      continue
     if (overlapsFootprint(position.x, position.z, solid)) return true
   }
   // The ramp is solid below its sloped surface, so it cannot be entered sideways at height.
   const rampX = Math.max(RAMP.minX, Math.min(RAMP.maxX, position.x))
   const rampZ = Math.max(RAMP.minZ, Math.min(RAMP.maxZ, position.z))
-  const touchesRamp = (position.x - rampX) ** 2 + (position.z - rampZ) ** 2 < PLAYER_RADIUS ** 2 - 0.000001
-  if (world.legacyRamp !== false && touchesRamp && position.y < rampHeight(rampZ) - 0.001) return true
+  const touchesRamp =
+    (position.x - rampX) ** 2 + (position.z - rampZ) ** 2 < PLAYER_RADIUS ** 2 - 0.000001
+  if (world.legacyRamp !== false && touchesRamp && position.y < rampHeight(rampZ) - 0.001)
+    return true
   return false
 }
-export function move(position: Position, input: MoveInput, dt: number, world: WorldGeometry = TRAINING_WORLD, height = PLAYER_HEIGHT): Position {
+export function move(
+  position: Position,
+  input: MoveInput,
+  dt: number,
+  world: WorldGeometry = TRAINING_WORLD,
+  height = PLAYER_HEIGHT,
+): Position {
   const seconds = Math.max(0, Math.min(dt, TICK_MS)) / 1000
   const clamp = (n: number) => Math.max(-world.limit, Math.min(world.limit, n))
   let next = { x: position.x, y: position.y, z: position.z }
@@ -81,7 +117,7 @@ export function readStick(x = 0, y = 0): { x: number; y: number } {
   const deadzone = 0.18
   if (length <= deadzone) return { x: 0, y: 0 }
   const magnitude = (Math.min(length, 1) - deadzone) / (1 - deadzone)
-  return { x: x / length * magnitude, y: y / length * magnitude }
+  return { x: (x / length) * magnitude, y: (y / length) * magnitude }
 }
 
 export * from './leaderboard.ts'
@@ -91,10 +127,31 @@ export * from './nameVisibility.ts'
 export const ONLINE_CAPACITY_TARGET = 100
 
 /** The same collision/stance step is used for authority and local movement prediction. */
-export function moveHuman(position: Position & {crouch?:number}, input: MoveInput & {aim?:boolean;crouch?:boolean}, dt:number, world:WorldGeometry=TRAINING_WORLD) {
-  const milliseconds=Math.max(0,Math.min(dt,TICK_MS))
-  const desired=input.crouch || isBlocked(position,world) ? 1 : 0
-  const crouch=Math.max(0,Math.min(1,stanceAmount(position)+Math.sign(desired-stanceAmount(position))*milliseconds/CROUCH.transitionMs))
-  const speed=(1-(1-CROUCH.speed)*crouch)*(input.aim ? .65 : 1)
-  return {...move(position,{x:input.x*speed,z:input.z*speed},milliseconds,world,stanceHeight({crouch})),crouch}
+export function moveHuman(
+  position: Position & { crouch?: number },
+  input: MoveInput & { aim?: boolean; crouch?: boolean },
+  dt: number,
+  world: WorldGeometry = TRAINING_WORLD,
+) {
+  const milliseconds = Math.max(0, Math.min(dt, TICK_MS))
+  const desired = input.crouch || isBlocked(position, world) ? 1 : 0
+  const crouch = Math.max(
+    0,
+    Math.min(
+      1,
+      stanceAmount(position) +
+        (Math.sign(desired - stanceAmount(position)) * milliseconds) / CROUCH.transitionMs,
+    ),
+  )
+  const speed = (1 - (1 - CROUCH.speed) * crouch) * (input.aim ? 0.65 : 1)
+  return {
+    ...move(
+      position,
+      { x: input.x * speed, z: input.z * speed },
+      milliseconds,
+      world,
+      stanceHeight({ crouch }),
+    ),
+    crouch,
+  }
 }

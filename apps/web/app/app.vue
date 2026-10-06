@@ -15,4 +15,6 @@ if (!import.meta.dev && hostname === 'crossline.adedeji.xyz') {
 }
 </script>
 
-<template><UApp><NuxtPwaManifest /><NuxtPage /><PwaControls /></UApp></template>
+<template>
+  <UApp><NuxtPwaManifest /><NuxtPage /><PwaControls /></UApp>
+</template>

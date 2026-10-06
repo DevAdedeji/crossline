@@ -8,7 +8,7 @@ async function start(page: Page) {
   await page.getByRole('button', { name: 'Start mission', exact: true }).click()
   await expect(page.locator('.crosshair')).toBeVisible()
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase', 'playing')
-  await expect(page.getByText('SPAWN PROTECTION',{exact:true})).toBeHidden({timeout:6000})
+  await expect(page.getByText('SPAWN PROTECTION', { exact: true })).toBeHidden({ timeout: 6000 })
 }
 async function face(page: Page, degrees: number, pitch = 0) {
   await page.evaluate(
@@ -62,7 +62,7 @@ async function pulse(page: Page, index: number) {
   }, index)
 }
 
-test.beforeEach(async({page})=>quietCampaign(page))
+test.beforeEach(async ({ page }) => quietCampaign(page))
 
 test('recorded reload follows pause/resume and weapon framing survives viewport changes', async ({
   page,
@@ -85,7 +85,10 @@ test('recorded reload follows pause/resume and weapon framing survives viewport 
       const result = Reflect.apply(original, this, [when ?? 0, offset ?? 0, duration])
       if (this.buffer?.duration === 1.6 && starts.filter((s) => s.duration === 1.6).length === 1) {
         // Pause relative to playback start, before slow software-rendered polling can finish reload.
-        setTimeout(() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })), 250)
+        setTimeout(
+          () => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })),
+          250,
+        )
       }
       return result
     }
@@ -138,57 +141,115 @@ test('recorded reload follows pause/resume and weapon framing survives viewport 
 
 test('analog right trigger fires after mouse start without its pressed flag', async ({ page }) => {
   await padSetup(page)
-  await page.goto('/play?mode=campaign'); await connected(page); await start(page)
-  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0]!.buttons[7], 'value', { value: .8, configurable: true }) })
+  await page.goto('/play?mode=campaign')
+  await connected(page)
+  await start(page)
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.getGamepads()[0]!.buttons[7], 'value', {
+      value: 0.8,
+      configurable: true,
+    })
+  })
   await expect(page.getByTestId('active-controller')).toContainText('CONTROLLER ACTIVE')
-  await expect.poll(async () => Number((await page.getByTestId('ammo').innerText()).split('/')[0])).toBeLessThan(22)
-  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0]!.buttons[7], 'value', { value: 0, configurable: true }) })
+  await expect
+    .poll(async () => Number((await page.getByTestId('ammo').innerText()).split('/')[0]))
+    .toBeLessThan(22)
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.getGamepads()[0]!.buttons[7], 'value', {
+      value: 0,
+      configurable: true,
+    })
+  })
   await page.waitForTimeout(200)
   const ammo = await page.getByTestId('ammo').textContent()
-  await page.waitForTimeout(450); await expect(page.getByTestId('ammo')).toHaveText(ammo!)
-  await pulse(page, 9); await expect(page.getByRole('heading', { name: 'Campaign paused.' })).toBeVisible()
-  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0], 'connected', { value: false, configurable: true }) })
+  await page.waitForTimeout(450)
+  await expect(page.getByTestId('ammo')).toHaveText(ammo!)
+  await pulse(page, 9)
+  await expect(page.getByRole('heading', { name: 'Campaign paused.' })).toBeVisible()
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.getGamepads()[0], 'connected', {
+      value: false,
+      configurable: true,
+    })
+  })
   await expect(page.getByTestId('gamepad-status')).toContainText('disconnected')
-  await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0], 'connected', { value: true }); Object.defineProperty(navigator.getGamepads()[0], 'mapping', { value: '' }) })
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.getGamepads()[0], 'connected', { value: true })
+    Object.defineProperty(navigator.getGamepads()[0], 'mapping', { value: '' })
+  })
   await expect(page.getByTestId('gamepad-status')).toContainText('generic layout')
-  await pulse(page, 0); await page.evaluate(() => { Object.defineProperty(navigator.getGamepads()[0]!.buttons[7], 'value', { value: .8, configurable: true }) })
-  await expect.poll(async () => Number((await page.getByTestId('ammo').innerText()).split('/')[0])).toBeLessThan(Number(ammo!.split('/')[0]))
+  await pulse(page, 0)
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.getGamepads()[0]!.buttons[7], 'value', {
+      value: 0.8,
+      configurable: true,
+    })
+  })
+  await expect
+    .poll(async () => Number((await page.getByTestId('ammo').innerText()).split('/')[0]))
+    .toBeLessThan(Number(ammo!.split('/')[0]))
 })
 
-test('select face button also fires, with release gating across start and resume', async ({ page }) => {
-  await padSetup(page); await page.goto('/play?mode=campaign'); await connected(page)
+test('select face button also fires, with release gating across start and resume', async ({
+  page,
+}) => {
+  await padSetup(page)
+  await page.goto('/play?mode=campaign')
+  await connected(page)
   await button(page, 0, true)
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase', 'playing')
-  await page.waitForTimeout(600); await expect(page.getByTestId('ammo')).toContainText('24 /')
-  await expect(page.getByText('SPAWN PROTECTION',{exact:true})).toBeHidden({timeout:6000})
-  await button(page, 0, false); await page.waitForTimeout(100)
+  await page.waitForTimeout(600)
+  await expect(page.getByTestId('ammo')).toContainText('24 /')
+  await expect(page.getByText('SPAWN PROTECTION', { exact: true })).toBeHidden({ timeout: 6000 })
+  await button(page, 0, false)
+  await page.waitForTimeout(100)
   await button(page, 0, true)
-  await expect.poll(async () => Number((await page.getByTestId('ammo').innerText()).split('/')[0])).toBeLessThan(22)
-  await button(page, 0, false); await pulse(page, 9)
+  await expect
+    .poll(async () => Number((await page.getByTestId('ammo').innerText()).split('/')[0]))
+    .toBeLessThan(22)
+  await button(page, 0, false)
+  await pulse(page, 9)
   await expect(page.getByRole('heading', { name: 'Campaign paused.' })).toBeVisible()
   const pausedAmmo = await page.getByTestId('ammo').textContent()
   await button(page, 0, true)
   await expect(page.locator('main.arena')).toHaveAttribute('data-phase', 'playing')
-  await page.waitForTimeout(500); await expect(page.getByTestId('ammo')).toHaveText(pausedAmmo!)
-  await button(page, 0, false); await page.waitForTimeout(100); await button(page, 7, true)
-  await expect.poll(async () => Number((await page.getByTestId('ammo').innerText()).split('/')[0])).toBeLessThan(Number(pausedAmmo!.split('/')[0]))
+  await page.waitForTimeout(500)
+  await expect(page.getByTestId('ammo')).toHaveText(pausedAmmo!)
+  await button(page, 0, false)
+  await page.waitForTimeout(100)
+  await button(page, 7, true)
+  await expect
+    .poll(async () => Number((await page.getByTestId('ammo').innerText()).split('/')[0]))
+    .toBeLessThan(Number(pausedAmmo!.split('/')[0]))
   await button(page, 7, false)
 })
 
-
-
-
-test('campaign mouse movement, full rotation, crouch and pause preserve the live session',async({page})=>{
-  await page.goto('/play?mode=campaign');await connected(page);await start(page)
-  const initial=await page.getByTestId('position').innerText()
-  await page.keyboard.down('KeyW');await expect(page.getByTestId('position')).not.toHaveText(initial);await page.keyboard.up('KeyW')
-  for(const degrees of [90,180,270,0]){
-    await face(page,degrees)
-    await expect.poll(async()=>Number((await page.getByTestId('heading').innerText()).match(/[0-9]+/)![0])).toBeCloseTo(degrees,0)
+test('campaign mouse movement, full rotation, crouch and pause preserve the live session', async ({
+  page,
+}) => {
+  await page.goto('/play?mode=campaign')
+  await connected(page)
+  await start(page)
+  const initial = await page.getByTestId('position').innerText()
+  await page.keyboard.down('KeyW')
+  await expect(page.getByTestId('position')).not.toHaveText(initial)
+  await page.keyboard.up('KeyW')
+  for (const degrees of [90, 180, 270, 0]) {
+    await face(page, degrees)
+    await expect
+      .poll(async () => Number((await page.getByTestId('heading').innerText()).match(/[0-9]+/)![0]))
+      .toBeCloseTo(degrees, 0)
   }
-  await page.keyboard.press('KeyC');await expect(page.locator('main.arena')).toHaveAttribute('data-crouch','1')
-  await page.keyboard.press('Escape');await expect(page.getByRole('heading',{name:'Campaign paused.'})).toBeVisible()
-  const frozen=await page.getByTestId('timer').textContent();await page.waitForTimeout(500);await expect(page.getByTestId('timer')).toHaveText(frozen!)
-  await page.getByRole('button',{name:'Resume mission'}).click();await expect(page.locator('main.arena')).toHaveAttribute('data-crouch','1')
-  await page.keyboard.press('Escape');await page.getByRole('button',{name:'Return to menu'}).click();await expect(page).toHaveURL('/')
+  await page.keyboard.press('KeyC')
+  await expect(page.locator('main.arena')).toHaveAttribute('data-crouch', '1')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('heading', { name: 'Campaign paused.' })).toBeVisible()
+  const frozen = await page.getByTestId('timer').textContent()
+  await page.waitForTimeout(500)
+  await expect(page.getByTestId('timer')).toHaveText(frozen!)
+  await page.getByRole('button', { name: 'Resume mission' }).click()
+  await expect(page.locator('main.arena')).toHaveAttribute('data-crouch', '1')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Return to menu' }).click()
+  await expect(page).toHaveURL('/')
 })
